@@ -1,0 +1,78 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: controls_portal
+      POSTGRES_USER: controls
+      POSTGRES_PASSWORD: controls123
+      TZ: America/Sao_Paulo
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U controls -d controls_portal"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  app:
+    image: cs_portalxml-app
+    build: .
+    environment:
+      TZ: America/Sao_Paulo
+    ports:
+      - "8088:80"
+    volumes:
+      - ./app:/var/www/html
+      - ./.env:/var/www/html/.env
+    depends_on:
+      db:
+        condition: service_healthy
+
+  cte_worker:
+    image: cs_portalxml-app
+    build: .
+    command: php /var/www/html/scripts/auto_cte_worker.php
+    restart: unless-stopped
+    environment:
+      TZ: America/Sao_Paulo
+    volumes:
+      - ./app:/var/www/html
+      - ./.env:/var/www/html/.env
+    depends_on:
+      db:
+        condition: service_healthy
+
+  nfe_worker:
+    image: cs_portalxml-app
+    build: .
+    command: php /var/www/html/scripts/auto_nfe_worker.php
+    restart: unless-stopped
+    environment:
+      TZ: America/Sao_Paulo
+    volumes:
+      - ./app:/var/www/html
+      - ./.env:/var/www/html/.env
+    depends_on:
+      db:
+        condition: service_healthy
+
+  nfse_worker:
+    image: cs_portalxml-app
+    build: .
+    command: php /var/www/html/scripts/auto_nfse_worker.php
+    restart: unless-stopped
+    environment:
+      TZ: America/Sao_Paulo
+    volumes:
+      - ./app:/var/www/html
+      - ./.env:/var/www/html/.env
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

@@ -1,0 +1,45 @@
+{
+  "name": "Control S - Coleta Portal Fiscal",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "*/30 * * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule",
+      "name": "Agendar a cada 30 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [260, 280]
+    },
+    {
+      "parameters": {
+        "command": "docker exec -i APP_CONTAINER php /var/www/html/scripts/cron.php collect_all"
+      },
+      "id": "exec",
+      "name": "Executar coleta",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [540, 280]
+    }
+  ],
+  "connections": {
+    "Agendar a cada 30 min": {
+      "main": [
+        [
+          {
+            "node": "Executar coleta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  }
+}
