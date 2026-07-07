@@ -32,6 +32,23 @@ $Itens = @(
     "GERAR_DIAGNOSTICO.cmd"
 )
 
+$ArquivosObrigatorios = @(
+    "app\bootstrap.php",
+    "app\public\index.php",
+    "app\templates\dashboard.php",
+    "app\templates\documents.php",
+    "app\templates\revenue.php",
+    "app\templates\users.php",
+    "INSTALAR_OU_ATUALIZAR.ps1",
+    ".env.windows.example"
+)
+
+foreach ($Obrigatorio in $ArquivosObrigatorios) {
+    if (!(Test-Path (Join-Path $Raiz $Obrigatorio))) {
+        throw "Arquivo obrigatorio ausente no pacote: $Obrigatorio"
+    }
+}
+
 foreach ($Item in $Itens) {
     $Origem = Join-Path $Raiz $Item
     if (Test-Path $Origem) {
