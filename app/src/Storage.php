@@ -81,29 +81,70 @@ final class Storage
         return $paths['directory'];
     }
 
-    public function exportZip(array $documents): ?string
+    public function exportZip(array $documents, ?string $destinationDir = null): ?string
     {
         if (!$documents) {
             return null;
         }
 
         $zipName = 'export_' . date('Ymd_His') . '_' . substr(sha1(json_encode($documents)), 0, 10) . '.zip';
-        $zipPath = $this->ensureDirectory($this->config['base_path'] . '/storage/exports') . '/' . $zipName;
+        $zipDir = $destinationDir !== null && trim($destinationDir) !== ''
+            ? $this->ensureDirectory($this->normalizePath(trim($destinationDir)))
+            : $this->ensureDirectory($this->config['base_path'] . '/storage/exports');
+        $zipPath = rtrim($zipDir, '/\\') . DIRECTORY_SEPARATOR . $zipName;
         $zip = new ZipArchive();
         $zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
 
+        $added = 0;
+        $usedEntries = [];
         foreach ($documents as $doc) {
             $path = (string)($doc['xml_path'] ?? '');
-            $entryName = basename($path ?: ((string)($doc['doc_type'] ?? 'DOC') . '_' . (string)($doc['access_key'] ?? $doc['id']) . '.xml'));
+            $entryName = $this->buildExportEntryName($doc, $path);
+            if (isset($usedEntries[$entryName])) {
+                $entryName = preg_replace('/\.xml$/i', '', $entryName) . '_' . ((string)($doc['id'] ?? $added + 1)) . '.xml';
+            }
+            $usedEntries[$entryName] = true;
             if ($path && is_file($path)) {
                 $zip->addFile($path, $entryName);
+                $added++;
             } elseif (!empty($doc['raw_xml'])) {
                 $zip->addFromString($entryName, (string)$doc['raw_xml']);
+                $added++;
             }
         }
 
         $zip->close();
+        if ($added === 0) {
+            @unlink($zipPath);
+            return null;
+        }
+
         return $zipPath;
+    }
+
+    public function copyDocumentsToFolder(array $documents, string $destinationDir): int
+    {
+        $dir = $this->ensureDirectory($this->normalizePath(trim($destinationDir)));
+        $copied = 0;
+        $usedNames = [];
+
+        foreach ($documents as $doc) {
+            $path = (string)($doc['xml_path'] ?? '');
+            $filename = $this->buildExportEntryName($doc, $path);
+            if (isset($usedNames[$filename])) {
+                $filename = preg_replace('/\.xml$/i', '', $filename) . '_' . ((string)($doc['id'] ?? $copied + 1)) . '.xml';
+            }
+            $usedNames[$filename] = true;
+            $target = rtrim($dir, '/\\') . DIRECTORY_SEPARATOR . $filename;
+
+            if ($path && is_file($path) && @copy($path, $target)) {
+                $copied++;
+            } elseif (!empty($doc['raw_xml']) && @file_put_contents($target, (string)$doc['raw_xml']) !== false) {
+                $copied++;
+            }
+        }
+
+        return $copied;
     }
 
     public function exportPeriodZip(array $items, string $periodStart, string $periodEnd): ?string
@@ -263,5 +304,17 @@ final class Storage
     {
         $path = str_replace('\\', '/', $path);
         return preg_replace('#/+#', '/', $path) ?: $path;
+    }
+
+    private function buildExportEntryName(array $doc, string $path = ''): string
+    {
+        $fallback = (string)($doc['doc_type'] ?? 'DOC') . '_' . (string)($doc['access_key'] ?? $doc['id'] ?? uniqid('', true)) . '.xml';
+        $name = $path !== '' ? basename($path) : $fallback;
+        $name = preg_replace('/[^a-zA-Z0-9._-]/', '_', $name) ?: $fallback;
+        if (!str_ends_with(strtolower($name), '.xml')) {
+            $name .= '.xml';
+        }
+
+        return $name;
     }
 }

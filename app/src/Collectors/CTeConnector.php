@@ -8,7 +8,7 @@ final class CTeConnector extends AbstractFiscalCollector
     public function collect(): array
     {
         $company = $this->currentCompany();
-        $this->certificates->requireActive((int)$company['id']);
+        $this->certificates->assertMatchesCompany((int)$company['id'], (string)$company['cnpj']);
         $companyCnpj = preg_replace('/\D+/', '', (string)$company['cnpj']);
         if ($companyCnpj === '') {
             throw new \RuntimeException('CNPJ da empresa não informado.');
@@ -35,7 +35,8 @@ final class CTeConnector extends AbstractFiscalCollector
                 $requestXml,
                 'http://www.portalfiscal.inf.br/cte/wsdl/CTeDistribuicaoDFe',
                 'cteDistDFeInteresse',
-                'cteDadosMsg'
+                'cteDadosMsg',
+                (int)$company['id']
             );
 
             $result = $this->processDistributionResponse($soap, 'CTE');

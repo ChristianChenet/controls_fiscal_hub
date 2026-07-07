@@ -74,6 +74,7 @@
         <tbody>
         <?php foreach ($companies as $co): ?>
             <?php $cert = $companyCertificates[$co['id']] ?? null; $health = $companyHealth[$co['id']] ?? null; ?>
+            <?php $deleteBlockers = $health['delete_blockers'] ?? []; ?>
             <tr>
                 <td><?= h($co['company_name']) ?></td>
                 <td><?= h($co['cnpj']) ?></td>
@@ -95,7 +96,21 @@
                     <?php endif; ?>
                 </td>
                 <td><?= h((string)($health['documents_count'] ?? 0)) ?></td>
-                <td><a href="<?= h(base_url('?page=companies&edit_company_id=' . $co['id'])) ?>">Editar</a></td>
+                <td>
+                    <div class="inline row-actions">
+                        <a href="<?= h(base_url('?page=companies&edit_company_id=' . $co['id'])) ?>">Editar</a>
+                        <?php if (!$deleteBlockers): ?>
+                            <form method="post" class="inline-delete-form" onsubmit="return confirm('Excluir esta empresa? Esta ação não pode ser desfeita.');">
+                                <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
+                                <input type="hidden" name="delete_company_id" value="<?= h((string)$co['id']) ?>">
+                                <button class="button-danger button-compact" name="delete_company" value="1">Excluir</button>
+                            </form>
+                        <?php else: ?>
+                            <?php $blockerText = implode(', ', array_map(static fn($label, $count) => $label . ': ' . $count, array_keys($deleteBlockers), $deleteBlockers)); ?>
+                            <small title="<?= h($blockerText) ?>">Com vínculos</small>
+                        <?php endif; ?>
+                    </div>
+                </td>
             </tr>
         <?php endforeach; ?>
         <?php if (!$companies): ?>

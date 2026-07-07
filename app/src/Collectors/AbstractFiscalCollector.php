@@ -98,7 +98,18 @@ abstract class AbstractFiscalCollector implements CollectorInterface
     protected function persistDistributedXml(string $docType, string $schema, string $nsu, string $xml): array
     {
         if ($this->isEventDocument($schema, $xml)) {
-            $this->storage->appendLog('collector_' . strtolower($docType) . '.log', 'Evento ignorado na distribuição: schema=' . $schema . ' NSU=' . $nsu);
+            $company = $this->currentCompany();
+            $event = $this->repo->parseInformativeEventXml($xml);
+            if ($event) {
+                $event['company_id'] = (int)$company['id'];
+                $event['schema_name'] = $schema;
+                $event['raw_xml'] = $xml;
+                $event['digest'] = hash('sha256', $xml);
+                $this->repo->saveDocumentEvent($event);
+                $this->storage->appendLog('collector_' . strtolower($docType) . '.log', 'Evento informativo vinculado: schema=' . $schema . ' NSU=' . $nsu . ' chave=' . $event['access_key']);
+                return ['created'=>0, 'updated'=>1, 'status'=>'evento_informativo'];
+            }
+            $this->storage->appendLog('collector_' . strtolower($docType) . '.log', 'Evento ignorado na distribuicao: schema=' . $schema . ' NSU=' . $nsu);
             return ['created'=>0, 'updated'=>0, 'status'=>'evento_ignorado'];
         }
 
@@ -200,8 +211,13 @@ abstract class AbstractFiscalCollector implements CollectorInterface
         $manifestationStatus = $normalizedDocType === 'NFE' ? 'pending' : 'not_applicable';
         $status = 'apenas_resumo';
         $notes = 'Documento resumido via ' . $schema;
+        if ($normalizedDocType === 'MDFE') {
+            $status = 'xml_completo';
+            $manifestationStatus = 'not_applicable';
+            $notes .= '. MDF-e identificado na distribuicao; nao exige manifestacao de NF-e.';
+        }
         if ($normalizedDocType === 'NFE' && $nfeSituation !== '' && $nfeSituation !== '1') {
-            $status = $nfeSituation === '3' ? 'cancelado' : 'apenas_resumo';
+            $status = $nfeSituation === '3' ? 'cancelado' : 'denegado';
             $manifestationStatus = 'not_applicable';
             $notes .= '. Manifestacao nao aplicavel: situacao da NF-e no resumo cSitNFe=' . $nfeSituation . '.';
         }

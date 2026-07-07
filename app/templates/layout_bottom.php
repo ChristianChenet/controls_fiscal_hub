@@ -16,6 +16,13 @@
         root.classList.add('sidebar-collapsed');
     }
     syncSidebarLabels();
+    var pageHeader = document.querySelector('.content > .page-header');
+    var topbarModule = document.querySelector('[data-topbar-module]');
+    if (pageHeader && topbarModule && !topbarModule.querySelector('.topbar-title')) {
+        topbarModule.innerHTML = pageHeader.innerHTML;
+        pageHeader.remove();
+        topbarModule.classList.add('has-page-title');
+    }
     document.querySelectorAll('[data-sidebar-toggle]').forEach(function (button) {
         button.addEventListener('click', function () {
             root.classList.toggle('sidebar-collapsed');
@@ -26,10 +33,26 @@
     document.querySelectorAll('[data-collapse-target]').forEach(function (button) {
         var target = document.querySelector(button.getAttribute('data-collapse-target'));
         if (!target) return;
+        var collapseKey = button.getAttribute('data-collapse-key');
+        function syncLabel() {
+            var collapsed = target.classList.contains('is-collapsed');
+            button.textContent = collapsed ? (button.getAttribute('data-show-label') || 'Mostrar') : (button.getAttribute('data-hide-label') || 'Recolher');
+        }
+        if (collapseKey) {
+            var savedCollapse = localStorage.getItem(collapseKey);
+            if (savedCollapse === '1') {
+                target.classList.add('is-collapsed');
+            } else if (savedCollapse === '0') {
+                target.classList.remove('is-collapsed');
+            }
+        }
+        syncLabel();
         button.addEventListener('click', function () {
             var collapsed = target.classList.toggle('is-collapsed');
-            button.classList.toggle('is-collapsed', collapsed);
-            button.textContent = collapsed ? (button.getAttribute('data-show-label') || 'Mostrar') : (button.getAttribute('data-hide-label') || 'Recolher');
+            if (collapseKey) {
+                localStorage.setItem(collapseKey, collapsed ? '1' : '0');
+            }
+            syncLabel();
         });
     });
 })();

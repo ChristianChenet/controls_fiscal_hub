@@ -84,6 +84,7 @@ function document_status_label(?string $status): string
         'xml_completo' => 'XML completo',
         'apenas_resumo' => 'Apenas resumo',
         'cancelado' => 'Cancelado',
+        'denegado' => 'Denegado/Sem manifestação aplicável',
         'pendente_manifestacao' => 'Pendente de manifestação',
         'aguardando_novo_download' => 'Aguardando novo download',
         'ja_existente' => 'Já existente',

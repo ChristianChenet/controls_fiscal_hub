@@ -26,6 +26,13 @@ final class ManifestationService
         'not_realized' => '210240',
     ];
 
+    private const EVENT_DESCRIPTIONS = [
+        'science' => 'Ciencia da Operacao',
+        'confirm' => 'Confirmacao da Operacao',
+        'unknown' => 'Desconhecimento da Operacao',
+        'not_realized' => 'Operacao nao Realizada',
+    ];
+
     public function __construct(
         private array $config,
         private Repository $repo,
@@ -70,15 +77,23 @@ final class ManifestationService
 
                 $eventXml = $this->buildEnvEventoXml($type, $cnpj, $accessKey, $justification);
                 $signed = $signer->signInfEvento($eventXml, (string)file_get_contents($pem['cert']), (string)file_get_contents($pem['key']), (string)$pem['password']);
-                $response = $soap->send(
-                    (string)$this->config['nfe_recepcaoevento_url'],
-                    (string)$this->config['nfe_recepcaoevento_action'],
-                    $signed,
-                    'http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4',
-                    'nfeRecepcaoEventoNF',
-                    'nfeDadosMsg',
-                    $companyId
-                );
+                try {
+                    $response = $soap->send(
+                        (string)$this->config['nfe_recepcaoevento_url'],
+                        (string)$this->config['nfe_recepcaoevento_action'],
+                        $signed,
+                        'http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4',
+                        'nfeRecepcaoEventoNF',
+                        'nfeDadosMsg',
+                        $companyId
+                    );
+                } catch (RuntimeException $e) {
+                    $notes = 'SEFAZ rejeitou a manifestação no webservice. Verifique certificado, ambiente e tente novamente após alguns minutos.';
+                    $this->repo->updateDocumentManifestedByAccessKey('NFE', $accessKey, 'error_' . $type, null, $notes, $companyId);
+                    $this->repo->logAction('manifest_' . $type, 'NF-e ' . $accessKey . ' => ' . $notes, $companyId);
+                    $this->storage->appendLog('manifestation.log', '[' . $company['cnpj'] . '] NF-e ' . $accessKey . ' => ' . $notes . ' Detalhe tecnico: ' . $e->getMessage());
+                    continue;
+                }
 
                 $result = $this->parseResult($response);
                 $notes = $result['cStat'] . ' - ' . $result['xMotivo'];
@@ -108,14 +123,15 @@ final class ManifestationService
 
         $seq = '1';
         $id = 'ID' . $code . $accessKey . str_pad($seq, 2, '0', STR_PAD_LEFT);
+        $batchId = (string) random_int(100000000000000, 999999999999999);
         $timestamp = date('c');
         $justTag = $type === 'not_realized' ? '<xJust>' . htmlspecialchars((string)$justification, ENT_XML1 | ENT_QUOTES, 'UTF-8') . '</xJust>' : '';
-        $eventDescription = htmlspecialchars(self::TYPES[$type], ENT_XML1 | ENT_QUOTES, 'UTF-8');
+        $eventDescription = htmlspecialchars(self::EVENT_DESCRIPTIONS[$type], ENT_XML1 | ENT_QUOTES, 'UTF-8');
 
         return <<<XML
 <?xml version="1.0" encoding="UTF-8"?>
 <envEvento xmlns="http://www.portalfiscal.inf.br/nfe" versao="1.00">
-  <idLote>{rand(100000000000000, 999999999999999)}</idLote>
+  <idLote>{$batchId}</idLote>
   <evento versao="1.00">
     <infEvento Id="{$id}">
       <cOrgao>91</cOrgao>

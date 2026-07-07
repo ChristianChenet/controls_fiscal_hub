@@ -51,7 +51,7 @@ $config = [
     'db_dsn' => env_value('DB_DSN', 'sqlite:' . __DIR__ . '/storage/test.sqlite'),
     'db_user' => env_value('DB_USER', ''),
     'db_pass' => env_value('DB_PASS', ''),
-    'auth_enabled' => filter_var(env_value('AUTH_ENABLED', 'false'), FILTER_VALIDATE_BOOLEAN),
+    'auth_enabled' => filter_var(env_value('AUTH_ENABLED', 'true'), FILTER_VALIDATE_BOOLEAN),
     'auth_user' => env_value('AUTH_USER', 'admin'),
     'auth_pass' => env_value('AUTH_PASS', 'admin'),
     'app_key' => env_value('APP_KEY', 'change-this-32-char-key'),
@@ -82,11 +82,15 @@ $config = [
 
     'auto_cte_enabled' => env_value('AUTO_CTE_ENABLED', '0'),
     'auto_cte_company_id' => env_value('AUTO_CTE_COMPANY_ID', '0'),
+    'auto_cte_company_ids' => env_value('AUTO_CTE_COMPANY_IDS', ''),
+    'auto_cte_rewind_nsu_once' => env_value('AUTO_CTE_REWIND_NSU_ONCE', '0'),
     'auto_cte_interval_minutes' => (int) env_value('AUTO_CTE_INTERVAL_MINUTES', '30'),
     'cte_robot_max_cycles' => (int) env_value('CTE_ROBOT_MAX_CYCLES', '10'),
     'cte_robot_time_limit_seconds' => (int) env_value('CTE_ROBOT_TIME_LIMIT_SECONDS', '240'),
     'auto_nfe_enabled' => env_value('AUTO_NFE_ENABLED', '0'),
     'auto_nfe_company_id' => env_value('AUTO_NFE_COMPANY_ID', '0'),
+    'auto_nfe_company_ids' => env_value('AUTO_NFE_COMPANY_IDS', ''),
+    'auto_nfe_rewind_nsu_once' => env_value('AUTO_NFE_REWIND_NSU_ONCE', '0'),
     'auto_nfe_interval_minutes' => (int) env_value('AUTO_NFE_INTERVAL_MINUTES', '60'),
     'auto_nfe_manifest_science' => env_value('AUTO_NFE_MANIFEST_SCIENCE', '0'),
     'nfe_robot_max_cycles' => (int) env_value('NFE_ROBOT_MAX_CYCLES', '4'),
@@ -94,6 +98,7 @@ $config = [
     'nfe_science_limit_per_run' => (int) env_value('NFE_SCIENCE_LIMIT_PER_RUN', '30'),
     'auto_nfse_enabled' => env_value('AUTO_NFSE_ENABLED', '0'),
     'auto_nfse_company_id' => env_value('AUTO_NFSE_COMPANY_ID', '0'),
+    'auto_nfse_company_ids' => env_value('AUTO_NFSE_COMPANY_IDS', ''),
     'auto_nfse_interval_minutes' => (int) env_value('AUTO_NFSE_INTERVAL_MINUTES', '60'),
     'auto_nfse_nsu_limit' => (int) env_value('AUTO_NFSE_NSU_LIMIT', '10'),
 ];
@@ -105,6 +110,22 @@ if ($config['auto_migrate']) {
     $database->ensureSchema();
 }
 $repo = new ControlS\Portal\Repository($database->pdo());
+$repo->ensureDefaultAdmin((string)env_value('AUTH_DEFAULT_EMAIL', 'admin@controls.local'), (string)env_value('AUTH_PASS', 'admin'));
+if ($repo->getSetting('repair_mdf_cancel_20260522', '') !== '1') {
+    $repair = $repo->repairDocumentClassification();
+    $repo->setSetting('repair_mdf_cancel_20260522', '1');
+    $repo->logAction('document_repair', 'Reclassificacao automatica: MDF-e=' . $repair['mdfe'] . ', canceladas=' . $repair['canceladas'] . ', pendencias=' . $repair['pendencias'] . '.');
+}
+if ($repo->getSetting('repair_eventos_mdf_cte_20260522', '') !== '1') {
+    $repair = $repo->repairDocumentClassification();
+    $repo->setSetting('repair_eventos_mdf_cte_20260522', '1');
+    $repo->logAction('document_repair', 'Reclassificacao de eventos MDF-e/CT-e: MDF-e=' . $repair['mdfe'] . ', canceladas=' . $repair['canceladas'] . ', pendencias=' . $repair['pendencias'] . '.');
+}
+if ($repo->getSetting('migrate_informative_events_20260522', '') !== '1') {
+    $events = $repo->migrateInformativeEventsFromDocuments();
+    $repo->setSetting('migrate_informative_events_20260522', '1');
+    $repo->logAction('document_event_migration', 'Eventos informativos migrados: ' . $events['migrated'] . ', removidos da contagem de documentos: ' . $events['deleted'] . '.');
+}
 
 $runtimeSettingKeys = [
     'default_download_dir',
@@ -123,11 +144,15 @@ $runtimeSettingKeys = [
     'nfse_page_size',
     'auto_cte_enabled',
     'auto_cte_company_id',
+    'auto_cte_company_ids',
+    'auto_cte_rewind_nsu_once',
     'auto_cte_interval_minutes',
     'cte_robot_max_cycles',
     'cte_robot_time_limit_seconds',
     'auto_nfe_enabled',
     'auto_nfe_company_id',
+    'auto_nfe_company_ids',
+    'auto_nfe_rewind_nsu_once',
     'auto_nfe_interval_minutes',
     'auto_nfe_manifest_science',
     'nfe_robot_max_cycles',
@@ -135,6 +160,7 @@ $runtimeSettingKeys = [
     'nfe_science_limit_per_run',
     'auto_nfse_enabled',
     'auto_nfse_company_id',
+    'auto_nfse_company_ids',
     'auto_nfse_interval_minutes',
     'auto_nfse_nsu_limit',
 ];
@@ -146,6 +172,14 @@ foreach ($runtimeSettingKeys as $settingKey) {
     }
 }
 
+$officialDownloadDir = env_value('DEFAULT_DOWNLOAD_DIR', __DIR__ . '/storage/xmls');
+if (str_contains((string)($config['default_download_dir'] ?? ''), 'C:\\Monvizo\\CS_PortalXML')) {
+    $repo->setSetting('default_download_dir', $officialDownloadDir);
+    $config['default_download_dir'] = $officialDownloadDir;
+}
+$cleanupCompanyDirs = $database->pdo()->prepare("UPDATE companies SET default_download_dir = NULL, updated_at = :updated_at WHERE default_download_dir LIKE :old_path");
+$cleanupCompanyDirs->execute(['updated_at' => date('c'), 'old_path' => 'C:%Monvizo%CS_PortalXML%']);
+
 if (($config['cte_distribution_url'] ?? '') === 'https://cte.fazenda.gov.br/CTeDistribuicaoDFe/CTeDistribuicaoDFe.asmx') {
     $config['cte_distribution_url'] = 'https://www1.cte.fazenda.gov.br/CTeDistribuicaoDFe/CTeDistribuicaoDFe.asmx';
 }
@@ -153,12 +187,15 @@ if (($config['cte_distribution_url'] ?? '') === 'https://cte.fazenda.gov.br/CTeD
 if (in_array(($config['nfe_recepcaoevento_url'] ?? ''), [
     'https://www.nfe.fazenda.gov.br/RecepcaoEvento4/RecepcaoEvento4.asmx',
     'https://www1.nfe.fazenda.gov.br/RecepcaoEvento4/RecepcaoEvento4.asmx',
+    'https://www.nfe.fazenda.gov.br/NFeRecepcaoEvento4/NFeRecepcaoEvento4.asmx',
 ], true)) {
     $config['nfe_recepcaoevento_url'] = 'https://www1.nfe.fazenda.gov.br/NFeRecepcaoEvento4/NFeRecepcaoEvento4.asmx';
+    $repo->setSetting('nfe_recepcaoevento_url', $config['nfe_recepcaoevento_url']);
 }
 
 if (($config['nfe_recepcaoevento_action'] ?? '') === 'http://www.portalfiscal.inf.br/nfe/wsdl/RecepcaoEvento4/nfeRecepcaoEvento') {
     $config['nfe_recepcaoevento_action'] = 'http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4/nfeRecepcaoEventoNF';
+    $repo->setSetting('nfe_recepcaoevento_action', $config['nfe_recepcaoevento_action']);
 }
 
 if (($config['nfse_distribution_path'] ?? '') === '/contribuintes/api/v1/distribuicao') {
@@ -177,7 +214,7 @@ $collectors = [
 ];
 $jobRunner = new ControlS\Portal\JobRunner($config, $repo, $collectors, $parser, $storage, $certificates, $manifestation);
 $periodClosure = new ControlS\Portal\PeriodClosureService($config, $repo, $storage, $collectors, $manifestation);
-$auth = new ControlS\Portal\Auth($config);
+$auth = new ControlS\Portal\Auth($config, $repo);
 
 function app_container(): array
 {

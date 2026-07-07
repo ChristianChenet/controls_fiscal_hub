@@ -8,7 +8,7 @@ final class NFSeNationalConnector extends AbstractFiscalCollector
     public function collect(): array
     {
         $company = $this->currentCompany();
-        $this->certificates->requireActive((int)$company['id']);
+        $this->certificates->assertMatchesCompany((int)$company['id'], (string)$company['cnpj']);
         $companyCnpj = preg_replace('/\D+/', '', (string) $company['cnpj']);
         if ($companyCnpj === '') {
             throw new \RuntimeException('Informe o CNPJ da empresa nas configuracoes.');
