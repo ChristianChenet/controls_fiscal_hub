@@ -45,6 +45,7 @@ getSetting*
 ltrim*
 normalizePath*
 open*
+!scripts/windows/open-portal-browser.bat
 renderTemplatePath*
 resolveBaseDownloadDir*
 resolveXmlPaths*

@@ -25,11 +25,16 @@ $Itens = @(
     "BUSCA_NFE_POR_CHAVE.md",
     "REVARREDURA_NFE.md",
     "CONFERENCIA_EXPORTACAO_ERP.md",
+    "CONFERENCIA_FATURAMENTO.md",
     "TECHNICAL_OVERVIEW.md",
     "VALIDATION.md",
     "INSTALAR_OU_ATUALIZAR.cmd",
     "INSTALAR_OU_ATUALIZAR.ps1",
-    "GERAR_DIAGNOSTICO.cmd"
+    "GERAR_DIAGNOSTICO.cmd",
+    "RESTAURAR_BANCO_LOCAL.cmd",
+    "RESTAURAR_BANCO_LOCAL.ps1",
+    "PARAR_SISTEMA.cmd",
+    "DESATIVAR_INICIALIZACAO.cmd"
 )
 
 $ArquivosObrigatorios = @(
@@ -52,7 +57,14 @@ foreach ($Obrigatorio in $ArquivosObrigatorios) {
 foreach ($Item in $Itens) {
     $Origem = Join-Path $Raiz $Item
     if (Test-Path $Origem) {
-        Copy-Item $Origem (Join-Path $Pacote $Item) -Recurse -Force
+        if ($Item -eq "app") {
+            New-Item -ItemType Directory -Force -Path (Join-Path $Pacote "app") | Out-Null
+            foreach ($AppItem in @("bootstrap.php", "public", "scripts", "src", "templates")) {
+                Copy-Item (Join-Path $Origem $AppItem) (Join-Path $Pacote "app\$AppItem") -Recurse -Force
+            }
+        } else {
+            Copy-Item $Origem (Join-Path $Pacote $Item) -Recurse -Force
+        }
     }
 }
 

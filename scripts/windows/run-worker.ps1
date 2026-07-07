@@ -26,5 +26,7 @@ New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 Set-Location $AppRoot
 
 $WorkerScript = Join-Path $AppRoot ("scripts\" + $ScriptMap[$Worker])
+$ErrorActionPreference = "Continue"
 & $PhpPath $WorkerScript 2>&1 |
+    ForEach-Object { $_.ToString() } |
     Tee-Object -FilePath (Join-Path $LogDir ("windows_worker_" + $Worker + ".log")) -Append

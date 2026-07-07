@@ -1,0 +1,10 @@
+﻿Control S Fiscal Hub
+
+Esta e a pasta final da estrutura Windows nativa.
+Use INSTALACAO_WINDOWS.md para instalar no Windows Desktop/Server.
+
+Backup Docker preservado em:
+C:\Monvizo\CS_PortalXML_BKP_DOCKER_20260520_140252
+
+Projeto original preservado em:
+C:\Monvizo\CS_PortalXML

@@ -2,7 +2,7 @@ param(
     [string]$InstallDir = "C:\Control S Fiscal Hub",
     [string]$DbHost = "127.0.0.1",
     [int]$DbPort = 5432,
-    [string]$DbName = "controls_portal",
+    [string]$DbName = "control_s_fiscal_hub",
     [string]$DbUser = "controls",
     [int]$PortalPort = 8088,
     [switch]$NaoInstalarDependencias,
@@ -212,6 +212,62 @@ start "Control S Worker NFS-e" powershell.exe -NoProfile -ExecutionPolicy Bypass
     Set-Content -Path (Join-Path $scriptsDir "start-workers.bat") -Value $workersBat -Encoding ASCII
 }
 
+function Parar-Instancia-Atual($Destino) {
+    Titulo "Parando instancia atual antes da atualizacao"
+
+    foreach ($task in @(
+        "Control S Fiscal Hub - Portal",
+        "Control S Fiscal Hub - Worker cte",
+        "Control S Fiscal Hub - Worker nfe",
+        "Control S Fiscal Hub - Worker nfse"
+    )) {
+        try {
+            Stop-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue
+        } catch {
+        }
+    }
+
+    $stopScript = Join-Path $Destino "scripts\windows\stop-all.ps1"
+    if (Test-Path $stopScript) {
+        try {
+            & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $stopScript
+        } catch {
+            Write-Host "Aviso: parada pelo script anterior falhou. Tentando parada direta." -ForegroundColor Yellow
+        }
+    }
+
+    $destinoNormalizado = $Destino.Replace('\', '\\')
+    $processos = Get-CimInstance Win32_Process -Filter "name = 'php.exe'" -ErrorAction SilentlyContinue |
+        Where-Object {
+            $cmdLine = [string]$_.CommandLine
+            $cmdLine -like "*$Destino*" -or $cmdLine -like "*$destinoNormalizado*"
+        }
+
+    foreach ($proc in $processos) {
+        try {
+            Write-Host "Parando processo PHP antigo PID $($proc.ProcessId)"
+            Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
+        } catch {
+        }
+    }
+
+    $linhasPorta = netstat -ano | Select-String ":$PortalPort\s"
+    foreach ($linha in $linhasPorta) {
+        if ($linha.Line -notmatch "LISTENING") { continue }
+        $partes = $linha.Line -split "\s+"
+        $processId = [int]$partes[-1]
+        if ($processId -gt 0) {
+            try {
+                Write-Host "Parando processo na porta $PortalPort PID $processId"
+                Stop-Process -Id $processId -Force -ErrorAction SilentlyContinue
+            } catch {
+            }
+        }
+    }
+
+    Start-Sleep -Seconds 2
+}
+
 function Copiar-Aplicacao($Origem, $Destino) {
     Titulo "Copiando/atualizando arquivos da aplicacao"
     New-Item -ItemType Directory -Force -Path $Destino | Out-Null
@@ -244,10 +300,15 @@ function Copiar-Aplicacao($Origem, $Destino) {
         "BUSCA_NFE_POR_CHAVE.md",
         "REVARREDURA_NFE.md",
         "CONFERENCIA_EXPORTACAO_ERP.md",
+        "CONFERENCIA_FATURAMENTO.md",
         "TECHNICAL_OVERVIEW.md",
         "VALIDATION.md",
         "INSTALAR_OU_ATUALIZAR.cmd",
-        "INSTALAR_OU_ATUALIZAR.ps1"
+        "INSTALAR_OU_ATUALIZAR.ps1",
+        "RESTAURAR_BANCO_LOCAL.cmd",
+        "RESTAURAR_BANCO_LOCAL.ps1",
+        "PARAR_SISTEMA.cmd",
+        "DESATIVAR_INICIALIZACAO.cmd"
     )) {
         $origemFile = Join-Path $Origem $file
         if (Test-Path $origemFile) {
@@ -300,6 +361,10 @@ function Criar-Env($Destino, $SenhaBanco) {
         "DB_DSN" = "pgsql:host=$DbHost;port=$DbPort;dbname=$DbName"
         "DB_USER" = $DbUser
         "DB_PASS" = $SenhaBanco
+        "AUTH_ENABLED" = "true"
+        "AUTH_USER" = "admin"
+        "AUTH_PASS" = "admin"
+        "AUTH_DEFAULT_EMAIL" = "admin@controls.local"
         "DEFAULT_DOWNLOAD_DIR" = $downloadDir
         "AUTO_MIGRATE" = "true"
         "TIMEZONE" = "America/Sao_Paulo"
@@ -427,6 +492,14 @@ function Criar-Tarefas($Destino, $PhpPath) {
     }
 }
 
+function Criar-Inicializacao-Usuario($Destino) {
+    Titulo "Configurando inicializacao automatica do usuario"
+    $script = Join-Path $Destino "scripts\windows\install-startup-shortcuts.ps1"
+    if (Test-Path $script) {
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script
+    }
+}
+
 function Iniciar-Portal-Manual($Destino, $PhpPath) {
     Titulo "Iniciando portal agora"
     $jaOuvindo = netstat -ano | Select-String ":$PortalPort"
@@ -468,6 +541,7 @@ if (!$php) { Falhar "PHP nao encontrado." }
 if (!$pgBin) { Falhar "PostgreSQL nao encontrado." }
 
 Configurar-PHP $php
+Parar-Instancia-Atual $InstallDir
 Copiar-Aplicacao $Origem $InstallDir
 Garantir-Pastas $InstallDir
 Criar-Env $InstallDir $senhaBanco
@@ -478,6 +552,7 @@ Rodar-Migracoes $InstallDir $php
 Liberar-Firewall
 Criar-Atalho $InstallDir
 Criar-Tarefas $InstallDir $php
+Criar-Inicializacao-Usuario $InstallDir
 Iniciar-Portal-Manual $InstallDir $php
 
 Titulo "Instalacao/atualizacao concluida"
