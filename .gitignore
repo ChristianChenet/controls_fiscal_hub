@@ -16,6 +16,7 @@ app - Copia/
 tools/
 backup/
 diagnosticos/
+release/
 tmp_*/
 tmp*/
 install.log

@@ -34,7 +34,7 @@ $selectedJobType = (string)($selectedJobType ?? ($_GET['job_type'] ?? 'collect_a
         </label>
     </div>
     <div class="notice subtle">
-        Use ações pontuais com cuidado. O robô CT-e avança a fila de NSU em ciclos seguros e exige uma empresa específica.
+        Use acoes pontuais com cuidado. Em NF-e, ao selecionar uma matriz ou filial, o portal executa todos os CNPJs ativos da mesma raiz, um por vez, mantendo o NSU individual de cada CNPJ.
     </div>
     <div class="form-actions">
         <button class="primary" name="run_job" value="1">Executar rotina</button>

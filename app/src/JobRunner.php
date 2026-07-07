@@ -21,7 +21,7 @@ final class JobRunner
 
     public function run(string $jobType, int $companyId = 0): array
     {
-        $companies = $companyId > 0 ? array_filter([$this->repo->findCompany($companyId)]) : $this->repo->activeCompanies();
+        $companies = $this->companiesForJob($jobType, $companyId);
         if (!$companies) {
             throw new \RuntimeException('Nenhuma empresa ativa cadastrada.');
         }
@@ -85,6 +85,37 @@ final class JobRunner
         }
 
         return compact('created', 'updated', 'errors', 'logs');
+    }
+
+    private function companiesForJob(string $jobType, int $companyId): array
+    {
+        if ($companyId <= 0) {
+            return $this->repo->activeCompanies();
+        }
+
+        $selected = $this->repo->findCompany($companyId);
+        if (!$selected) {
+            return [];
+        }
+
+        if (!in_array($jobType, ['nfe', 'nfe_until_max', 'nfe_until_max_science'], true)) {
+            return [$selected];
+        }
+
+        $root = substr(preg_replace('/\D+/', '', (string)$selected['cnpj']), 0, 8);
+        if ($root === '') {
+            return [$selected];
+        }
+
+        $sameRootCompanies = [];
+        foreach ($this->repo->activeCompanies() as $company) {
+            $companyRoot = substr(preg_replace('/\D+/', '', (string)($company['cnpj'] ?? '')), 0, 8);
+            if ($companyRoot === $root) {
+                $sameRootCompanies[(int)$company['id']] = $company;
+            }
+        }
+
+        return $sameRootCompanies ? array_values($sameRootCompanies) : [$selected];
     }
 
 

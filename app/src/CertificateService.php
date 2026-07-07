@@ -48,17 +48,67 @@ final class CertificateService
     public function active(?int $companyId = null): ?array
     {
         $cert = $this->repo->getActiveCertificate($companyId);
+        if ($companyId !== null) {
+            $cert = $this->resolveCertificateForCompanyRoot($companyId, $cert);
+        }
         if (!$cert) {
             return null;
         }
         try {
             $cert['password'] = $this->decrypt((string)$cert['password_enc']);
-            $cert['password_error'] = null;
+            $cert['password_error'] = $cert['root_mismatch_error'] ?? null;
         } catch (RuntimeException $exception) {
             $cert['password'] = null;
             $cert['password_error'] = 'Senha do certificado herdado nao pode ser descriptografada. Reenvie o certificado para esta empresa.';
         }
         return $cert;
+    }
+
+    private function resolveCertificateForCompanyRoot(int $companyId, ?array $cert): ?array
+    {
+        $company = $this->repo->findCompany($companyId);
+        if (!$company) {
+            return $cert;
+        }
+
+        $companyCnpj = preg_replace('/\D+/', '', (string)$company['cnpj']);
+        $companyRoot = substr($companyCnpj, 0, 8);
+        if ($companyRoot === '') {
+            return $cert;
+        }
+
+        if ($cert) {
+            $certificateCnpj = $this->certificateCnpjFromSubject((string)($cert['subject_name'] ?? ''));
+            $certificateRoot = $certificateCnpj !== '' ? substr($certificateCnpj, 0, 8) : substr(preg_replace('/\D+/', '', (string)($cert['company_cnpj'] ?? '')), 0, 8);
+            if ($certificateRoot === $companyRoot) {
+                return $cert;
+            }
+        }
+
+        // Filiais podem usar o certificado A1 da matriz quando a raiz do CNPJ e igual.
+        // Se houver certificado proprio com raiz divergente, preferimos outro certificado seguro da mesma raiz.
+        $fallback = $this->repo->getActiveCertificateByCnpjRoot($companyRoot, $companyId);
+        if (!$fallback) {
+            if ($cert) {
+                $cert['root_mismatch_error'] = 'Certificado ativo possui raiz de CNPJ diferente da empresa consultada. Vincule um certificado da matriz/filial com a mesma raiz do CNPJ.';
+            }
+            return $cert;
+        }
+
+        $fallback['inherited_for_company_id'] = $companyId;
+        $fallback['inherited_for_company_cnpj'] = (string)$company['cnpj'];
+        return $fallback;
+    }
+
+    private function certificateCnpjFromSubject(string $subject): string
+    {
+        if (preg_match_all('/\d{14}/', $subject, $matches) && !empty($matches[0])) {
+            return (string)end($matches[0]);
+        }
+        if (preg_match_all('/\d{2}\.\d{3}\.\d{3}\/\d{4}-\d{2}/', $subject, $matches) && !empty($matches[0])) {
+            return preg_replace('/\D+/', '', (string)end($matches[0]));
+        }
+        return '';
     }
 
     public function requireActive(?int $companyId = null): array
@@ -70,6 +120,22 @@ final class CertificateService
         if (!empty($cert['password_error'])) {
             throw new RuntimeException((string)$cert['password_error']);
         }
+        return $cert;
+    }
+
+    public function assertMatchesCompany(int $companyId, string $companyCnpj): array
+    {
+        $cert = $this->requireActive($companyId);
+        $companyRoot = substr(preg_replace('/\D+/', '', $companyCnpj), 0, 8);
+        $certificateCnpj = $this->certificateCnpjFromSubject((string)($cert['subject_name'] ?? ''));
+        $certificateRoot = $certificateCnpj !== ''
+            ? substr($certificateCnpj, 0, 8)
+            : substr(preg_replace('/\D+/', '', (string)($cert['company_cnpj'] ?? '')), 0, 8);
+
+        if ($companyRoot !== '' && $certificateRoot !== '' && $companyRoot !== $certificateRoot) {
+            throw new RuntimeException('Certificado ativo possui raiz de CNPJ diferente da empresa consultada. Vincule um certificado da matriz/filial com a mesma raiz do CNPJ.');
+        }
+
         return $cert;
     }
 

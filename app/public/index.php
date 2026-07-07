@@ -944,17 +944,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($cooldownUntil !== '' && strtotime($cooldownUntil) !== false && strtotime($cooldownUntil) > time()) {
                         throw new RuntimeException('NF-e bloqueada localmente por consumo indevido. Tente após ' . date('d/m/Y H:i', (int)strtotime($cooldownUntil)) . '.');
                     }
-                    $lastCheckAt = (string)$repo->getSetting($prefix . 'last_check_at', '');
-                    if ($lastCheckAt !== '' && strtotime($lastCheckAt) !== false && (time() - (int)strtotime($lastCheckAt)) < 3600) {
-                        throw new RuntimeException('A última consulta NF-e foi há menos de 1 hora. Aguarde para evitar consumo indevido.');
-                    }
-
                     $oldUlt = (string)$repo->getSetting($prefix . 'ult_nsu', '0');
                     $oldMax = (string)$repo->getSetting($prefix . 'max_nsu', '0');
+                    $root = substr(preg_replace('/\\D+/', '', (string)$company['cnpj']), 0, 8);
+                    $rootPrefix = 'nfe_root_' . ($root !== '' ? $root : 'sem_cnpj') . '_';
                     $repo->setSetting($prefix . 'ult_nsu', '0');
                     $repo->setSetting($prefix . 'max_nsu', '0');
                     $repo->setSetting($prefix . 'cooldown_until', '');
                     $repo->setSetting($prefix . 'last_check_at', '');
+                    $repo->setSetting($rootPrefix . 'ult_nsu', '0');
+                    $repo->setSetting($rootPrefix . 'max_nsu', '0');
+                    $repo->setSetting($rootPrefix . 'last_check_at', '');
                     $repo->logAction('nfe_rescan_reset', 'Revarredura NF-e liberada para ' . $company['company_name'] . '. ultNSU anterior=' . $oldUlt . ', maxNSU anterior=' . $oldMax . '. XMLs completos preservados.', $companyId);
                     flash_set('success', 'Cursor NF-e reiniciado com segurança para ' . $company['company_name'] . '. Execute o Robô NF-e em Radar de XML.');
                     redirect_to(base_url('?page=nfe_rescan&company_id=' . $companyId));

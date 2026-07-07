@@ -292,6 +292,9 @@ button.primary{
 .dashboard-actions .button-link,.dashboard-actions .primary{min-width:112px}
 .dashboard-rankings .table td:first-child{font-weight:750}
 .dashboard-chart-card{padding-bottom:18px}
+.dashboard-latest-docs{margin-bottom:18px}
+.dashboard-latest-docs .table th:nth-child(n+3),
+.dashboard-latest-docs .table td:nth-child(n+3){white-space:nowrap}
 .monthly-chart{
   min-height:210px;
   display:flex;

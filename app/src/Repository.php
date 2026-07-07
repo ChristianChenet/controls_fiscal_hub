@@ -264,6 +264,27 @@ final class Repository
         return $row ?: null;
     }
 
+    public function getActiveCertificateByCnpjRoot(string $cnpjRoot, ?int $excludeCompanyId = null): ?array
+    {
+        $cnpjRoot = substr(preg_replace('/\D+/', '', $cnpjRoot), 0, 8);
+        if ($cnpjRoot === '') {
+            return null;
+        }
+
+        $stmt = $this->pdo->query("SELECT c.*, co.company_name, co.cnpj AS company_cnpj FROM certificates c JOIN companies co ON co.id = c.company_id WHERE c.is_active = TRUE ORDER BY c.id DESC");
+        foreach ($stmt->fetchAll() as $row) {
+            if ($excludeCompanyId !== null && (int)$row['company_id'] === $excludeCompanyId) {
+                continue;
+            }
+            $companyRoot = substr(preg_replace('/\D+/', '', (string)$row['company_cnpj']), 0, 8);
+            if ($companyRoot === $cnpjRoot) {
+                return $row;
+            }
+        }
+
+        return null;
+    }
+
     public function saveDocument(array $data): array
     {
         $existing = null;
@@ -691,8 +712,9 @@ final class Repository
         $topSuppliers = $this->dashboardTopParticipants($filters, ['NFE', 'NFCE', 'NFSE'], 'issuer_name', 'issuer_cnpj', 20);
         $topTransporters = $this->dashboardTopParticipants($filters, ['CTE'], 'issuer_name', 'issuer_cnpj', 20);
         $monthlyImports = $this->dashboardMonthlyImports($filters);
+        $latestByCompany = $this->dashboardLatestByCompany($filters);
 
-        return compact('stats', 'typeTotals', 'pending', 'full', 'summary', 'awaiting', 'companiesCount', 'docsByCompany', 'topSuppliers', 'topTransporters', 'monthlyImports');
+        return compact('stats', 'typeTotals', 'pending', 'full', 'summary', 'awaiting', 'companiesCount', 'docsByCompany', 'topSuppliers', 'topTransporters', 'monthlyImports', 'latestByCompany');
     }
 
     private function dashboardCompaniesCount(array $filters): int
@@ -801,6 +823,51 @@ final class Repository
         }
 
         return array_values($months);
+    }
+
+    private function dashboardLatestByCompany(array $filters): array
+    {
+        $companyWhere = ['c.is_active = TRUE'];
+        $joinWhere = [
+            'd.company_id = c.id',
+            "d.status <> 'evento_informativo'",
+            "d.doc_type IN ('NFE', 'NFCE', 'CTE')",
+        ];
+        $params = [];
+
+        if (!empty($filters['company_id'])) {
+            $companyWhere[] = 'c.id = :company_id';
+            $params['company_id'] = (int)$filters['company_id'];
+        }
+
+        $dateStart = $this->normalizeFilterDate((string)($filters['date_start'] ?? ''));
+        $dateEnd = $this->normalizeFilterDate((string)($filters['date_end'] ?? ''));
+        if ($dateStart !== null) {
+            $joinWhere[] = 'd.issue_date >= :date_start';
+            $params['date_start'] = $dateStart . ' 00:00:00';
+        }
+        if ($dateEnd !== null) {
+            $joinWhere[] = 'd.issue_date <= :date_end';
+            $params['date_end'] = $dateEnd . ' 23:59:59';
+        }
+
+        $sql = "SELECT
+                    c.id AS company_id,
+                    c.company_name,
+                    c.cnpj AS company_cnpj,
+                    COUNT(d.id) AS total_documents,
+                    MAX(CASE WHEN d.doc_type IN ('NFE', 'NFCE') THEN d.issue_date ELSE NULL END) AS latest_note_date,
+                    MAX(CASE WHEN d.doc_type = 'CTE' THEN d.issue_date ELSE NULL END) AS latest_cte_date,
+                    MAX(d.issue_date) AS latest_document_date
+                FROM companies c
+                LEFT JOIN documents d ON " . implode(' AND ', $joinWhere) . "
+                WHERE " . implode(' AND ', $companyWhere) . "
+                GROUP BY c.id, c.company_name, c.cnpj
+                ORDER BY MAX(d.issue_date) IS NULL ASC, MAX(d.issue_date) DESC, c.company_name ASC
+                LIMIT 200";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll();
     }
 
     private function dashboardCount(string $extraCondition, array $where, array $params): int

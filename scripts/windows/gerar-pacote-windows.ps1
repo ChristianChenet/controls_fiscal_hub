@@ -44,6 +44,27 @@ if (Test-Path $Storage) {
     Get-ChildItem $Storage -Force | Remove-Item -Recurse -Force
 }
 New-Item -ItemType Directory -Force -Path $Storage | Out-Null
+
+$EnvFiles = @(
+    (Join-Path $Pacote ".env"),
+    (Join-Path $Pacote ".env.local"),
+    (Join-Path $Pacote "app\.env"),
+    (Join-Path $Pacote "app\.env.local")
+)
+foreach ($EnvFile in $EnvFiles) {
+    if (Test-Path $EnvFile) {
+        Remove-Item -LiteralPath $EnvFile -Force
+    }
+}
+
+$GeneratedAppPaths = @(
+    (Join-Path $Pacote "app\C*"),
+    (Join-Path $Pacote "app\public\C*")
+)
+foreach ($PathPattern in $GeneratedAppPaths) {
+    Get-ChildItem -Path $PathPattern -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
+}
+
 New-Item -ItemType Directory -Force -Path (Join-Path $Pacote "backup") | Out-Null
 
 tar.exe -a -c -f $Zip -C $Pacote .

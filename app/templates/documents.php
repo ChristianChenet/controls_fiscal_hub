@@ -23,6 +23,12 @@ $exportQuery['page'] = 'documents_export';
         <label>Pesquisa geral
             <input type="text" name="q" placeholder="Fornecedor, CNPJ, chave ou numero" value="<?= h((string)($filters['q'] ?? '')) ?>">
         </label>
+        <label>Numero da nota
+            <input type="text" name="number_q" placeholder="Numero" value="<?= h((string)($filters['number_q'] ?? '')) ?>">
+        </label>
+        <label>Chave de acesso
+            <input type="text" name="access_key_q" placeholder="44 digitos ou parte da chave" value="<?= h((string)($filters['access_key_q'] ?? '')) ?>">
+        </label>
         <label>Empresa
             <select name="company_id">
                 <option value="">Todos os CNPJs</option>
