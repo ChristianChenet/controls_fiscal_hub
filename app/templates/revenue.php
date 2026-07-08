@@ -50,11 +50,19 @@ $gridCard = static function (string $label, float $value, string $class = 'ok', 
 };
 $storeChart = static function (string $title, array $rows) use ($breakdownHtml): void {
     $max = max(1, ...array_map(static fn($row) => abs((float)($row['net_amount'] ?? 0)), $rows ?: [['net_amount' => 1]]));
+    $visibleRows = array_slice($rows, 0, 10);
+    $totalRow = [
+        'net_amount' => array_sum(array_map(static fn($row) => (float)($row['net_amount'] ?? 0), $visibleRows)),
+        'resale' => array_sum(array_map(static fn($row) => (float)($row['resale'] ?? 0), $visibleRows)),
+        'services' => array_sum(array_map(static fn($row) => (float)($row['services'] ?? 0), $visibleRows)),
+        'cost_resale' => array_sum(array_map(static fn($row) => (float)($row['cost_resale'] ?? 0), $visibleRows)),
+        'cost_services' => array_sum(array_map(static fn($row) => (float)($row['cost_services'] ?? 0), $visibleRows)),
+    ];
     ?>
     <section class="card revenue-store-chart">
         <h2><?= h($title) ?></h2>
 
-        <?php foreach (array_slice($rows, 0, 10) as $row): ?>
+        <?php foreach ($visibleRows as $row): ?>
             <?php $pct = max(4, (int)((abs((float)($row['net_amount'] ?? 0)) / $max) * 100)); ?>
             <div class="bar-row">
                 <div><strong><?= h((string)($row['label'] ?? '-')) ?></strong><small><?= h((string)($row['extra'] ?? '')) ?></small></div>
@@ -62,6 +70,13 @@ $storeChart = static function (string $title, array $rows) use ($breakdownHtml):
                 <b><?= h(format_money((float)($row['net_amount'] ?? 0))) ?><?= $breakdownHtml(['resale' => (float)($row['resale'] ?? 0), 'services' => (float)($row['services'] ?? 0), 'cost_resale' => (float)($row['cost_resale'] ?? 0), 'cost_services' => (float)($row['cost_services'] ?? 0)]) ?></b>
             </div>
         <?php endforeach; ?>
+        <?php if ($visibleRows): ?>
+            <div class="bar-row store-total-row">
+                <div><strong>Total</strong><small>Lojas exibidas</small></div>
+                <span><i style="width:100%"></i></span>
+                <b><?= h(format_money((float)$totalRow['net_amount'])) ?><?= $breakdownHtml($totalRow) ?></b>
+            </div>
+        <?php endif; ?>
         <?php if (!$rows): ?><p class="empty-state">Sem dados no filtro atual.</p><?php endif; ?>
     </section>
     <?php

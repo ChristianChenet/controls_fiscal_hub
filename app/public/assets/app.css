@@ -1471,6 +1471,10 @@ textarea{
 /* Ajustes junho/2026 */
 .bar-row{grid-template-columns:minmax(190px,1.05fr) minmax(130px,.85fr) minmax(170px,.72fr);align-items:center}
 .bar-row b{display:block;min-width:0;text-align:right;font-size:12px;white-space:normal;overflow-wrap:anywhere;line-height:1.25}
+.revenue-store-chart .bar-row{grid-template-columns:minmax(190px,.9fr) minmax(120px,.75fr) minmax(210px,.9fr)}
+.revenue-store-chart .stat-breakdown{justify-content:flex-end;gap:4px 16px}
+.store-total-row{margin-top:8px;padding-top:10px;border-top:2px solid #d8e7de;border-bottom:0;background:#f7fbf8}
+.store-total-row b{font-size:13px}
 .compact-rank-card .ranking-table td:last-child{min-width:150px;white-space:normal;overflow-wrap:anywhere}
 .stat-breakdown{display:flex;flex-wrap:wrap;gap:4px 12px;line-height:1.35}
 .stat-breakdown span{white-space:nowrap}
