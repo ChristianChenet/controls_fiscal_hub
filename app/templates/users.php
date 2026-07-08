@@ -28,6 +28,7 @@
             </select>
         </label>
         <label class="checkbox-inline"><input type="checkbox" name="is_active" value="1" <?= empty($edit) || !empty($edit['is_active']) ? 'checked' : '' ?>> Usuario ativo</label>
+        <label class="checkbox-inline"><input type="checkbox" name="can_view_cost" value="1" <?= (($edit['role'] ?? '') === 'admin' || !empty($edit['can_view_cost'])) ? 'checked' : '' ?>> Pode ver custo</label>
         <button class="primary" name="save_user" value="1">Salvar usuario</button>
     </form>
 
@@ -47,6 +48,7 @@
                     <th>Nome</th>
                     <th>E-mail</th>
                     <th>Perfil</th>
+                    <th>Custo</th>
                     <th>Status</th>
                     <th>Acao</th>
                 </tr>
@@ -57,12 +59,13 @@
                         <td><?= h((string)$user['name']) ?></td>
                         <td><?= h((string)$user['email']) ?></td>
                         <td><?= ((string)$user['role'] === 'admin') ? 'Administrador' : 'Usuario' ?></td>
+                        <td><?= ((string)$user['role'] === 'admin' || !empty($user['can_view_cost'])) ? 'Sim' : 'Nao' ?></td>
                         <td><?= !empty($user['is_active']) ? 'Ativo' : 'Inativo' ?></td>
                         <td><a class="row-action" href="<?= h(base_url('?page=users&edit_user_id=' . $user['id'])) ?>">Editar</a></td>
                     </tr>
                 <?php endforeach; ?>
                 <?php if (empty($users)): ?>
-                    <tr><td colspan="5">Nenhum usuario cadastrado.</td></tr>
+                    <tr><td colspan="6">Nenhum usuario cadastrado.</td></tr>
                 <?php endif; ?>
             </tbody>
         </table>

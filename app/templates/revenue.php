@@ -4,6 +4,7 @@ $filters = $revenueFilters ?? [];
 $totals = $revenueTotals ?? [];
 $dash = $revenueDashboard ?? [];
 $activeTab = $revenueTab ?? 'dashboard';
+$canViewCost = !empty($canViewCost);
 $totalPages = max(1, (int)ceil(((int)($totals['documents_count'] ?? 0)) / max(1, (int)$revenuePerPage)));
 $baseQuery = array_filter($filters, static fn($value) => $value !== '' && $value !== null);
 $baseQuery['page'] = 'revenue';
@@ -34,9 +35,15 @@ $taxFields = [
     'difal_amount' => 'DIFAL',
     'other_taxes_amount' => 'Outros',
 ];
-$breakdownHtml = static function (?array $breakdown): string {
+$breakdownHtml = static function (?array $breakdown) use ($canViewCost): string {
     if (!$breakdown) { return ''; }
-    return '<small class="stat-breakdown"><span>Revenda: ' . h(format_money((float)($breakdown['resale'] ?? 0))) . '</span><span>Serviços: ' . h(format_money((float)($breakdown['services'] ?? 0))) . '</span></small>';
+    $resale = '<span>Revenda: ' . h(format_money((float)($breakdown['resale'] ?? 0)));
+    $services = '<span>Serviços: ' . h(format_money((float)($breakdown['services'] ?? 0)));
+    if ($canViewCost && array_key_exists('cost_resale', $breakdown)) {
+        $resale .= '<em>Custo: ' . h(format_money((float)($breakdown['cost_resale'] ?? 0))) . '</em>';
+        $services .= '<em>Custo: ' . h(format_money((float)($breakdown['cost_services'] ?? 0))) . '</em>';
+    }
+    return '<small class="stat-breakdown">' . $resale . '</span>' . $services . '</span></small>';
 };
 $gridCard = static function (string $label, float $value, string $class = 'ok', ?array $breakdown = null) use ($breakdownHtml): string {
     return '<div class="card stat revenue-stat ' . h($class) . '"><strong>' . h(format_money($value)) . '</strong><span>' . h($label) . '</span>' . $breakdownHtml($breakdown) . '</div>';
@@ -52,7 +59,7 @@ $storeChart = static function (string $title, array $rows) use ($breakdownHtml):
             <div class="bar-row">
                 <div><strong><?= h((string)($row['label'] ?? '-')) ?></strong><small><?= h((string)($row['extra'] ?? '')) ?></small></div>
                 <span><i style="width:<?= h((string)$pct) ?>%"></i></span>
-                <b><?= h(format_money((float)($row['net_amount'] ?? 0))) ?><?= $breakdownHtml(['resale' => (float)($row['resale'] ?? 0), 'services' => (float)($row['services'] ?? 0)]) ?></b>
+                <b><?= h(format_money((float)($row['net_amount'] ?? 0))) ?><?= $breakdownHtml(['resale' => (float)($row['resale'] ?? 0), 'services' => (float)($row['services'] ?? 0), 'cost_resale' => (float)($row['cost_resale'] ?? 0), 'cost_services' => (float)($row['cost_services'] ?? 0)]) ?></b>
             </div>
         <?php endforeach; ?>
         <?php if (!$rows): ?><p class="empty-state">Sem dados no filtro atual.</p><?php endif; ?>
@@ -288,7 +295,7 @@ $storeChart = static function (string $title, array $rows) use ($breakdownHtml):
                     <thead><tr><th>Nome</th><th>Qtd</th><th>Valor</th></tr></thead>
                     <tbody>
                     <?php foreach ($rows as $row): ?>
-                        <tr><td><?= h((string)($row['label'] ?? '-')) ?><br><small><?= h((string)($row['extra'] ?? '')) ?></small></td><td><?= h((string)($row['total'] ?? 0)) ?></td><td><?= h(format_money((float)($row['net_amount'] ?? $row['total_amount'] ?? 0))) ?><?php if ($title === 'Faturamento por CFOP' || $title === 'Loja de emissão' || $title === 'Loja do pedido'): ?><?= $breakdownHtml(['resale' => (float)($row['resale'] ?? 0), 'services' => (float)($row['services'] ?? 0)]) ?><?php endif; ?></td></tr>
+                        <tr><td><?= h((string)($row['label'] ?? '-')) ?><br><small><?= h((string)($row['extra'] ?? '')) ?></small></td><td><?= h((string)($row['total'] ?? 0)) ?></td><td><?= h(format_money((float)($row['net_amount'] ?? $row['total_amount'] ?? 0))) ?><?php if ($title === 'Faturamento por CFOP' || $title === 'Loja de emissão' || $title === 'Loja do pedido'): ?><?= $breakdownHtml(['resale' => (float)($row['resale'] ?? 0), 'services' => (float)($row['services'] ?? 0), 'cost_resale' => (float)($row['cost_resale'] ?? 0), 'cost_services' => (float)($row['cost_services'] ?? 0)]) ?><?php elseif ($canViewCost && array_key_exists('cost_amount', $row)): ?><small class="stat-breakdown"><span>Custo: <?= h(format_money((float)($row['cost_amount'] ?? 0))) ?></span></small><?php endif; ?></td></tr>
                     <?php endforeach; ?>
                     <?php if (!$rows): ?><tr><td colspan="3">Sem dados no filtro.</td></tr><?php endif; ?>
                     </tbody>
@@ -373,9 +380,10 @@ $storeChart = static function (string $title, array $rows) use ($breakdownHtml):
                     <dt>Origem integração</dt><dd><?= h((string)$doc['integration_source']) ?></dd>
                 </dl>
                 <h2><?= $activeTab === 'taxes' ? 'Análise Tributária do Documento' : 'Itens' ?></h2>
-                <div class="table-wrap"><table class="table documents-table tax-detail-table js-column-table"><thead><tr><?php foreach (['Produto','Código ERP','Qtd','Total','CFOP','NCM','CST/CSOSN','Tributos','Créditos'] as $idx => $head): ?><th class="resizable" data-col="<?= h((string)$idx) ?>"><?= h($head) ?></th><?php endforeach; ?><?php $baseTaxCol = 9; foreach (array_values($taxFields) as $offset => $label): ?><th class="resizable" data-col="<?= h((string)($baseTaxCol + $offset)) ?>"><?= h($label) ?></th><?php endforeach; ?></tr></thead><tbody>
-                    <?php foreach (($revenueSelectedItems ?? []) as $item): ?><tr><td><?= h((string)$item['product_name']) ?></td><td><?= h((string)$item['erp_code']) ?></td><td><?= h((string)$item['quantity']) ?></td><td><?= h(format_money((float)$item['total_amount'])) ?></td><td><?= h((string)$item['cfop']) ?></td><td><?= h((string)$item['ncm']) ?></td><td><?= h((string)$item['cst_csosn']) ?></td><td><?= h(format_money((float)$item['taxes_amount'])) ?></td><td><?= h(format_money((float)$item['tax_credits_amount'])) ?></td><?php foreach ($taxFields as $field => $label): ?><td><?= h(format_money((float)($item[$field] ?? 0))) ?></td><?php endforeach; ?></tr><?php endforeach; ?>
-                    <?php if (empty($revenueSelectedItems)): ?><tr><td colspan="<?= h((string)(9 + count($taxFields))) ?>">Itens ainda não integrados para este documento.</td></tr><?php endif; ?>
+                <?php $detailHeaders = ['Produto','Código ERP','Qtd','Total']; if ($canViewCost) { $detailHeaders[] = 'Custo'; } $detailHeaders = array_merge($detailHeaders, ['CFOP','NCM','CST/CSOSN','Tributos','Créditos']); ?>
+                <div class="table-wrap"><table class="table documents-table tax-detail-table js-column-table"><thead><tr><?php foreach ($detailHeaders as $idx => $head): ?><th class="resizable" data-col="<?= h((string)$idx) ?>"><?= h($head) ?></th><?php endforeach; ?><?php $baseTaxCol = count($detailHeaders); foreach (array_values($taxFields) as $offset => $label): ?><th class="resizable" data-col="<?= h((string)($baseTaxCol + $offset)) ?>"><?= h($label) ?></th><?php endforeach; ?></tr></thead><tbody>
+                    <?php foreach (($revenueSelectedItems ?? []) as $item): ?><tr><td><?= h((string)$item['product_name']) ?></td><td><?= h((string)$item['erp_code']) ?></td><td><?= h((string)$item['quantity']) ?></td><td><?= h(format_money((float)$item['total_amount'])) ?></td><?php if ($canViewCost): ?><td><?= h(format_money((float)($item['cost_amount'] ?? 0))) ?></td><?php endif; ?><td><?= h((string)$item['cfop']) ?></td><td><?= h((string)$item['ncm']) ?></td><td><?= h((string)$item['cst_csosn']) ?></td><td><?= h(format_money((float)$item['taxes_amount'])) ?></td><td><?= h(format_money((float)$item['tax_credits_amount'])) ?></td><?php foreach ($taxFields as $field => $label): ?><td><?= h(format_money((float)($item[$field] ?? 0))) ?></td><?php endforeach; ?></tr><?php endforeach; ?>
+                    <?php if (empty($revenueSelectedItems)): ?><tr><td colspan="<?= h((string)(count($detailHeaders) + count($taxFields))) ?>">Itens ainda não integrados para este documento.</td></tr><?php endif; ?>
                 </tbody></table></div>
             <?php endif; ?>
         </section>
@@ -387,7 +395,7 @@ $storeChart = static function (string $title, array $rows) use ($breakdownHtml):
             <div class="inline"><a class="button-link" href="<?= h($exportUrl('items')) ?>">Exportar grid</a><button class="button-link" type="button" data-column-panel="#items-columns">Colunas</button></div>
         </div>
         <div class="columns-panel is-collapsed" id="items-columns"></div>
-        <?php $itemHeaders = ['Produto','Código interno','Código ERP','Grupo','Qtd','Unidade','Total','CFOP','NCM','CST/CSOSN','Loja emissão','Loja pedido','Pedido','Documento','ICMS','PIS','COFINS','IPI','ISS','ST','IBS','CBS','DIFAL','Outros']; ?>
+        <?php $itemHeaders = ['Produto','Código interno','Código ERP','Grupo','Qtd','Unidade','Total','CFOP','NCM','CST/CSOSN','Loja emissão','Loja pedido','Pedido','Documento','ICMS','PIS','COFINS','IPI','ISS','ST','IBS','CBS','DIFAL','Outros']; if ($canViewCost) { array_splice($itemHeaders, 7, 0, ['Custo']); } ?>
         <div class="table-wrap documents-table-wrap"><table class="table documents-table js-filterable-table js-column-table">
             <thead>
                 <tr>
@@ -398,7 +406,7 @@ $storeChart = static function (string $title, array $rows) use ($breakdownHtml):
                 <tr class="grid-filter-row"><?php for ($i = 0, $n = count($itemHeaders); $i < $n; $i++): ?><th><input type="text" data-col="<?= h((string)$i) ?>" placeholder="Filtrar"></th><?php endfor; ?></tr>
             </thead>
             <tbody>
-            <?php foreach (($revenueItems ?? []) as $item): ?><tr><td><?= h((string)$item['product_name']) ?></td><td><?= h((string)$item['internal_code']) ?></td><td><?= h((string)$item['erp_code']) ?></td><td><?= h((string)$item['product_group']) ?></td><td><?= h((string)$item['quantity']) ?></td><td><?= h((string)$item['unit']) ?></td><td><?= h(format_money((float)$item['total_amount'])) ?></td><td><?= h((string)$item['cfop']) ?></td><td><?= h((string)$item['ncm']) ?></td><td><?= h((string)$item['cst_csosn']) ?></td><td><?= h((string)$item['issuing_store_name']) ?></td><td><?= h((string)$item['order_store_name']) ?></td><td><?= h((string)($item['order_number'] ?? '')) ?></td><td><?= h((string)$item['document_type']) ?> <?= h((string)$item['series']) ?>/<?= h((string)$item['number']) ?></td><?php foreach ($taxFields as $field => $label): ?><td><?= h(format_money((float)($item[$field] ?? 0))) ?></td><?php endforeach; ?></tr><?php endforeach; ?>
+            <?php foreach (($revenueItems ?? []) as $item): ?><tr><td><?= h((string)$item['product_name']) ?></td><td><?= h((string)$item['internal_code']) ?></td><td><?= h((string)$item['erp_code']) ?></td><td><?= h((string)$item['product_group']) ?></td><td><?= h((string)$item['quantity']) ?></td><td><?= h((string)$item['unit']) ?></td><td><?= h(format_money((float)$item['total_amount'])) ?></td><?php if ($canViewCost): ?><td><?= h(format_money((float)($item['cost_amount'] ?? 0))) ?></td><?php endif; ?><td><?= h((string)$item['cfop']) ?></td><td><?= h((string)$item['ncm']) ?></td><td><?= h((string)$item['cst_csosn']) ?></td><td><?= h((string)$item['issuing_store_name']) ?></td><td><?= h((string)$item['order_store_name']) ?></td><td><?= h((string)($item['order_number'] ?? '')) ?></td><td><?= h((string)$item['document_type']) ?> <?= h((string)$item['series']) ?>/<?= h((string)$item['number']) ?></td><?php foreach ($taxFields as $field => $label): ?><td><?= h(format_money((float)($item[$field] ?? 0))) ?></td><?php endforeach; ?></tr><?php endforeach; ?>
             <?php if (empty($revenueItems)): ?><tr><td colspan="<?= h((string)count($itemHeaders)) ?>">Nenhum item integrado para o filtro selecionado.</td></tr><?php endif; ?>
         </tbody></table></div>
     </section>

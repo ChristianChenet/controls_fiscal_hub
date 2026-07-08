@@ -526,6 +526,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'email' => trim((string)($_POST['email'] ?? '')),
                         'password' => (string)($_POST['password'] ?? ''),
                         'role' => (string)($_POST['role'] ?? 'user'),
+                        'can_view_cost' => !empty($_POST['can_view_cost']),
                         'is_active' => !empty($_POST['is_active']),
                     ]);
                     flash_set('success', 'Usuario salvo. ID ' . $id);
@@ -1166,6 +1167,7 @@ if ($page === 'documents_export') {
 if ($page === 'revenue_export') {
     $filters = revenue_filters_from_request($_GET);
     $grid = (string)($_GET['grid'] ?? 'documents');
+    $canViewCost = $auth->canViewCost();
     if ($grid === 'items') {
         $items = $repo->revenueItems($filters, null, 100000);
         $filename = 'itens_faturamento_' . date('Ymd_His') . '.xls';
@@ -1173,10 +1175,10 @@ if ($page === 'revenue_export') {
         header('Content-Disposition: attachment; filename="' . $filename . '"');
         echo "\xEF\xBB\xBF";
         echo '<table border="1">';
-        echo '<tr><th>Produto</th><th>Codigo interno</th><th>Codigo ERP</th><th>Grupo</th><th>Quantidade</th><th>Unidade</th><th>Valor unitario</th><th>Total</th><th>Desconto</th><th>CFOP</th><th>NCM</th><th>CST/CSOSN</th><th>Tributos</th><th>Creditos</th><th>Loja emissao</th><th>Loja pedido</th><th>Cliente</th><th>Vendedor</th><th>Pedido</th><th>Documento</th><th>ICMS</th><th>PIS</th><th>COFINS</th><th>IPI</th><th>ISS</th><th>ST</th><th>IBS</th><th>CBS</th><th>DIFAL</th><th>Outros impostos</th></tr>';
+        echo '<tr><th>Produto</th><th>Codigo interno</th><th>Codigo ERP</th><th>Grupo</th><th>Quantidade</th><th>Unidade</th><th>Valor unitario</th><th>Total</th>' . ($canViewCost ? '<th>Custo</th>' : '') . '<th>Desconto</th><th>CFOP</th><th>NCM</th><th>CST/CSOSN</th><th>Tributos</th><th>Creditos</th><th>Loja emissao</th><th>Loja pedido</th><th>Cliente</th><th>Vendedor</th><th>Pedido</th><th>Documento</th><th>ICMS</th><th>PIS</th><th>COFINS</th><th>IPI</th><th>ISS</th><th>ST</th><th>IBS</th><th>CBS</th><th>DIFAL</th><th>Outros impostos</th></tr>';
         foreach ($items as $item) {
             echo '<tr>';
-            foreach ([
+            $values = [
                 $item['product_name'] ?? '',
                 $item['internal_code'] ?? '',
                 $item['erp_code'] ?? '',
@@ -1185,6 +1187,11 @@ if ($page === 'revenue_export') {
                 $item['unit'] ?? '',
                 number_format((float)($item['unit_amount'] ?? 0), 4, ',', '.'),
                 number_format((float)($item['total_amount'] ?? 0), 2, ',', '.'),
+            ];
+            if ($canViewCost) {
+                $values[] = number_format((float)($item['cost_amount'] ?? 0), 2, ',', '.');
+            }
+            $values = array_merge($values, [
                 number_format((float)($item['discount_amount'] ?? 0), 2, ',', '.'),
                 $item['cfop'] ?? '',
                 $item['ncm'] ?? '',
@@ -1207,7 +1214,8 @@ if ($page === 'revenue_export') {
                 number_format((float)($item['cbs_amount'] ?? 0), 2, ',', '.'),
                 number_format((float)($item['difal_amount'] ?? 0), 2, ',', '.'),
                 number_format((float)($item['other_taxes_amount'] ?? 0), 2, ',', '.'),
-            ] as $value) {
+            ]);
+            foreach ($values as $value) {
                 echo '<td>' . h((string)$value) . '</td>';
             }
             echo '</tr>';
@@ -1386,6 +1394,7 @@ switch ($page) {
         $revenuePerPage = 200;
         $selectedRevenueId = (int)($_GET['id'] ?? 0);
         $viewData['revenueFilters'] = $revenueFilters;
+        $viewData['canViewCost'] = $auth->canViewCost();
         $viewData['revenueTab'] = (string)($_GET['tab'] ?? 'dashboard');
         $viewData['revenuePage'] = $revenuePage;
         $viewData['revenuePerPage'] = $revenuePerPage;

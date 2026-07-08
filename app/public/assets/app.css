@@ -1474,6 +1474,8 @@ textarea{
 .compact-rank-card .ranking-table td:last-child{min-width:150px;white-space:normal;overflow-wrap:anywhere}
 .stat-breakdown{display:flex;flex-wrap:wrap;gap:4px 12px;line-height:1.35}
 .stat-breakdown span{white-space:nowrap}
+.stat-breakdown span{display:grid;gap:1px}
+.stat-breakdown em{font-style:normal;color:#6b7d8f;font-weight:700}
 .documents-table th[draggable=true],.js-column-table th[draggable=true]{cursor:grab}
 .documents-table th[draggable=true]:active,.js-column-table th[draggable=true]:active{cursor:grabbing}
 .actions-col{min-width:160px}

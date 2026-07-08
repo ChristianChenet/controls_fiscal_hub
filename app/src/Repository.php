@@ -50,7 +50,7 @@ final class Repository
 
     public function users(): array
     {
-        return $this->pdo->query('SELECT id, name, email, role, is_active, created_at, updated_at FROM users ORDER BY name ASC')->fetchAll();
+        return $this->pdo->query('SELECT id, name, email, role, can_view_cost, is_active, created_at, updated_at FROM users ORDER BY name ASC')->fetchAll();
     }
 
     public function findUser(int $id): ?array
@@ -75,6 +75,7 @@ final class Repository
         $name = trim((string)($data['name'] ?? ''));
         $email = trim((string)($data['email'] ?? ''));
         $role = (string)($data['role'] ?? 'user') === 'admin' ? 'admin' : 'user';
+        $canViewCost = $role === 'admin' || !empty($data['can_view_cost']);
         $active = !empty($data['is_active']);
         $password = (string)($data['password'] ?? '');
 
@@ -90,12 +91,13 @@ final class Repository
             if (!$user) {
                 throw new \RuntimeException('Usuario nao encontrado.');
             }
-            $fields = 'name = :name, email = :email, role = :role, is_active = :is_active, updated_at = :updated_at';
+            $fields = 'name = :name, email = :email, role = :role, can_view_cost = :can_view_cost, is_active = :is_active, updated_at = :updated_at';
             $params = [
                 'id' => $id,
                 'name' => $name,
                 'email' => $email,
                 'role' => $role,
+                'can_view_cost' => $canViewCost,
                 'is_active' => $active,
                 'updated_at' => date('c'),
             ];
@@ -111,13 +113,14 @@ final class Repository
         if ($password === '') {
             throw new \RuntimeException('Informe uma senha para criar o usuario.');
         }
-        $stmt = $this->pdo->prepare('INSERT INTO users(name, email, password_hash, role, is_active, created_at, updated_at)
-            VALUES(:name, :email, :password_hash, :role, :is_active, :created_at, :updated_at)');
+        $stmt = $this->pdo->prepare('INSERT INTO users(name, email, password_hash, role, can_view_cost, is_active, created_at, updated_at)
+            VALUES(:name, :email, :password_hash, :role, :can_view_cost, :is_active, :created_at, :updated_at)');
         $stmt->execute([
             'name' => $name,
             'email' => $email,
             'password_hash' => password_hash($password, PASSWORD_DEFAULT),
             'role' => $role,
+            'can_view_cost' => $canViewCost,
             'is_active' => $active,
             'created_at' => date('c'),
             'updated_at' => date('c'),
@@ -1501,10 +1504,10 @@ final class Repository
             'previousMonthBreakdown' => $this->revenueAmountBreakdownForPeriod($filters, (new \DateTimeImmutable('first day of previous month'))->format('Y-m-d'), (new \DateTimeImmutable('last day of previous month'))->format('Y-m-d')),
             'periodBreakdowns' => $this->revenueMetricBreakdowns($filters),
             'byCfop' => $this->revenueCfopGroup($filters),
-            'byIssuingStore' => $this->revenueGroup($whereSql, $params, 'issuing_store_name', 'issuing_store_cnpj', 20),
-            'byOrderStore' => $this->revenueGroup($whereSql, $params, 'order_store_name', 'order_store_cnpj', 20),
-            'bySeller' => $this->revenueGroup($whereSql, $params, 'seller_name', null, 20),
-            'topCustomers' => $this->revenueGroup($whereSql, $params, 'customer_name', 'customer_document', 20),
+            'byIssuingStore' => $this->revenueGroup($filters, 'issuing_store_name', 'issuing_store_cnpj', 20),
+            'byOrderStore' => $this->revenueGroup($filters, 'order_store_name', 'order_store_cnpj', 20),
+            'bySeller' => $this->revenueGroup($filters, 'seller_name', null, 20),
+            'topCustomers' => $this->revenueGroup($filters, 'customer_name', 'customer_document', 20),
             'dailyEvolution' => $this->revenueDailyEvolution($whereSql, $params),
             'topProducts' => $this->revenueItemGroup($where, $params, 'product_name', 20),
             'topGroups' => $this->revenueItemGroup($where, $params, 'product_group', 20),
@@ -1567,9 +1570,9 @@ final class Repository
             'gross_amount' => $this->revenueMoneyBreakdown($filters, 'gross_amount'),
             'return_amount' => $this->revenueMoneyBreakdown($filters, 'return_amount'),
             'net_amount' => $this->revenueMoneyBreakdown($filters, 'net_amount'),
-            'taxes_amount' => $this->revenueMoneyBreakdown($filters, 'taxes_amount'),
-            'tax_credits_amount' => $this->revenueMoneyBreakdown($filters, 'tax_credits_amount'),
-            'tax_balance' => $this->revenueMoneyBreakdown($filters, 'tax_balance'),
+            'taxes_amount' => $this->revenueMoneyBreakdown($filters, 'taxes_amount', false),
+            'tax_credits_amount' => $this->revenueMoneyBreakdown($filters, 'tax_credits_amount', false),
+            'tax_balance' => $this->revenueMoneyBreakdown($filters, 'tax_balance', false),
             'average_ticket' => $this->revenueAverageTicketBreakdown($filters),
         ];
     }
@@ -1599,7 +1602,7 @@ final class Repository
             'resale' => $resaleCount > 0 ? (float)($row['resale_total'] ?? 0) / $resaleCount : 0.0,
         ];
     }
-    private function revenueMoneyBreakdown(array $filters, string $metric): array
+    private function revenueMoneyBreakdown(array $filters, string $metric, bool $includeCost = true): array
     {
         [$where, $params] = $this->revenueWhere($filters);
         $whereSql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
@@ -1622,11 +1625,49 @@ final class Repository
             FROM revenue_documents r{$whereSql}");
         $stmt->execute($params);
         $row = $stmt->fetch() ?: ['total' => 0, 'services' => 0, 'resale' => 0];
-        return ['total' => (float)$row['total'], 'resale' => (float)$row['resale'], 'services' => (float)$row['services']];
+        $result = ['total' => (float)$row['total'], 'resale' => (float)$row['resale'], 'services' => (float)$row['services']];
+        if ($includeCost) {
+            $result += $this->revenueCostBreakdown($filters, $metric);
+        }
+        return $result;
     }
 
-    private function revenueGroup(string $whereSql, array $params, string $labelColumn, ?string $extraColumn = null, int $limit = 50): array
+    private function revenueCostBreakdown(array $filters, string $metric = 'net_amount'): array
     {
+        [$where, $params] = $this->revenueWhere($filters);
+        return $this->revenueCostForWhere($where, $params, $metric);
+    }
+
+    private function revenueCostForWhere(array $where, array $params, string $metric = 'net_amount'): array
+    {
+        $whereSql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
+        $returnExpr = "(r.purpose = 'devolucao' OR r.document_type = 'DEVOLUCAO_NFE' OR r.return_amount <> 0)";
+        $costExpr = "CASE WHEN {$returnExpr} THEN -ABS(COALESCE(ri.cost_amount, 0)) ELSE COALESCE(ri.cost_amount, 0) END";
+        $costCondition = '1 = 1';
+        if ($metric === 'gross_amount') {
+            $costCondition = "NOT {$returnExpr}";
+        } elseif ($metric === 'return_amount') {
+            $costCondition = $returnExpr;
+        }
+        $serviceExpr = "UPPER(REPLACE(REPLACE(REPLACE(COALESCE(r.document_type, ''), '-', ''), '_', ''), ' ', '')) = 'NFSE'";
+        $stmt = $this->pdo->prepare("SELECT
+            COALESCE(SUM(CASE WHEN {$costCondition} THEN {$costExpr} ELSE 0 END),0) AS cost_total,
+            COALESCE(SUM(CASE WHEN {$costCondition} AND {$serviceExpr} THEN {$costExpr} ELSE 0 END),0) AS cost_services,
+            COALESCE(SUM(CASE WHEN {$costCondition} AND NOT {$serviceExpr} THEN {$costExpr} ELSE 0 END),0) AS cost_resale
+            FROM revenue_documents r JOIN revenue_items ri ON ri.revenue_document_id = r.id{$whereSql}");
+        $stmt->execute($params);
+        $row = $stmt->fetch() ?: ['cost_total' => 0, 'cost_resale' => 0, 'cost_services' => 0];
+        return [
+            'cost_total' => (float)$row['cost_total'],
+            'cost_resale' => (float)$row['cost_resale'],
+            'cost_services' => (float)$row['cost_services'],
+        ];
+    }
+
+    private function revenueGroup(array $filters, string $labelColumn, ?string $extraColumn = null, int $limit = 50): array
+    {
+        [$where, $params] = $this->revenueWhere($filters);
+        $whereSql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
         $extraSelect = $extraColumn ? ", {$extraColumn} AS extra" : ", NULL AS extra";
         $extraGroup = $extraColumn ? ", {$extraColumn}" : "";
         $returnExpr = "(purpose = 'devolucao' OR document_type = 'DEVOLUCAO_NFE' OR return_amount <> 0)";
@@ -1643,7 +1684,20 @@ final class Repository
         foreach ($params as $key => $value) { $stmt->bindValue(':' . $key, $value); }
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
         $stmt->execute();
-        return $stmt->fetchAll();
+        $rows = $stmt->fetchAll();
+        foreach ($rows as &$row) {
+            $costWhere = $where;
+            $costParams = $params;
+            $costWhere[] = "COALESCE(r.{$labelColumn}, '') = :group_label";
+            $costParams['group_label'] = (string)($row['label'] ?? '');
+            if ($extraColumn) {
+                $costWhere[] = "COALESCE(r.{$extraColumn}, '') = :group_extra";
+                $costParams['group_extra'] = (string)($row['extra'] ?? '');
+            }
+            $row += $this->revenueCostForWhere($costWhere, $costParams, 'net_amount');
+        }
+        unset($row);
+        return $rows;
     }
 
     private function revenueCfopGroup(array $filters, int $limit = 50): array
@@ -1654,11 +1708,15 @@ final class Repository
         // O painel por CFOP usa itens como origem e aplica devolucoes como valor negativo para leitura gerencial/fiscal correta.
         $returnExpr = "(r.purpose = 'devolucao' OR r.document_type = 'DEVOLUCAO_NFE' OR r.return_amount <> 0)";
         $netExpr = "CASE WHEN {$returnExpr} THEN -ABS(ri.total_amount) ELSE ri.total_amount END";
+        $costExpr = "CASE WHEN {$returnExpr} THEN -ABS(COALESCE(ri.cost_amount, 0)) ELSE COALESCE(ri.cost_amount, 0) END";
         $serviceExpr = "UPPER(REPLACE(REPLACE(REPLACE(COALESCE(r.document_type, ''), '-', ''), '_', ''), ' ', '')) = 'NFSE'";
         $stmt = $this->pdo->prepare("SELECT COALESCE(NULLIF(ri.cfop, ''), 'Sem CFOP') AS label, NULL AS extra, COUNT(DISTINCT r.id) AS total,
             COALESCE(SUM({$netExpr}),0) AS net_amount,
             COALESCE(SUM(CASE WHEN {$serviceExpr} THEN {$netExpr} ELSE 0 END),0) AS services,
-            COALESCE(SUM(CASE WHEN NOT {$serviceExpr} THEN {$netExpr} ELSE 0 END),0) AS resale
+            COALESCE(SUM(CASE WHEN NOT {$serviceExpr} THEN {$netExpr} ELSE 0 END),0) AS resale,
+            COALESCE(SUM({$costExpr}),0) AS cost_total,
+            COALESCE(SUM(CASE WHEN {$serviceExpr} THEN {$costExpr} ELSE 0 END),0) AS cost_services,
+            COALESCE(SUM(CASE WHEN NOT {$serviceExpr} THEN {$costExpr} ELSE 0 END),0) AS cost_resale
             FROM revenue_items ri JOIN revenue_documents r ON r.id = ri.revenue_document_id{$whereSql}
             GROUP BY COALESCE(NULLIF(ri.cfop, ''), 'Sem CFOP') ORDER BY net_amount DESC, total DESC LIMIT :limit");
         foreach ($params as $key => $value) { $stmt->bindValue(':' . $key, $value); }
@@ -1683,7 +1741,11 @@ final class Repository
     {
         $whereSql = $documentWhere ? ' WHERE ' . implode(' AND ', $documentWhere) : '';
         $returnExpr = "(r.purpose = 'devolucao' OR r.document_type = 'DEVOLUCAO_NFE' OR r.return_amount <> 0)";
-        $stmt = $this->pdo->prepare("SELECT i.{$column} AS label, COUNT(*) AS total, COALESCE(SUM(CASE WHEN {$returnExpr} THEN -ABS(i.total_amount) ELSE i.total_amount END),0) AS total_amount FROM revenue_items i JOIN revenue_documents r ON r.id = i.revenue_document_id{$whereSql} GROUP BY i.{$column} ORDER BY total_amount DESC, total DESC LIMIT :limit");
+        $stmt = $this->pdo->prepare("SELECT i.{$column} AS label, COUNT(*) AS total,
+            COALESCE(SUM(CASE WHEN {$returnExpr} THEN -ABS(i.total_amount) ELSE i.total_amount END),0) AS total_amount,
+            COALESCE(SUM(CASE WHEN {$returnExpr} THEN -ABS(COALESCE(i.cost_amount, 0)) ELSE COALESCE(i.cost_amount, 0) END),0) AS cost_amount
+            FROM revenue_items i JOIN revenue_documents r ON r.id = i.revenue_document_id{$whereSql}
+            GROUP BY i.{$column} ORDER BY total_amount DESC, total DESC LIMIT :limit");
         foreach ($params as $key => $value) { $stmt->bindValue(':' . $key, $value); }
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
         $stmt->execute();

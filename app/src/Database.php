@@ -46,6 +46,28 @@ final class Database
         foreach ($sql as $statement) {
             $pdo->exec($statement);
         }
+        $this->ensurePortableColumns($driver);
+    }
+
+    private function ensurePortableColumns(string $driver): void
+    {
+        if ($driver !== 'sqlite') {
+            return;
+        }
+
+        $this->ensureSqliteColumn('users', 'can_view_cost', 'INTEGER DEFAULT 0');
+        $this->ensureSqliteColumn('revenue_items', 'cost_amount', 'REAL DEFAULT 0');
+    }
+
+    private function ensureSqliteColumn(string $table, string $column, string $definition): void
+    {
+        $stmt = $this->pdo()->query("PRAGMA table_info({$table})");
+        foreach ($stmt->fetchAll() as $row) {
+            if ((string)($row['name'] ?? '') === $column) {
+                return;
+            }
+        }
+        $this->pdo()->exec("ALTER TABLE {$table} ADD COLUMN {$column} {$definition}");
     }
 
     private function sqliteSchema(): array
@@ -67,6 +89,7 @@ final class Database
                 email TEXT NOT NULL UNIQUE,
                 password_hash TEXT NOT NULL,
                 role TEXT NOT NULL DEFAULT 'user',
+                can_view_cost INTEGER DEFAULT 0,
                 is_active INTEGER DEFAULT 1,
                 created_at TEXT NOT NULL,
                 updated_at TEXT NOT NULL
@@ -193,6 +216,7 @@ final class Database
                 quantity REAL DEFAULT 0,
                 unit TEXT NULL,
                 unit_amount REAL DEFAULT 0,
+                cost_amount REAL DEFAULT 0,
                 total_amount REAL DEFAULT 0,
                 discount_amount REAL DEFAULT 0,
                 cfop TEXT NULL,
@@ -323,6 +347,7 @@ final class Database
                 email VARCHAR(180) NOT NULL UNIQUE,
                 password_hash TEXT NOT NULL,
                 role VARCHAR(20) NOT NULL DEFAULT 'user',
+                can_view_cost BOOLEAN DEFAULT FALSE,
                 is_active BOOLEAN DEFAULT TRUE,
                 created_at TIMESTAMP NOT NULL DEFAULT NOW(),
                 updated_at TIMESTAMP NOT NULL DEFAULT NOW()
@@ -454,6 +479,7 @@ final class Database
                 quantity NUMERIC(15,4) DEFAULT 0,
                 unit VARCHAR(20) NULL,
                 unit_amount NUMERIC(15,4) DEFAULT 0,
+                cost_amount NUMERIC(15,2) DEFAULT 0,
                 total_amount NUMERIC(15,2) DEFAULT 0,
                 discount_amount NUMERIC(15,2) DEFAULT 0,
                 cfop VARCHAR(10) NULL,
@@ -484,6 +510,8 @@ final class Database
             "ALTER TABLE revenue_documents ADD COLUMN IF NOT EXISTS cbs_amount NUMERIC(15,2) DEFAULT 0",
             "ALTER TABLE revenue_documents ADD COLUMN IF NOT EXISTS difal_amount NUMERIC(15,2) DEFAULT 0",
             "ALTER TABLE revenue_documents ADD COLUMN IF NOT EXISTS other_taxes_amount NUMERIC(15,2) DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS can_view_cost BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE revenue_items ADD COLUMN IF NOT EXISTS cost_amount NUMERIC(15,2) DEFAULT 0",
             "ALTER TABLE revenue_items ADD COLUMN IF NOT EXISTS icms_amount NUMERIC(15,2) DEFAULT 0",
             "ALTER TABLE revenue_items ADD COLUMN IF NOT EXISTS pis_amount NUMERIC(15,2) DEFAULT 0",
             "ALTER TABLE revenue_items ADD COLUMN IF NOT EXISTS cofins_amount NUMERIC(15,2) DEFAULT 0",

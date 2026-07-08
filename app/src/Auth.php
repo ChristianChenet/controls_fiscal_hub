@@ -33,6 +33,7 @@ final class Auth
                     'name' => (string)$account['name'],
                     'email' => (string)$account['email'],
                     'role' => (string)$account['role'],
+                    'can_view_cost' => !empty($account['can_view_cost']) || (string)$account['role'] === 'admin',
                 ];
                 return true;
             }
@@ -56,6 +57,12 @@ final class Auth
     {
         $user = $this->user();
         return !$this->config['auth_enabled'] || (($user['role'] ?? '') === 'admin');
+    }
+
+    public function canViewCost(): bool
+    {
+        $user = $this->user();
+        return !$this->config['auth_enabled'] || $this->isAdmin() || !empty($user['can_view_cost']);
     }
 
     public function canAccess(string $page): bool
