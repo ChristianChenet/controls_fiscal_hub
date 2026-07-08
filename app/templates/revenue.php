@@ -50,13 +50,13 @@ $gridCard = static function (string $label, float $value, string $class = 'ok', 
 };
 $storeChart = static function (string $title, array $rows) use ($breakdownHtml): void {
     $max = max(1, ...array_map(static fn($row) => abs((float)($row['net_amount'] ?? 0)), $rows ?: [['net_amount' => 1]]));
-    $visibleRows = array_slice($rows, 0, 10);
+    $visibleRows = $rows;
     $totalRow = [
-        'net_amount' => array_sum(array_map(static fn($row) => (float)($row['net_amount'] ?? 0), $visibleRows)),
-        'resale' => array_sum(array_map(static fn($row) => (float)($row['resale'] ?? 0), $visibleRows)),
-        'services' => array_sum(array_map(static fn($row) => (float)($row['services'] ?? 0), $visibleRows)),
-        'cost_resale' => array_sum(array_map(static fn($row) => (float)($row['cost_resale'] ?? 0), $visibleRows)),
-        'cost_services' => array_sum(array_map(static fn($row) => (float)($row['cost_services'] ?? 0), $visibleRows)),
+        'net_amount' => array_sum(array_map(static fn($row) => (float)($row['net_amount'] ?? 0), $rows)),
+        'resale' => array_sum(array_map(static fn($row) => (float)($row['resale'] ?? 0), $rows)),
+        'services' => array_sum(array_map(static fn($row) => (float)($row['services'] ?? 0), $rows)),
+        'cost_resale' => array_sum(array_map(static fn($row) => (float)($row['cost_resale'] ?? 0), $rows)),
+        'cost_services' => array_sum(array_map(static fn($row) => (float)($row['cost_services'] ?? 0), $rows)),
     ];
     ?>
     <section class="card revenue-store-chart">
@@ -72,7 +72,7 @@ $storeChart = static function (string $title, array $rows) use ($breakdownHtml):
         <?php endforeach; ?>
         <?php if ($visibleRows): ?>
             <div class="bar-row store-total-row">
-                <div><strong>Total</strong><small>Lojas exibidas</small></div>
+                <div><strong>Total</strong><small>Todas as lojas</small></div>
                 <span><i style="width:100%"></i></span>
                 <b><?= h(format_money((float)$totalRow['net_amount'])) ?><?= $breakdownHtml($totalRow) ?></b>
             </div>
