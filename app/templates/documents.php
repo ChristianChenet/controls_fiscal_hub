@@ -29,6 +29,12 @@ $exportQuery['page'] = 'documents_export';
         <label>Chave de acesso
             <input type="text" name="access_key_q" placeholder="44 digitos ou parte da chave" value="<?= h((string)($filters['access_key_q'] ?? '')) ?>">
         </label>
+        <label>Produto
+            <input type="text" name="product_q" placeholder="Descricao do produto" value="<?= h((string)($filters['product_q'] ?? '')) ?>">
+        </label>
+        <label>CFOP
+            <input type="text" name="cfop_q" placeholder="CFOP do item" value="<?= h((string)($filters['cfop_q'] ?? '')) ?>">
+        </label>
         <label>Empresa
             <select name="company_id">
                 <option value="">Todos os CNPJs</option>
@@ -64,6 +70,12 @@ $exportQuery['page'] = 'documents_export';
             <select name="without_referenced_nfe">
                 <option value="">Todos</option>
                 <option value="1" <?= !empty($filters['without_referenced_nfe']) ? 'selected' : '' ?>>Documentos sem NF-e vinculada</option>
+            </select>
+        </label>
+        <label>Tomador CT-e
+            <select name="cte_taker_only">
+                <option value="">Todos os CT-e</option>
+                <option value="1" <?= !empty($filters['cte_taker_only']) ? 'selected' : '' ?>>Somente CT-e em que somos tomador</option>
             </select>
         </label>
         <label>Data inicial
@@ -137,8 +149,8 @@ $exportQuery['page'] = 'documents_export';
 <form method="post" class="card documents-card">
     <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
     <?php foreach ([
-        'company_id','doc_type','status','manifestation_status','posted_to_erp','without_referenced_nfe','entry_only','date_start','date_end',
-        'company_q','number_q','issuer_q','recipient_q','access_key_q','referenced_nfe_q','source_q','q','sort_by','sort_dir',
+        'company_id','doc_type','status','manifestation_status','posted_to_erp','without_referenced_nfe','cte_taker_only','entry_only','date_start','date_end',
+        'company_q','number_q','issuer_q','recipient_q','access_key_q','referenced_nfe_q','product_q','cfop_q','source_q','q','sort_by','sort_dir',
     ] as $filterKey): ?>
         <input type="hidden" name="<?= h($filterKey) ?>" value="<?= h((string)($filters[$filterKey] ?? '')) ?>">
     <?php endforeach; ?>
@@ -220,7 +232,7 @@ $exportQuery['page'] = 'documents_export';
                     <td><input type="checkbox" name="ids[]" value="<?= h((string)$doc['id']) ?>" data-doc-checkbox data-doc-value="<?= h((string)((float)($doc['total_value'] ?? 0))) ?>"></td>
                     <td data-column="empresa"><strong><?= h((string)$doc['company_name']) ?></strong><br><small><?= h((string)$doc['company_cnpj']) ?></small></td>
                     <td data-column="tipo"><span class="pill"><?= h((string)$doc['doc_type']) ?></span></td>
-                    <td data-column="numero"><?= h((string)$doc['number']) ?></td>
+                    <td data-column="numero"><button type="button" class="link-button doc-products-link" data-document-items="<?= h((string)$doc['id']) ?>"><?= h((string)$doc['number']) ?></button></td>
                     <td data-column="emissor"><strong><?= h((string)$doc['issuer_name']) ?></strong><br><small><?= h((string)$doc['issuer_cnpj']) ?></small></td>
                     <td data-column="destinatario"><strong><?= h((string)($doc['recipient_name'] ?? '')) ?></strong><br><small><?= h((string)($doc['recipient_cnpj'] ?? '')) ?></small></td>
                     <td data-column="chave"><small><?= h((string)$doc['access_key']) ?></small></td>
@@ -241,6 +253,7 @@ $exportQuery['page'] = 'documents_export';
                     <td data-column="origem"><?= h((string)$doc['source']) ?></td>
                     <td data-column="acoes" class="row-actions">
                         <a class="row-action" target="_blank" href="<?= h(base_url('?page=view_xml&id=' . $doc['id'])) ?>">XML</a>
+                        <button type="button" class="row-action row-action-button" data-document-items="<?= h((string)$doc['id']) ?>">Produtos</button>
                         <?php if ((string)($doc['status'] ?? '') !== 'apenas_resumo'): ?><a class="row-action" target="_blank" href="<?= h(base_url('?page=documents_danfe&id=' . $doc['id'])) ?>">Espelho DANFE</a><?php endif; ?>
                     </td>
                 </tr>
@@ -267,6 +280,38 @@ $exportQuery['page'] = 'documents_export';
     </div>
 </form>
 
+<div class="modal-backdrop documents-items-modal is-hidden" id="document-items-modal" role="dialog" aria-modal="true" aria-labelledby="document-items-title">
+    <div class="modal-panel">
+        <div class="modal-header">
+            <div>
+                <h2 id="document-items-title">Produtos da entrada</h2>
+                <small id="document-items-subtitle"></small>
+            </div>
+            <button type="button" class="modal-close" data-close-document-items>&times;</button>
+        </div>
+        <div class="table-wrap">
+            <table class="table documents-items-table">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>Codigo</th>
+                        <th>Produto</th>
+                        <th>NCM</th>
+                        <th>CFOP</th>
+                        <th>Qtd</th>
+                        <th>Un</th>
+                        <th>Unitario</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody id="document-items-body">
+                    <tr><td colspan="9">Carregando produtos...</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 <form id="column-filter-form" method="get">
     <input type="hidden" name="page" value="documents">
     <input type="hidden" name="q" value="<?= h((string)($filters['q'] ?? '')) ?>">
@@ -275,12 +320,81 @@ $exportQuery['page'] = 'documents_export';
     <input type="hidden" name="status" value="<?= h((string)($filters['status'] ?? '')) ?>">
     <input type="hidden" name="posted_to_erp" value="<?= h((string)($filters['posted_to_erp'] ?? '')) ?>">
     <input type="hidden" name="without_referenced_nfe" value="<?= h((string)($filters['without_referenced_nfe'] ?? '')) ?>">
+    <input type="hidden" name="cte_taker_only" value="<?= h((string)($filters['cte_taker_only'] ?? '')) ?>">
     <input type="hidden" name="date_start" value="<?= h((string)($filters['date_start'] ?? '')) ?>">
     <input type="hidden" name="date_end" value="<?= h((string)($filters['date_end'] ?? '')) ?>">
+    <input type="hidden" name="product_q" value="<?= h((string)($filters['product_q'] ?? '')) ?>">
+    <input type="hidden" name="cfop_q" value="<?= h((string)($filters['cfop_q'] ?? '')) ?>">
     <!-- O campo recipient_q vem do input visivel do grid; duplicar como hidden sobrescrevia o valor digitado em Destinatario. -->
     <input type="hidden" name="sort_by" value="<?= h((string)($filters['sort_by'] ?? 'issue_date')) ?>">
     <input type="hidden" name="sort_dir" value="<?= h((string)($filters['sort_dir'] ?? 'desc')) ?>">
 </form>
+
+<script>
+(function () {
+    var modal = document.getElementById('document-items-modal');
+    var body = document.getElementById('document-items-body');
+    var subtitle = document.getElementById('document-items-subtitle');
+    if (!modal || !body) return;
+    function escapeHtml(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, function (char) {
+            return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char] || char;
+        });
+    }
+    function closeModal() {
+        modal.classList.add('is-hidden');
+    }
+    function openModal(documentId) {
+        modal.classList.remove('is-hidden');
+        body.innerHTML = '<tr><td colspan="9">Carregando produtos...</td></tr>';
+        subtitle.textContent = '';
+        fetch('?page=document_items&id=' + encodeURIComponent(documentId), {headers: {'Accept': 'application/json'}})
+            .then(function (response) {
+                if (!response.ok) throw new Error('Nao foi possivel carregar os produtos.');
+                return response.json();
+            })
+            .then(function (data) {
+                var doc = data.document || {};
+                subtitle.textContent = [doc.doc_type, doc.number, doc.issuer_name, doc.total_value].filter(Boolean).join(' | ');
+                var items = data.items || [];
+                if (!items.length) {
+                    body.innerHTML = '<tr><td colspan="9">Nenhum produto encontrado no XML desta entrada.</td></tr>';
+                    return;
+                }
+                body.innerHTML = items.map(function (item) {
+                    return '<tr>'
+                        + '<td>' + escapeHtml(item.item_number) + '</td>'
+                        + '<td>' + escapeHtml(item.product_code) + '</td>'
+                        + '<td><strong>' + escapeHtml(item.product_name) + '</strong></td>'
+                        + '<td>' + escapeHtml(item.ncm) + '</td>'
+                        + '<td>' + escapeHtml(item.cfop) + '</td>'
+                        + '<td>' + escapeHtml(item.quantity) + '</td>'
+                        + '<td>' + escapeHtml(item.unit) + '</td>'
+                        + '<td>' + escapeHtml(item.unit_amount) + '</td>'
+                        + '<td>' + escapeHtml(item.total_amount) + '</td>'
+                        + '</tr>';
+                }).join('');
+            })
+            .catch(function (error) {
+                body.innerHTML = '<tr><td colspan="9">' + escapeHtml(error.message || 'Erro ao carregar produtos.') + '</td></tr>';
+            });
+    }
+    document.querySelectorAll('[data-document-items]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            openModal(button.getAttribute('data-document-items') || '');
+        });
+    });
+    document.querySelectorAll('[data-close-document-items]').forEach(function (button) {
+        button.addEventListener('click', closeModal);
+    });
+    modal.addEventListener('click', function (event) {
+        if (event.target === modal) closeModal();
+    });
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') closeModal();
+    });
+})();
+</script>
 
 <script>
 (function () {

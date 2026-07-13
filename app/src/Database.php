@@ -141,6 +141,33 @@ final class Database
             "CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(doc_type)",
             "CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status)",
             "CREATE INDEX IF NOT EXISTS idx_documents_company ON documents(company_id)",
+            "CREATE TABLE IF NOT EXISTS document_items (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_id INTEGER NOT NULL,
+                item_number INTEGER DEFAULT 0,
+                product_code TEXT NULL,
+                product_name TEXT NULL,
+                ncm TEXT NULL,
+                cfop TEXT NULL,
+                quantity REAL DEFAULT 0,
+                unit TEXT NULL,
+                unit_amount REAL DEFAULT 0,
+                total_amount REAL DEFAULT 0,
+                created_at TEXT NOT NULL
+            )",
+            "CREATE INDEX IF NOT EXISTS idx_document_items_document ON document_items(document_id)",
+            "CREATE INDEX IF NOT EXISTS idx_document_items_product ON document_items(product_name)",
+            "CREATE INDEX IF NOT EXISTS idx_document_items_cfop ON document_items(cfop)",
+            "CREATE TABLE IF NOT EXISTS document_item_index (
+                document_id INTEGER PRIMARY KEY,
+                indexed_at TEXT NOT NULL
+            )",
+            "CREATE TABLE IF NOT EXISTS document_cte_takers (
+                document_id INTEGER PRIMARY KEY,
+                taker_cnpj TEXT NULL,
+                created_at TEXT NOT NULL
+            )",
+            "CREATE INDEX IF NOT EXISTS idx_document_cte_takers_cnpj ON document_cte_takers(taker_cnpj)",
             "CREATE TABLE IF NOT EXISTS document_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 company_id INTEGER NULL,
@@ -404,6 +431,33 @@ final class Database
             "ALTER TABLE documents ADD COLUMN IF NOT EXISTS posted_to_erp BOOLEAN DEFAULT FALSE",
             "CREATE INDEX IF NOT EXISTS idx_documents_order_number ON documents(order_number)",
             "CREATE INDEX IF NOT EXISTS idx_documents_posted_to_erp ON documents(posted_to_erp)",
+            "CREATE TABLE IF NOT EXISTS document_items (
+                id SERIAL PRIMARY KEY,
+                document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE,
+                item_number INTEGER DEFAULT 0,
+                product_code TEXT NULL,
+                product_name TEXT NULL,
+                ncm VARCHAR(20) NULL,
+                cfop VARCHAR(10) NULL,
+                quantity NUMERIC(15,4) DEFAULT 0,
+                unit VARCHAR(20) NULL,
+                unit_amount NUMERIC(15,4) DEFAULT 0,
+                total_amount NUMERIC(15,2) DEFAULT 0,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )",
+            "CREATE INDEX IF NOT EXISTS idx_document_items_document ON document_items(document_id)",
+            "CREATE INDEX IF NOT EXISTS idx_document_items_product ON document_items(product_name)",
+            "CREATE INDEX IF NOT EXISTS idx_document_items_cfop ON document_items(cfop)",
+            "CREATE TABLE IF NOT EXISTS document_item_index (
+                document_id INTEGER PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+                indexed_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )",
+            "CREATE TABLE IF NOT EXISTS document_cte_takers (
+                document_id INTEGER PRIMARY KEY REFERENCES documents(id) ON DELETE CASCADE,
+                taker_cnpj VARCHAR(20) NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )",
+            "CREATE INDEX IF NOT EXISTS idx_document_cte_takers_cnpj ON document_cte_takers(taker_cnpj)",
             "CREATE TABLE IF NOT EXISTS document_events (
                 id SERIAL PRIMARY KEY,
                 company_id INTEGER NULL REFERENCES companies(id) ON DELETE SET NULL,

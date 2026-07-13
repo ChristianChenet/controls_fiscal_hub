@@ -66,6 +66,9 @@ function document_filters_from_request(array $source): array
         'recipient_q' => $source['recipient_q'] ?? '',
         'access_key_q' => $source['access_key_q'] ?? '',
         'referenced_nfe_q' => $source['referenced_nfe_q'] ?? '',
+        'product_q' => $source['product_q'] ?? '',
+        'cfop_q' => $source['cfop_q'] ?? '',
+        'cte_taker_only' => $source['cte_taker_only'] ?? '',
         'source_q' => $source['source_q'] ?? '',
         'q' => $source['q'] ?? '',
         'sort_by' => $source['sort_by'] ?? 'issue_date',
@@ -977,6 +980,39 @@ if ($page === 'view_xml') {
     }
     header('Content-Type: application/xml; charset=utf-8');
     echo $doc['raw_xml'] ?: (is_file((string)$doc['xml_path']) ? file_get_contents((string)$doc['xml_path']) : '<xml/>');
+    exit;
+}
+
+if ($page === 'document_items') {
+    $doc = $repo->findDocument((int)($_GET['id'] ?? 0));
+    if (!$doc) {
+        http_response_code(404);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['error' => 'Documento nao encontrado.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode([
+        'document' => [
+            'id' => (int)$doc['id'],
+            'doc_type' => (string)($doc['doc_type'] ?? ''),
+            'number' => (string)($doc['number'] ?? ''),
+            'issuer_name' => (string)($doc['issuer_name'] ?? ''),
+            'issue_date' => format_date($doc['issue_date'] ?? null),
+            'total_value' => format_money((float)($doc['total_value'] ?? 0)),
+        ],
+        'items' => array_map(static fn(array $item): array => [
+            'item_number' => (int)($item['item_number'] ?? 0),
+            'product_code' => (string)($item['product_code'] ?? ''),
+            'product_name' => (string)($item['product_name'] ?? ''),
+            'ncm' => (string)($item['ncm'] ?? ''),
+            'cfop' => (string)($item['cfop'] ?? ''),
+            'quantity' => (float)($item['quantity'] ?? 0),
+            'unit' => (string)($item['unit'] ?? ''),
+            'unit_amount' => format_money((float)($item['unit_amount'] ?? 0)),
+            'total_amount' => format_money((float)($item['total_amount'] ?? 0)),
+        ], $repo->documentItems((int)$doc['id'])),
+    ], JSON_UNESCAPED_UNICODE);
     exit;
 }
 

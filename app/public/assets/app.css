@@ -1482,4 +1482,16 @@ textarea{
 .stat-breakdown em{font-style:normal;color:#6b7d8f;font-weight:700}
 .documents-table th[draggable=true],.js-column-table th[draggable=true]{cursor:grab}
 .documents-table th[draggable=true]:active,.js-column-table th[draggable=true]:active{cursor:grabbing}
+.link-button{border:0;background:transparent;color:#0d7fe8;font-weight:800;padding:0;cursor:pointer}
+.link-button:hover{text-decoration:underline}
+.row-action-button{border:0;cursor:pointer;font:inherit}
+.modal-backdrop{position:fixed;inset:0;background:rgba(5,16,27,.55);z-index:1000;display:flex;align-items:center;justify-content:center;padding:24px}
+.modal-backdrop.is-hidden{display:none}
+.modal-panel{width:min(1040px,96vw);max-height:88vh;overflow:auto;background:#fff;border-radius:8px;box-shadow:0 24px 70px rgba(0,0,0,.24);padding:16px}
+.modal-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:14px}
+.modal-header h2{margin:0}
+.modal-header small{display:block;color:var(--muted);margin-top:4px}
+.modal-close{border:0;background:#eef3f1;border-radius:6px;width:34px;height:34px;font-size:22px;line-height:1;cursor:pointer}
+.documents-items-table th,.documents-items-table td{white-space:nowrap}
+.documents-items-table td:nth-child(3){min-width:280px;white-space:normal}
 .actions-col{min-width:160px}

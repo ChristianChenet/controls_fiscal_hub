@@ -553,6 +553,7 @@ final class Repository
 
     public function documents(array $filters = []): array
     {
+        $this->ensureDocumentItemsForFilters($filters);
         [$where, $params] = $this->documentWhere($filters);
         $sql = 'SELECT * FROM documents';
         if ($where) $sql .= ' WHERE ' . implode(' AND ', $where);
@@ -567,6 +568,7 @@ final class Repository
 
     public function documentsPage(array $filters = [], int $page = 1, int $perPage = 200): array
     {
+        $this->ensureDocumentItemsForFilters($filters);
         [$where, $params] = $this->documentWhere($filters);
         $offset = max(0, ($page - 1) * $perPage);
         $sql = 'SELECT * FROM documents';
@@ -587,6 +589,7 @@ final class Repository
 
     public function documentsTotals(array $filters = []): array
     {
+        $this->ensureDocumentItemsForFilters($filters);
         [$where, $params] = $this->documentWhere($filters);
         $sql = 'SELECT COUNT(*) AS total, COALESCE(SUM(total_value), 0) AS total_value FROM documents';
         if ($where) $sql .= ' WHERE ' . implode(' AND ', $where);
@@ -630,6 +633,10 @@ final class Repository
         if ((string)($filters['posted_to_erp'] ?? '') === '1') { $where[] = 'COALESCE(posted_to_erp, FALSE) = TRUE'; }
         if ((string)($filters['posted_to_erp'] ?? '') === '0') { $where[] = 'COALESCE(posted_to_erp, FALSE) = FALSE'; }
         if (!empty($filters['without_referenced_nfe'])) { $where[] = "(doc_type = 'CTE' AND COALESCE(referenced_nfe_keys, '') = '')"; }
+        if (!empty($filters['cte_taker_only'])) {
+            $companyDigits = $this->digitsOnlySql('documents.company_cnpj');
+            $where[] = "(doc_type <> 'CTE' OR EXISTS (SELECT 1 FROM document_cte_takers dct WHERE dct.document_id = documents.id AND COALESCE(dct.taker_cnpj, '') <> '' AND dct.taker_cnpj = {$companyDigits}))";
+        }
 
         $dateStart = $this->normalizeFilterDate((string)($filters['date_start'] ?? ''));
         $dateEnd = $this->normalizeFilterDate((string)($filters['date_end'] ?? ''));
@@ -672,7 +679,252 @@ final class Repository
             $where[] = '(issuer_name ILIKE :q OR issuer_cnpj ILIKE :q OR recipient_name ILIKE :q OR recipient_cnpj ILIKE :q OR access_key ILIKE :q OR number ILIKE :q OR company_name ILIKE :q OR company_cnpj ILIKE :q)';
             $params['q'] = '%'.$filters['q'].'%';
         }
+        $itemParts = [];
+        if (trim((string)($filters['product_q'] ?? '')) !== '') {
+            $itemParts[] = 'LOWER(COALESCE(di.product_name, \'\')) LIKE :product_q';
+            $params['product_q'] = '%' . mb_strtolower(trim((string)$filters['product_q'])) . '%';
+        }
+        if (trim((string)($filters['cfop_q'] ?? '')) !== '') {
+            $itemParts[] = 'COALESCE(di.cfop, \'\') LIKE :cfop_q';
+            $params['cfop_q'] = '%' . trim((string)$filters['cfop_q']) . '%';
+        }
+        if ($itemParts) {
+            $where[] = 'EXISTS (SELECT 1 FROM document_items di WHERE di.document_id = documents.id AND ' . implode(' AND ', $itemParts) . ')';
+        }
         return [$where, $params];
+    }
+
+    private function ensureDocumentItemsForFilters(array $filters): void
+    {
+        if (trim((string)($filters['product_q'] ?? '')) === '' && trim((string)($filters['cfop_q'] ?? '')) === '' && empty($filters['cte_taker_only'])) {
+            return;
+        }
+        $this->indexMissingDocumentItems(10000);
+    }
+
+    private function indexMissingDocumentItems(int $limit = 10000): void
+    {
+        $stmt = $this->pdo->prepare("SELECT id, doc_type, raw_xml, xml_path FROM documents d
+            WHERE d.status <> 'evento_informativo'
+              AND d.doc_type IN ('NFE', 'CTE')
+              AND (
+                  NOT EXISTS (SELECT 1 FROM document_item_index dix WHERE dix.document_id = d.id)
+                  OR (d.doc_type = 'CTE' AND NOT EXISTS (SELECT 1 FROM document_cte_takers dct WHERE dct.document_id = d.id))
+              )
+            ORDER BY d.id DESC
+            LIMIT :limit");
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        foreach ($stmt->fetchAll() as $doc) {
+            $this->indexDocumentItems($doc);
+        }
+    }
+
+    public function documentItems(int $documentId): array
+    {
+        $doc = $this->findDocument($documentId);
+        if (!$doc) {
+            return [];
+        }
+        $this->indexDocumentItems($doc);
+        $stmt = $this->pdo->prepare('SELECT * FROM document_items WHERE document_id = :document_id ORDER BY item_number ASC, id ASC');
+        $stmt->execute(['document_id' => $documentId]);
+        return $stmt->fetchAll();
+    }
+
+    private function indexDocumentItems(array $doc): void
+    {
+        $documentId = (int)($doc['id'] ?? 0);
+        if ($documentId <= 0) {
+            return;
+        }
+        $exists = $this->pdo->prepare('SELECT 1 FROM document_item_index WHERE document_id = :document_id');
+        $exists->execute(['document_id' => $documentId]);
+        $itemsIndexed = (bool)$exists->fetchColumn();
+        $takerIndexed = true;
+        if (strtoupper((string)($doc['doc_type'] ?? '')) === 'CTE') {
+            $takerExists = $this->pdo->prepare('SELECT 1 FROM document_cte_takers WHERE document_id = :document_id');
+            $takerExists->execute(['document_id' => $documentId]);
+            $takerIndexed = (bool)$takerExists->fetchColumn();
+        }
+        if ($itemsIndexed && $takerIndexed) {
+            return;
+        }
+
+        $xml = (string)($doc['raw_xml'] ?? '');
+        $path = (string)($doc['xml_path'] ?? '');
+        if (trim($xml) === '' && $path !== '' && is_file($path)) {
+            $xml = (string)file_get_contents($path);
+        }
+        $type = strtoupper((string)($doc['doc_type'] ?? ''));
+        $items = $itemsIndexed ? [] : $this->parseDocumentItemsFromXml($xml, $type);
+        $cteTaker = $type === 'CTE' && !$takerIndexed ? $this->parseCteTakerCnpjFromXml($xml) : null;
+
+        $this->pdo->beginTransaction();
+        try {
+            if (!$itemsIndexed) {
+                $delete = $this->pdo->prepare('DELETE FROM document_items WHERE document_id = :document_id');
+                $delete->execute(['document_id' => $documentId]);
+                $insert = $this->pdo->prepare('INSERT INTO document_items(document_id, item_number, product_code, product_name, ncm, cfop, quantity, unit, unit_amount, total_amount, created_at)
+                    VALUES(:document_id, :item_number, :product_code, :product_name, :ncm, :cfop, :quantity, :unit, :unit_amount, :total_amount, :created_at)');
+                foreach ($items as $item) {
+                    $insert->execute([
+                        'document_id' => $documentId,
+                        'item_number' => (int)($item['item_number'] ?? 0),
+                        'product_code' => (string)($item['product_code'] ?? ''),
+                        'product_name' => (string)($item['product_name'] ?? ''),
+                        'ncm' => (string)($item['ncm'] ?? ''),
+                        'cfop' => (string)($item['cfop'] ?? ''),
+                        'quantity' => (float)($item['quantity'] ?? 0),
+                        'unit' => (string)($item['unit'] ?? ''),
+                        'unit_amount' => (float)($item['unit_amount'] ?? 0),
+                        'total_amount' => (float)($item['total_amount'] ?? 0),
+                        'created_at' => date('c'),
+                    ]);
+                }
+                $mark = $this->pdo->prepare('INSERT INTO document_item_index(document_id, indexed_at) VALUES(:document_id, :indexed_at)');
+                $mark->execute(['document_id' => $documentId, 'indexed_at' => date('c')]);
+            }
+            if ($type === 'CTE' && !$takerIndexed) {
+                $deleteTaker = $this->pdo->prepare('DELETE FROM document_cte_takers WHERE document_id = :document_id');
+                $deleteTaker->execute(['document_id' => $documentId]);
+                $insertTaker = $this->pdo->prepare('INSERT INTO document_cte_takers(document_id, taker_cnpj, created_at) VALUES(:document_id, :taker_cnpj, :created_at)');
+                $insertTaker->execute(['document_id' => $documentId, 'taker_cnpj' => $cteTaker, 'created_at' => date('c')]);
+            }
+            $this->pdo->commit();
+        } catch (\Throwable $e) {
+            $this->pdo->rollBack();
+            throw $e;
+        }
+    }
+
+    private function parseDocumentItemsFromXml(string $xml, string $type): array
+    {
+        if (trim($xml) === '') {
+            return [];
+        }
+        $dom = new \DOMDocument();
+        if (!$dom->loadXML($xml, LIBXML_NOCDATA | LIBXML_NOBLANKS)) {
+            return [];
+        }
+        $xp = new \DOMXPath($dom);
+        if ($type === 'CTE') {
+            $cfop = $this->xmlFirst($xp, ['//*[local-name()="ide"]/*[local-name()="CFOP"]']);
+            $items = [];
+            $index = 1;
+            foreach ($xp->query('//*[local-name()="Comp"]') ?: [] as $node) {
+                $local = new \DOMXPath($node->ownerDocument);
+                $path = '(//*[local-name()="Comp"])[' . $index . ']';
+                $items[] = [
+                    'item_number' => $index,
+                    'product_code' => '',
+                    'product_name' => $this->xmlFirst($local, [$path . '/*[local-name()="xNome"]']),
+                    'ncm' => '',
+                    'cfop' => $cfop,
+                    'quantity' => 0,
+                    'unit' => '',
+                    'unit_amount' => 0,
+                    'total_amount' => $this->xmlNumber($this->xmlFirst($local, [$path . '/*[local-name()="vComp"]'])),
+                ];
+                $index++;
+            }
+            if (!$items) {
+                $items[] = [
+                    'item_number' => 1,
+                    'product_code' => '',
+                    'product_name' => $this->xmlFirst($xp, ['//*[local-name()="infCarga"]/*[local-name()="proPred"]', '//*[local-name()="ide"]/*[local-name()="natOp"]', '//*[local-name()="xObs"]']),
+                    'ncm' => '',
+                    'cfop' => $cfop,
+                    'quantity' => 0,
+                    'unit' => '',
+                    'unit_amount' => 0,
+                    'total_amount' => $this->xmlNumber($this->xmlFirst($xp, ['//*[local-name()="vPrest"]/*[local-name()="vTPrest"]', '//*[local-name()="vPrest"]/*[local-name()="vRec"]'])),
+                ];
+            }
+            return $items;
+        }
+
+        $items = [];
+        $index = 1;
+        foreach ($xp->query('//*[local-name()="det"]') ?: [] as $det) {
+            $nItem = $det instanceof \DOMElement ? $det->getAttribute('nItem') : '';
+            $path = $nItem !== '' ? '//*[local-name()="det"][@nItem="' . $nItem . '"]' : '(//*[local-name()="det"])[' . $index . ']';
+            $items[] = [
+                'item_number' => $nItem !== '' ? (int)$nItem : $index,
+                'product_code' => $this->xmlFirst($xp, [$path . '/*[local-name()="prod"]/*[local-name()="cProd"]']),
+                'product_name' => $this->xmlFirst($xp, [$path . '/*[local-name()="prod"]/*[local-name()="xProd"]']),
+                'ncm' => $this->xmlFirst($xp, [$path . '/*[local-name()="prod"]/*[local-name()="NCM"]']),
+                'cfop' => $this->xmlFirst($xp, [$path . '/*[local-name()="prod"]/*[local-name()="CFOP"]']),
+                'quantity' => $this->xmlNumber($this->xmlFirst($xp, [$path . '/*[local-name()="prod"]/*[local-name()="qCom"]'])),
+                'unit' => $this->xmlFirst($xp, [$path . '/*[local-name()="prod"]/*[local-name()="uCom"]']),
+                'unit_amount' => $this->xmlNumber($this->xmlFirst($xp, [$path . '/*[local-name()="prod"]/*[local-name()="vUnCom"]'])),
+                'total_amount' => $this->xmlNumber($this->xmlFirst($xp, [$path . '/*[local-name()="prod"]/*[local-name()="vProd"]'])),
+            ];
+            $index++;
+        }
+        return $items;
+    }
+
+    private function parseCteTakerCnpjFromXml(string $xml): string
+    {
+        if (trim($xml) === '') {
+            return '';
+        }
+        $dom = new \DOMDocument();
+        if (!$dom->loadXML($xml, LIBXML_NOCDATA | LIBXML_NOBLANKS)) {
+            return '';
+        }
+        $xp = new \DOMXPath($dom);
+        $direct = $this->xmlFirst($xp, [
+            '//*[local-name()="toma4"]/*[local-name()="CNPJ"]',
+            '//*[local-name()="toma4"]/*[local-name()="CPF"]',
+        ]);
+        if ($direct !== '') {
+            return preg_replace('/\D+/', '', $direct) ?: '';
+        }
+        $code = $this->xmlFirst($xp, ['//*[local-name()="toma3"]/*[local-name()="toma"]']);
+        $tag = '';
+        switch ($code) {
+            case '0':
+                $tag = 'rem';
+                break;
+            case '1':
+                $tag = 'exped';
+                break;
+            case '2':
+                $tag = 'receb';
+                break;
+            case '3':
+                $tag = 'dest';
+                break;
+        }
+        if ($tag === '') {
+            return '';
+        }
+        $value = $this->xmlFirst($xp, [
+            '//*[local-name()="' . $tag . '"]/*[local-name()="CNPJ"]',
+            '//*[local-name()="' . $tag . '"]/*[local-name()="CPF"]',
+        ]);
+        return preg_replace('/\D+/', '', $value) ?: '';
+    }
+
+    private function xmlFirst(\DOMXPath $xp, array $exprs): string
+    {
+        foreach ($exprs as $expr) {
+            $nodes = $xp->query($expr);
+            if ($nodes && $nodes->length > 0) {
+                $value = trim((string)$nodes->item(0)?->textContent);
+                if ($value !== '') {
+                    return $value;
+                }
+            }
+        }
+        return '';
+    }
+
+    private function xmlNumber(string $value): float
+    {
+        return (float)str_replace(',', '.', trim($value));
     }
 
     private function normalizeFilterDate(string $value): ?string

@@ -70,7 +70,7 @@ final class Auth
         if (!$this->config['auth_enabled'] || $this->isAdmin()) {
             return true;
         }
-        return in_array($page, ['revenue', 'revenue_export', 'revenue_xml', 'documents', 'view_xml', 'documents_export', 'documents_xml_zip', 'documents_danfe', 'documents_danfe_zip', 'logout', 'login'], true);
+        return in_array($page, ['revenue', 'revenue_export', 'revenue_xml', 'documents', 'view_xml', 'document_items', 'documents_export', 'documents_xml_zip', 'documents_danfe', 'documents_danfe_zip', 'logout', 'login'], true);
     }
 
     public function logout(): void
