@@ -1755,7 +1755,7 @@ final class Repository
             'monthBreakdown' => $this->revenueAmountBreakdownForPeriod($filters, date('Y-m-01'), date('Y-m-d')),
             'previousMonthBreakdown' => $this->revenueAmountBreakdownForPeriod($filters, (new \DateTimeImmutable('first day of previous month'))->format('Y-m-d'), (new \DateTimeImmutable('last day of previous month'))->format('Y-m-d')),
             'periodBreakdowns' => $this->revenueMetricBreakdowns($filters),
-            'byCfop' => $this->revenueCfopGroup($filters),
+            'byCfop' => $this->revenueCfopGroup($filters, 500),
             'byIssuingStore' => $this->revenueGroup($filters, 'issuing_store_name', 'issuing_store_cnpj', 500),
             'byOrderStore' => $this->revenueGroup($filters, 'order_store_name', 'order_store_cnpj', 500),
             'bySeller' => $this->revenueGroup($filters, 'seller_name', null, 20),
@@ -1955,8 +1955,7 @@ final class Repository
     private function revenueCfopGroup(array $filters, int $limit = 50): array
     {
         [$where, $params] = $this->revenueWhere($filters);
-        $where[] = "COALESCE(ri.cfop, '') <> ''";
-        $whereSql = ' WHERE ' . implode(' AND ', $where);
+        $whereSql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
         // O painel por CFOP usa itens como origem e aplica devolucoes como valor negativo para leitura gerencial/fiscal correta.
         $returnExpr = "(r.purpose = 'devolucao' OR r.document_type = 'DEVOLUCAO_NFE' OR r.return_amount <> 0)";
         $netExpr = "CASE WHEN {$returnExpr} THEN -ABS(ri.total_amount) ELSE ri.total_amount END";
@@ -1974,7 +1973,30 @@ final class Repository
         foreach ($params as $key => $value) { $stmt->bindValue(':' . $key, $value); }
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
         $stmt->execute();
-        return $stmt->fetchAll();
+        $rows = $stmt->fetchAll();
+        $period = $this->revenueMoneyBreakdown($filters, 'net_amount');
+        $diff = [
+            'net_amount' => (float)($period['total'] ?? 0) - array_sum(array_map(static fn($row) => (float)($row['net_amount'] ?? 0), $rows)),
+            'resale' => (float)($period['resale'] ?? 0) - array_sum(array_map(static fn($row) => (float)($row['resale'] ?? 0), $rows)),
+            'services' => (float)($period['services'] ?? 0) - array_sum(array_map(static fn($row) => (float)($row['services'] ?? 0), $rows)),
+            'cost_total' => (float)($period['cost_total'] ?? 0) - array_sum(array_map(static fn($row) => (float)($row['cost_total'] ?? 0), $rows)),
+            'cost_resale' => (float)($period['cost_resale'] ?? 0) - array_sum(array_map(static fn($row) => (float)($row['cost_resale'] ?? 0), $rows)),
+            'cost_services' => (float)($period['cost_services'] ?? 0) - array_sum(array_map(static fn($row) => (float)($row['cost_services'] ?? 0), $rows)),
+        ];
+        if (abs($diff['net_amount']) >= 0.01 || abs($diff['cost_total']) >= 0.01) {
+            $rows[] = [
+                'label' => 'Sem CFOP / ajustes',
+                'extra' => 'Diferença entre total dos documentos e itens por CFOP',
+                'total' => 0,
+                'net_amount' => $diff['net_amount'],
+                'services' => $diff['services'],
+                'resale' => $diff['resale'],
+                'cost_total' => $diff['cost_total'],
+                'cost_services' => $diff['cost_services'],
+                'cost_resale' => $diff['cost_resale'],
+            ];
+        }
+        return $rows;
     }
 
     private function revenueDailyEvolution(string $whereSql, array $params): array
