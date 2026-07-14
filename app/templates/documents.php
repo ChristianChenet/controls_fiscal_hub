@@ -39,11 +39,11 @@ $documentFilterKeys = [
         <label>CFOP
             <input type="text" name="cfop_q" placeholder="CFOP do item" value="<?= h((string)($filters['cfop_q'] ?? '')) ?>">
         </label>
-        <label>Ignorar CFOPs <span class="hint" title="NÃ£o mostrar documentos com os CFOPs informados, pois nÃ£o realizamos a escrituraÃ§Ã£o Fiscal desses documentos.">?</span>
-            <span class="inline cfop-ignore-control">
-                <input type="hidden" name="ignore_cfops" value="0">
-                <span class="checkbox-inline"><input type="checkbox" name="ignore_cfops" value="1" <?= ((string)($filters['ignore_cfops'] ?? '1') !== '0') ? 'checked' : '' ?>> Ativo</span>
-                <button class="button-link button-compact" type="button" data-open-ignored-cfops>Lista de CFOPs</button>
+        <label class="cfop-ignore-field">CFOPs ignorados
+            <input type="hidden" name="ignore_cfops" value="0">
+            <span class="cfop-ignore-line">
+                <input type="checkbox" name="ignore_cfops" value="1" <?= ((string)($filters['ignore_cfops'] ?? '1') !== '0') ? 'checked' : '' ?>>
+                <button class="cfop-ignore-link" type="button" data-open-ignored-cfops>Ignorar CFOPs cadastrados</button>
             </span>
         </label>
         <label>Empresa
@@ -293,7 +293,7 @@ $documentFilterKeys = [
         <div class="modal-header">
             <div>
                 <h2 id="ignored-cfops-title">CFOPs ignorados em Entradas</h2>
-                <small>NÃ£o mostrar documentos com esses CFOPs quando o filtro estiver ativo.</small>
+                <small>Nao mostrar documentos com os CFOPs informados, pois nao realizamos a escrituracao Fiscal desses documentos.</small>
             </div>
             <button type="button" class="modal-close" data-close-ignored-cfops>&times;</button>
         </div>
