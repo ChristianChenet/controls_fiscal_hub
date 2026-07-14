@@ -306,25 +306,25 @@ final class Repository
         if ($existing) {
             $row['id'] = $existing['id'];
             $stmt = $this->pdo->prepare("UPDATE documents SET
-                company_id=:company_id, company_name=:company_name, company_cnpj=:company_cnpj, doc_type=:doc_type, model=:model, access_key=:access_key, referenced_nfe_keys=:referenced_nfe_keys, number=:number, order_number=:order_number, posted_to_erp=:posted_to_erp,
+                company_id=:company_id, company_name=:company_name, company_cnpj=:company_cnpj, doc_type=:doc_type, model=:model, access_key=:access_key, referenced_nfe_keys=:referenced_nfe_keys, referenced_document_numbers=:referenced_document_numbers, number=:number, order_number=:order_number, posted_to_erp=:posted_to_erp,
                 issuer_cnpj=:issuer_cnpj, issuer_name=:issuer_name, recipient_cnpj=:recipient_cnpj, recipient_name=:recipient_name,
                 issue_date=:issue_date, total_value=:total_value, status=:status, manifestation_status=:manifestation_status,
                 source=:source, xml_path=:xml_path, storage_dir=:storage_dir, notes=:notes, raw_xml=:raw_xml, digest=:digest,
                 schema_name=:schema_name, updated_at=:updated_at WHERE id=:id");
             $this->executeDocumentStatement($stmt, $row, [
-                'id','company_id','company_name','company_cnpj','doc_type','model','access_key','referenced_nfe_keys','number','order_number','posted_to_erp',
+                'id','company_id','company_name','company_cnpj','doc_type','model','access_key','referenced_nfe_keys','referenced_document_numbers','number','order_number','posted_to_erp',
                 'issuer_cnpj','issuer_name','recipient_cnpj','recipient_name','issue_date','total_value','status','manifestation_status',
                 'source','xml_path','storage_dir','notes','raw_xml','digest','schema_name','updated_at',
             ]);
             $id = (int)$existing['id'];
         } else {
             $stmt = $this->pdo->prepare("INSERT INTO documents
-                (company_id, company_name, company_cnpj, doc_type, model, access_key, referenced_nfe_keys, number, order_number, posted_to_erp, issuer_cnpj, issuer_name, recipient_cnpj, recipient_name,
+                (company_id, company_name, company_cnpj, doc_type, model, access_key, referenced_nfe_keys, referenced_document_numbers, number, order_number, posted_to_erp, issuer_cnpj, issuer_name, recipient_cnpj, recipient_name,
                 issue_date, total_value, status, manifestation_status, source, xml_path, storage_dir, notes, raw_xml, digest, schema_name, imported_at, updated_at)
-                VALUES (:company_id, :company_name, :company_cnpj, :doc_type, :model, :access_key, :referenced_nfe_keys, :number, :order_number, :posted_to_erp, :issuer_cnpj, :issuer_name, :recipient_cnpj, :recipient_name,
+                VALUES (:company_id, :company_name, :company_cnpj, :doc_type, :model, :access_key, :referenced_nfe_keys, :referenced_document_numbers, :number, :order_number, :posted_to_erp, :issuer_cnpj, :issuer_name, :recipient_cnpj, :recipient_name,
                 :issue_date, :total_value, :status, :manifestation_status, :source, :xml_path, :storage_dir, :notes, :raw_xml, :digest, :schema_name, :imported_at, :updated_at)");
             $this->executeDocumentStatement($stmt, $row, [
-                'company_id','company_name','company_cnpj','doc_type','model','access_key','referenced_nfe_keys','number','order_number','posted_to_erp',
+                'company_id','company_name','company_cnpj','doc_type','model','access_key','referenced_nfe_keys','referenced_document_numbers','number','order_number','posted_to_erp',
                 'issuer_cnpj','issuer_name','recipient_cnpj','recipient_name','issue_date','total_value','status','manifestation_status',
                 'source','xml_path','storage_dir','notes','raw_xml','digest','schema_name','imported_at','updated_at',
             ]);
@@ -433,6 +433,7 @@ final class Repository
             'model' => null,
             'access_key' => null,
             'referenced_nfe_keys' => null,
+            'referenced_document_numbers' => null,
             'number' => null,
             'order_number' => null,
             'posted_to_erp' => false,
@@ -553,6 +554,7 @@ final class Repository
 
     public function documents(array $filters = []): array
     {
+        $this->ensureReferencedDocumentNumbers();
         $this->ensureDocumentItemsForFilters($filters);
         [$where, $params] = $this->documentWhere($filters);
         $sql = 'SELECT * FROM documents';
@@ -568,6 +570,7 @@ final class Repository
 
     public function documentsPage(array $filters = [], int $page = 1, int $perPage = 200): array
     {
+        $this->ensureReferencedDocumentNumbers();
         $this->ensureDocumentItemsForFilters($filters);
         [$where, $params] = $this->documentWhere($filters);
         $offset = max(0, ($page - 1) * $perPage);
@@ -589,6 +592,7 @@ final class Repository
 
     public function documentsTotals(array $filters = []): array
     {
+        $this->ensureReferencedDocumentNumbers();
         $this->ensureDocumentItemsForFilters($filters);
         [$where, $params] = $this->documentWhere($filters);
         $sql = 'SELECT COUNT(*) AS total, COALESCE(SUM(total_value), 0) AS total_value FROM documents';
@@ -664,6 +668,7 @@ final class Repository
             'issuer_q' => ['issuer_name', 'issuer_cnpj'],
             'access_key_q' => ['access_key'],
             'referenced_nfe_q' => ['referenced_nfe_keys'],
+            'referenced_number_q' => ['referenced_document_numbers'],
             'source_q' => ['source'],
         ] as $filterKey => $columns) {
             if (!empty($filters[$filterKey])) {
@@ -708,6 +713,29 @@ final class Repository
             return;
         }
         $this->indexMissingDocumentItems(10000);
+    }
+
+    private function ensureReferencedDocumentNumbers(int $limit = 10000): void
+    {
+        $stmt = $this->pdo->prepare("SELECT id, raw_xml, xml_path FROM documents
+            WHERE doc_type IN ('NFE', 'NFCE', 'CTE')
+              AND (referenced_document_numbers IS NULL OR referenced_nfe_keys IS NULL)
+              AND (COALESCE(raw_xml, '') <> '' OR COALESCE(xml_path, '') <> '')
+            ORDER BY id DESC
+            LIMIT :limit");
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        $update = $this->pdo->prepare('UPDATE documents SET referenced_nfe_keys = COALESCE(referenced_nfe_keys, :keys), referenced_document_numbers = COALESCE(referenced_document_numbers, :numbers), updated_at = :updated_at WHERE id = :id');
+        foreach ($stmt->fetchAll() as $doc) {
+            $xml = (string)($doc['raw_xml'] ?? '');
+            $path = (string)($doc['xml_path'] ?? '');
+            if (trim($xml) === '' && $path !== '' && is_file($path)) {
+                $xml = (string)file_get_contents($path);
+            }
+            $keys = $this->parseReferencedNFeKeysFromXml($xml);
+            $numbers = $this->parseReferencedDocumentNumbersFromXml($xml);
+            $update->execute(['keys' => $keys, 'numbers' => $numbers, 'updated_at' => date('c'), 'id' => (int)$doc['id']]);
+        }
     }
 
     public function documentIgnoredCfops(): array
@@ -963,6 +991,61 @@ final class Repository
             '//*[local-name()="' . $tag . '"]/*[local-name()="CPF"]',
         ]);
         return preg_replace('/\D+/', '', $value) ?: '';
+    }
+
+    private function parseReferencedDocumentNumbersFromXml(string $xml): string
+    {
+        if (trim($xml) === '') {
+            return '';
+        }
+        $dom = new \DOMDocument();
+        if (!$dom->loadXML($xml, LIBXML_NOCDATA | LIBXML_NOBLANKS)) {
+            return '';
+        }
+        $xp = new \DOMXPath($dom);
+        $numbers = [];
+        foreach ($xp->query('//*[local-name()="chNFe" or local-name()="refNFe"] | //*[local-name()="infNFe"]/*[local-name()="chave"]') ?: [] as $node) {
+            $number = $this->numberFromAccessKey((string)$node->textContent);
+            if ($number !== '') {
+                $numbers[$number] = true;
+            }
+        }
+        foreach ($xp->query('//*[local-name()="NFref"]//*[local-name()="nNF"] | //*[local-name()="infNFe"]/*[local-name()="nDoc"]') ?: [] as $node) {
+            $number = ltrim(preg_replace('/\D+/', '', trim((string)$node->textContent)) ?: '', '0');
+            if ($number !== '') {
+                $numbers[$number] = true;
+            }
+        }
+        return $numbers ? implode(', ', array_keys($numbers)) : '';
+    }
+
+    private function parseReferencedNFeKeysFromXml(string $xml): string
+    {
+        if (trim($xml) === '') {
+            return '';
+        }
+        $dom = new \DOMDocument();
+        if (!$dom->loadXML($xml, LIBXML_NOCDATA | LIBXML_NOBLANKS)) {
+            return '';
+        }
+        $xp = new \DOMXPath($dom);
+        $keys = [];
+        foreach ($xp->query('//*[local-name()="chNFe" or local-name()="refNFe"] | //*[local-name()="infNFe"]/*[local-name()="chave"]') ?: [] as $node) {
+            $key = preg_replace('/\D+/', '', trim((string)$node->textContent));
+            if (strlen($key) === 44) {
+                $keys[$key] = true;
+            }
+        }
+        return $keys ? implode(', ', array_keys($keys)) : '';
+    }
+
+    private function numberFromAccessKey(string $key): string
+    {
+        $digits = preg_replace('/\D+/', '', $key) ?: '';
+        if (strlen($digits) !== 44) {
+            return '';
+        }
+        return ltrim(substr($digits, 25, 9), '0') ?: '0';
     }
 
     private function xmlFirst(\DOMXPath $xp, array $exprs): string

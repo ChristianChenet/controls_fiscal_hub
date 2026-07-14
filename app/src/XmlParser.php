@@ -52,6 +52,8 @@ final class XmlParser
             'doc_type' => $docType,
             'model' => $mod,
             'access_key' => $accessKey ?: null,
+            'referenced_nfe_keys' => $this->referencedNFeKeys($xp),
+            'referenced_document_numbers' => $this->referencedDocumentNumbers($xp),
             'number' => $this->x($xp, '//n:ide/n:nNF'),
             'order_number' => $this->firstAny($xp, ['//*[local-name()="xPed"]']),
             'issuer_cnpj' => $this->x($xp, '//n:emit/n:CNPJ'),
@@ -83,6 +85,7 @@ final class XmlParser
             'model' => '57',
             'access_key' => $accessKey ?: null,
             'referenced_nfe_keys' => $this->referencedNFeKeys($xp),
+            'referenced_document_numbers' => $this->referencedDocumentNumbers($xp),
             'number' => $this->x($xp, '//c:ide/c:nCT') ?: $this->firstAny($xp, ['//*[local-name()="ide"]/*[local-name()="nCT"]']),
             'order_number' => $this->firstAny($xp, ['//*[local-name()="xPed"]']),
             'issuer_cnpj' => $this->x($xp, '//c:emit/c:CNPJ') ?: $this->firstAny($xp, ['//*[local-name()="emit"]/*[local-name()="CNPJ"]']),
@@ -225,12 +228,40 @@ final class XmlParser
     private function referencedNFeKeys(DOMXPath $xp): ?string
     {
         $keys = [];
-        foreach ($xp->query('//*[local-name()="infNFe"]/*[local-name()="chave" or local-name()="chNFe"] | //*[local-name()="chNFe"]') ?: [] as $node) {
+        foreach ($xp->query('//*[local-name()="infNFe"]/*[local-name()="chave" or local-name()="chNFe"] | //*[local-name()="chNFe" or local-name()="refNFe"]') ?: [] as $node) {
             $key = preg_replace('/\D+/', '', trim((string)$node->textContent));
             if (strlen($key) === 44) {
                 $keys[$key] = true;
             }
         }
         return $keys ? implode(', ', array_keys($keys)) : null;
+    }
+
+    private function referencedDocumentNumbers(DOMXPath $xp): ?string
+    {
+        $numbers = [];
+        $keys = $this->referencedNFeKeys($xp);
+        foreach (array_filter(array_map('trim', explode(',', (string)$keys))) as $key) {
+            $number = $this->numberFromAccessKey($key);
+            if ($number !== '') {
+                $numbers[$number] = true;
+            }
+        }
+        foreach ($xp->query('//*[local-name()="NFref"]//*[local-name()="nNF"] | //*[local-name()="infNFe"]/*[local-name()="nDoc"]') ?: [] as $node) {
+            $number = ltrim(preg_replace('/\D+/', '', trim((string)$node->textContent)) ?: '', '0');
+            if ($number !== '') {
+                $numbers[$number] = true;
+            }
+        }
+        return $numbers ? implode(', ', array_keys($numbers)) : null;
+    }
+
+    private function numberFromAccessKey(string $key): string
+    {
+        $digits = preg_replace('/\D+/', '', $key) ?: '';
+        if (strlen($digits) !== 44) {
+            return '';
+        }
+        return ltrim(substr($digits, 25, 9), '0') ?: '0';
     }
 }

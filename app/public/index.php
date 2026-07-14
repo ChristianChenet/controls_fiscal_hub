@@ -66,6 +66,7 @@ function document_filters_from_request(array $source): array
         'recipient_q' => $source['recipient_q'] ?? '',
         'access_key_q' => $source['access_key_q'] ?? '',
         'referenced_nfe_q' => $source['referenced_nfe_q'] ?? '',
+        'referenced_number_q' => $source['referenced_number_q'] ?? '',
         'product_q' => $source['product_q'] ?? '',
         'cfop_q' => $source['cfop_q'] ?? '',
         'cte_taker_only' => $source['cte_taker_only'] ?? '',
@@ -748,6 +749,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'recipient_q',
                     'access_key_q',
                     'referenced_nfe_q',
+                    'referenced_number_q',
                     'product_q',
                     'cfop_q',
                     'cte_taker_only',
@@ -1179,7 +1181,7 @@ if ($page === 'documents_export') {
     header('Content-Disposition: attachment; filename="' . $filename . '"');
     echo "\xEF\xBB\xBF";
     echo '<table border="1">';
-    echo '<tr><th>Empresa</th><th>CNPJ</th><th>Tipo</th><th>N&uacute;mero</th><th>Pedido</th><th>Emissor</th><th>CNPJ emissor</th><th>Destinat&aacute;rio</th><th>Documento destinat&aacute;rio</th><th>Chave</th><th>NF-e vinculada</th><th>Nota lan&ccedil;ada no ERP</th><th>Eventos informativos</th><th>Emiss&atilde;o</th><th>Valor</th><th>Status</th><th>Manifesta&ccedil;&atilde;o</th><th>Origem</th><th>Pasta</th></tr>';
+    echo '<tr><th>Empresa</th><th>CNPJ</th><th>Tipo</th><th>N&uacute;mero</th><th>Pedido</th><th>Emissor</th><th>CNPJ emissor</th><th>Destinat&aacute;rio</th><th>Documento destinat&aacute;rio</th><th>Chave</th><th>NF-e vinculada</th><th>N&uacute;mero doc. referenciado</th><th>Nota lan&ccedil;ada no ERP</th><th>Eventos informativos</th><th>Emiss&atilde;o</th><th>Valor</th><th>Status</th><th>Manifesta&ccedil;&atilde;o</th><th>Origem</th><th>Pasta</th></tr>';
     foreach ($docs as $doc) {
         echo '<tr>';
         foreach ([
@@ -1194,6 +1196,7 @@ if ($page === 'documents_export') {
             $doc['recipient_cnpj'] ?? '',
             $doc['access_key'] ?? '',
             $doc['referenced_nfe_keys'] ?? '',
+            $doc['referenced_document_numbers'] ?? '',
             !empty($doc['posted_to_erp']) ? 'Sim' : 'Nao',
             ((int)($doc['informative_events_count'] ?? 0) > 0 ? ((string)$doc['informative_events_count'] . ' - ' . (string)($doc['informative_events_names'] ?? '')) : ''),
             format_date($doc['issue_date'] ?? null),

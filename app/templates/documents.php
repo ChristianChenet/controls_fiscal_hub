@@ -11,7 +11,7 @@ $exportQuery = $baseQuery;
 $exportQuery['page'] = 'documents_export';
 $documentFilterKeys = [
     'company_id','doc_type','status','manifestation_status','posted_to_erp','without_referenced_nfe','cte_taker_only','ignore_cfops','entry_only','date_start','date_end',
-    'company_q','number_q','issuer_q','recipient_q','access_key_q','referenced_nfe_q','product_q','cfop_q','source_q','q','sort_by','sort_dir',
+    'company_q','number_q','issuer_q','recipient_q','access_key_q','referenced_nfe_q','referenced_number_q','product_q','cfop_q','source_q','q','sort_by','sort_dir',
 ];
 ?>
 <div class="page-header split-header documents-page-header">
@@ -32,6 +32,9 @@ $documentFilterKeys = [
         </label>
         <label>Chave de acesso
             <input type="text" name="access_key_q" placeholder="44 digitos ou parte da chave" value="<?= h((string)($filters['access_key_q'] ?? '')) ?>">
+        </label>
+        <label>Numero referenciado
+            <input type="text" name="referenced_number_q" placeholder="Numero da nota ref." value="<?= h((string)($filters['referenced_number_q'] ?? '')) ?>">
         </label>
         <label>Produto
             <input type="text" name="product_q" placeholder="Descricao do produto" value="<?= h((string)($filters['product_q'] ?? '')) ?>">
@@ -135,6 +138,7 @@ $documentFilterKeys = [
             'destinatario' => 'Destinatario',
             'chave' => 'Chave',
             'nfe_vinculada' => 'NF-e vinculada',
+            'numero_referenciado' => 'Numero referenciado',
             'erp' => 'Nota lançada no ERP',
             'eventos_informativos' => 'Eventos informativos',
             'emissao' => 'Emissão',
@@ -199,6 +203,7 @@ $documentFilterKeys = [
                     <th class="resizable" data-column="destinatario">Destinatario</th>
                     <th class="resizable" data-column="chave">Chave</th>
                     <th class="resizable" data-column="nfe_vinculada">NF-e vinculada</th>
+                    <th class="resizable" data-column="numero_referenciado">Numero referenciado</th>
                     <th class="resizable" data-column="erp">Nota lançada no ERP</th>
                     <th class="resizable" data-column="eventos_informativos">Eventos informativos</th>
                     <th class="resizable" data-column="emissao">Emissão</th>
@@ -217,6 +222,7 @@ $documentFilterKeys = [
                     <th data-column="destinatario"><input form="column-filter-form" name="recipient_q" value="<?= h((string)($filters['recipient_q'] ?? '')) ?>" placeholder="Filtrar"></th>
                     <th data-column="chave"><input form="column-filter-form" name="access_key_q" value="<?= h((string)($filters['access_key_q'] ?? '')) ?>" placeholder="Filtrar"></th>
                     <th data-column="nfe_vinculada"><input form="column-filter-form" name="referenced_nfe_q" value="<?= h((string)($filters['referenced_nfe_q'] ?? '')) ?>" placeholder="Filtrar"></th>
+                    <th data-column="numero_referenciado"><input form="column-filter-form" name="referenced_number_q" value="<?= h((string)($filters['referenced_number_q'] ?? '')) ?>" placeholder="Filtrar"></th>
                     <th data-column="erp"></th>
                     <th data-column="eventos_informativos"></th>
                     <th data-column="emissao"></th>
@@ -245,6 +251,7 @@ $documentFilterKeys = [
                     <td data-column="destinatario"><strong><?= h((string)($doc['recipient_name'] ?? '')) ?></strong><br><small><?= h((string)($doc['recipient_cnpj'] ?? '')) ?></small></td>
                     <td data-column="chave"><small><?= h((string)$doc['access_key']) ?></small></td>
                     <td data-column="nfe_vinculada"><small><?= h((string)($doc['referenced_nfe_keys'] ?? '')) ?></small></td>
+                    <td data-column="numero_referenciado"><small><?= h((string)($doc['referenced_document_numbers'] ?? '')) ?></small></td>
                     <td data-column="erp"><?= !empty($doc['posted_to_erp']) ? 'Sim' : 'Não' ?></td>
                     <td data-column="eventos_informativos">
                         <?php if ((int)($doc['informative_events_count'] ?? 0) > 0): ?>
@@ -267,7 +274,7 @@ $documentFilterKeys = [
                 </tr>
             <?php endforeach; ?>
             <?php if (!$documents): ?>
-                <tr><td colspan="16">Nenhuma entrada encontrada.</td></tr>
+                <tr><td colspan="17">Nenhuma entrada encontrada.</td></tr>
             <?php endif; ?>
             </tbody>
         </table>
@@ -396,6 +403,7 @@ $documentFilterKeys = [
     <input type="hidden" name="date_end" value="<?= h((string)($filters['date_end'] ?? '')) ?>">
     <input type="hidden" name="product_q" value="<?= h((string)($filters['product_q'] ?? '')) ?>">
     <input type="hidden" name="cfop_q" value="<?= h((string)($filters['cfop_q'] ?? '')) ?>">
+    <input type="hidden" name="referenced_number_q" value="<?= h((string)($filters['referenced_number_q'] ?? '')) ?>">
     <!-- O campo recipient_q vem do input visivel do grid; duplicar como hidden sobrescrevia o valor digitado em Destinatario. -->
     <input type="hidden" name="sort_by" value="<?= h((string)($filters['sort_by'] ?? 'issue_date')) ?>">
     <input type="hidden" name="sort_dir" value="<?= h((string)($filters['sort_dir'] ?? 'desc')) ?>">

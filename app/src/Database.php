@@ -56,6 +56,7 @@ final class Database
         }
 
         $this->ensureSqliteColumn('users', 'can_view_cost', 'INTEGER DEFAULT 0');
+        $this->ensureSqliteColumn('documents', 'referenced_document_numbers', 'TEXT NULL');
         $this->ensureSqliteColumn('revenue_items', 'cost_amount', 'REAL DEFAULT 0');
     }
 
@@ -117,6 +118,7 @@ final class Database
                 model TEXT,
                 access_key TEXT,
                 referenced_nfe_keys TEXT NULL,
+                referenced_document_numbers TEXT NULL,
                 number TEXT,
                 order_number TEXT NULL,
                 issuer_cnpj TEXT,
@@ -411,6 +413,7 @@ final class Database
                 model VARCHAR(20) NULL,
                 access_key VARCHAR(60) NULL,
                 referenced_nfe_keys TEXT NULL,
+                referenced_document_numbers TEXT NULL,
                 number VARCHAR(60) NULL,
                 order_number VARCHAR(80) NULL,
                 issuer_cnpj VARCHAR(20) NULL,
@@ -436,6 +439,7 @@ final class Database
             "CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status)",
             "CREATE INDEX IF NOT EXISTS idx_documents_access_key ON documents(access_key)",
             "ALTER TABLE documents ADD COLUMN IF NOT EXISTS referenced_nfe_keys TEXT NULL",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS referenced_document_numbers TEXT NULL",
             "ALTER TABLE documents ADD COLUMN IF NOT EXISTS order_number VARCHAR(80) NULL",
             "ALTER TABLE documents ADD COLUMN IF NOT EXISTS posted_to_erp BOOLEAN DEFAULT FALSE",
             "CREATE INDEX IF NOT EXISTS idx_documents_order_number ON documents(order_number)",
