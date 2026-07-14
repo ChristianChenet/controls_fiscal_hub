@@ -230,7 +230,7 @@ abstract class AbstractFiscalCollector implements CollectorInterface
             'doc_type'=>$normalizedDocType,
             'model'=>$model ?: ($normalizedDocType === 'CTE' ? '57' : ($normalizedDocType === 'MDFE' ? '58' : '55')),
             'access_key'=>$accessKey ?: null,
-            'referenced_nfe_keys'=>$normalizedDocType === 'CTE' ? ($this->first($xp, '//*[local-name()="chNFe"]') ?: null) : null,
+            'referenced_nfe_keys'=>$normalizedDocType === 'CTE' ? ($this->referencedNFeKeys($xp, (string)$accessKey) ?: null) : null,
             'number'=>$number,
             'issuer_cnpj'=>$issuerCnpj ?: null,
             'issuer_name'=>$issuerName ?: null,
@@ -275,5 +275,18 @@ abstract class AbstractFiscalCollector implements CollectorInterface
         $nodes = $xp->query($expr);
         if (!$nodes || $nodes->length === 0) return null;
         return trim((string)$nodes->item(0)?->textContent);
+    }
+
+    protected function referencedNFeKeys(DOMXPath $xp, string $ownAccessKey): string
+    {
+        $ownKey = preg_replace('/\D+/', '', $ownAccessKey) ?: '';
+        $keys = [];
+        foreach ($xp->query('//*[local-name()="infNFe"]/*[local-name()="chave" or local-name()="chNFe"]') ?: [] as $node) {
+            $key = preg_replace('/\D+/', '', trim((string)$node->textContent));
+            if (strlen($key) === 44 && $key !== $ownKey) {
+                $keys[$key] = true;
+            }
+        }
+        return $keys ? implode(', ', array_keys($keys)) : '';
     }
 }

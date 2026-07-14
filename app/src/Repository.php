@@ -456,6 +456,8 @@ final class Repository
             'updated_at' => date('c'),
         ];
         $row['posted_to_erp'] = $this->normalizeBoolean($row['posted_to_erp'] ?? false);
+        $row['referenced_nfe_keys'] = $this->normalizeReferencedKeys((string)($row['referenced_nfe_keys'] ?? ''), (string)($row['access_key'] ?? '')) ?: null;
+        $row['referenced_document_numbers'] = $this->normalizeReferencedNumbers((string)($row['referenced_document_numbers'] ?? ''), (string)($row['access_key'] ?? '')) ?: null;
         return $row;
     }
 
@@ -565,7 +567,7 @@ final class Repository
         }
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($params);
-        return $this->attachEventSummaries($stmt->fetchAll());
+        return $this->attachEventSummaries($this->cleanReferencedDocumentRows($stmt->fetchAll()));
     }
 
     public function documentsPage(array $filters = [], int $page = 1, int $perPage = 200): array
@@ -587,7 +589,7 @@ final class Repository
         $stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
         $stmt->execute();
-        return $this->attachEventSummaries($stmt->fetchAll());
+        return $this->attachEventSummaries($this->cleanReferencedDocumentRows($stmt->fetchAll()));
     }
 
     public function documentsTotals(array $filters = []): array
@@ -717,19 +719,21 @@ final class Repository
 
     private function ensureReferencedDocumentNumbers(int $limit = 10000): void
     {
-        $stmt = $this->pdo->prepare("SELECT id, doc_type, access_key, referenced_nfe_keys, raw_xml, xml_path FROM documents
+        $stmt = $this->pdo->prepare("SELECT id, doc_type, access_key, referenced_nfe_keys, referenced_document_numbers, raw_xml, xml_path FROM documents
             WHERE doc_type IN ('NFE', 'NFCE', 'CTE')
               AND (
                   referenced_document_numbers IS NULL
                   OR referenced_nfe_keys IS NULL
                   OR COALESCE(referenced_nfe_keys, '') = COALESCE(access_key, '')
+                  OR COALESCE(referenced_nfe_keys, '') <> ''
+                  OR COALESCE(referenced_document_numbers, '') <> ''
               )
               AND (COALESCE(raw_xml, '') <> '' OR COALESCE(xml_path, '') <> '')
             ORDER BY id DESC
             LIMIT :limit");
         $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
         $stmt->execute();
-        $update = $this->pdo->prepare('UPDATE documents SET referenced_nfe_keys = COALESCE(referenced_nfe_keys, :keys), referenced_document_numbers = COALESCE(referenced_document_numbers, :numbers), updated_at = :updated_at WHERE id = :id');
+        $update = $this->pdo->prepare('UPDATE documents SET referenced_nfe_keys = :keys, referenced_document_numbers = :numbers, updated_at = :updated_at WHERE id = :id');
         foreach ($stmt->fetchAll() as $doc) {
             $xml = (string)($doc['raw_xml'] ?? '');
             $path = (string)($doc['xml_path'] ?? '');
@@ -737,12 +741,10 @@ final class Repository
                 $xml = (string)file_get_contents($path);
             }
             $type = strtoupper((string)($doc['doc_type'] ?? ''));
-            $keys = $this->parseReferencedNFeKeysFromXml($xml, $type);
-            $numbers = $this->parseReferencedDocumentNumbersFromXml($xml, $type);
-            $currentKey = preg_replace('/\D+/', '', (string)($doc['referenced_nfe_keys'] ?? '')) ?: '';
-            $ownKey = preg_replace('/\D+/', '', (string)($doc['access_key'] ?? '')) ?: '';
-            $shouldReplaceKeys = $currentKey === '' || ($ownKey !== '' && $currentKey === $ownKey);
-            $update->execute(['keys' => $shouldReplaceKeys ? $keys : (string)($doc['referenced_nfe_keys'] ?? ''), 'numbers' => $numbers, 'updated_at' => date('c'), 'id' => (int)$doc['id']]);
+            $ownKey = (string)($doc['access_key'] ?? '');
+            $keys = $this->parseReferencedNFeKeysFromXml($xml, $type, $ownKey);
+            $numbers = $this->parseReferencedDocumentNumbersFromXml($xml, $type, $ownKey);
+            $update->execute(['keys' => $keys !== '' ? $keys : null, 'numbers' => $numbers !== '' ? $numbers : null, 'updated_at' => date('c'), 'id' => (int)$doc['id']]);
         }
     }
 
@@ -1001,7 +1003,7 @@ final class Repository
         return preg_replace('/\D+/', '', $value) ?: '';
     }
 
-    private function parseReferencedDocumentNumbersFromXml(string $xml, string $type): string
+    private function parseReferencedDocumentNumbersFromXml(string $xml, string $type, string $ownAccessKey = ''): string
     {
         if (trim($xml) === '') {
             return '';
@@ -1012,25 +1014,26 @@ final class Repository
         }
         $xp = new \DOMXPath($dom);
         $numbers = [];
+        $ownNumber = $this->numberFromAccessKey($ownAccessKey);
         $keyExpr = $type === 'CTE'
             ? '//*[local-name()="infNFe"]/*[local-name()="chave" or local-name()="chNFe"]'
             : '//*[local-name()="NFref"]/*[local-name()="refNFe"]';
         foreach ($xp->query($keyExpr) ?: [] as $node) {
             $number = $this->numberFromAccessKey((string)$node->textContent);
-            if ($number !== '') {
+            if ($number !== '' && $number !== $ownNumber) {
                 $numbers[$number] = true;
             }
         }
         foreach ($xp->query('//*[local-name()="NFref"]//*[local-name()="nNF"]') ?: [] as $node) {
             $number = ltrim(preg_replace('/\D+/', '', trim((string)$node->textContent)) ?: '', '0');
-            if ($number !== '') {
+            if ($number !== '' && $number !== $ownNumber) {
                 $numbers[$number] = true;
             }
         }
         return $numbers ? implode(', ', array_keys($numbers)) : '';
     }
 
-    private function parseReferencedNFeKeysFromXml(string $xml, string $type): string
+    private function parseReferencedNFeKeysFromXml(string $xml, string $type, string $ownAccessKey = ''): string
     {
         if (trim($xml) === '') {
             return '';
@@ -1041,16 +1044,62 @@ final class Repository
         }
         $xp = new \DOMXPath($dom);
         $keys = [];
+        $ownKey = preg_replace('/\D+/', '', $ownAccessKey) ?: '';
         $expr = $type === 'CTE'
             ? '//*[local-name()="infNFe"]/*[local-name()="chave" or local-name()="chNFe"]'
             : '//*[local-name()="NFref"]/*[local-name()="refNFe"]';
         foreach ($xp->query($expr) ?: [] as $node) {
             $key = preg_replace('/\D+/', '', trim((string)$node->textContent));
-            if (strlen($key) === 44) {
+            if (strlen($key) === 44 && $key !== $ownKey) {
                 $keys[$key] = true;
             }
         }
         return $keys ? implode(', ', array_keys($keys)) : '';
+    }
+
+    private function normalizeReferencedKeys(string $value, string $ownAccessKey): string
+    {
+        $ownKey = preg_replace('/\D+/', '', $ownAccessKey) ?: '';
+        $keys = [];
+        foreach (preg_split('/[\s,;|]+/', $value) ?: [] as $part) {
+            $key = preg_replace('/\D+/', '', $part) ?: '';
+            if (strlen($key) === 44 && $key !== $ownKey) {
+                $keys[$key] = true;
+            }
+        }
+        return $keys ? implode(', ', array_keys($keys)) : '';
+    }
+
+    private function normalizeReferencedNumbers(string $value, string $ownAccessKey): string
+    {
+        $ownKey = preg_replace('/\D+/', '', $ownAccessKey) ?: '';
+        $ownNumber = $this->numberFromAccessKey($ownAccessKey);
+        $numbers = [];
+        foreach (preg_split('/[\s,;|]+/', $value) ?: [] as $part) {
+            $digits = preg_replace('/\D+/', '', $part) ?: '';
+            if (strlen($digits) === 44) {
+                if ($digits === $ownKey) {
+                    continue;
+                }
+                $digits = $this->numberFromAccessKey($digits);
+            }
+            $number = ltrim($digits, '0');
+            if ($number !== '' && $number !== $ownNumber) {
+                $numbers[$number] = true;
+            }
+        }
+        return $numbers ? implode(', ', array_keys($numbers)) : '';
+    }
+
+    private function cleanReferencedDocumentRows(array $rows): array
+    {
+        foreach ($rows as &$row) {
+            $ownKey = (string)($row['access_key'] ?? '');
+            $row['referenced_nfe_keys'] = $this->normalizeReferencedKeys((string)($row['referenced_nfe_keys'] ?? ''), $ownKey);
+            $row['referenced_document_numbers'] = $this->normalizeReferencedNumbers((string)($row['referenced_document_numbers'] ?? ''), $ownKey);
+        }
+        unset($row);
+        return $rows;
     }
 
     private function numberFromAccessKey(string $key): string
