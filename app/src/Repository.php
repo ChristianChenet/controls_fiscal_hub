@@ -691,15 +691,72 @@ final class Repository
         if ($itemParts) {
             $where[] = 'EXISTS (SELECT 1 FROM document_items di WHERE di.document_id = documents.id AND ' . implode(' AND ', $itemParts) . ')';
         }
+        if ((string)($filters['ignore_cfops'] ?? '1') !== '0') {
+            $where[] = "NOT EXISTS (
+                SELECT 1
+                FROM document_items dix
+                JOIN document_ignored_cfops dic ON dic.cfop = dix.cfop
+                WHERE dix.document_id = documents.id
+            )";
+        }
         return [$where, $params];
     }
 
     private function ensureDocumentItemsForFilters(array $filters): void
     {
-        if (trim((string)($filters['product_q'] ?? '')) === '' && trim((string)($filters['cfop_q'] ?? '')) === '' && empty($filters['cte_taker_only'])) {
+        if (trim((string)($filters['product_q'] ?? '')) === '' && trim((string)($filters['cfop_q'] ?? '')) === '' && empty($filters['cte_taker_only']) && (string)($filters['ignore_cfops'] ?? '1') === '0') {
             return;
         }
         $this->indexMissingDocumentItems(10000);
+    }
+
+    public function documentIgnoredCfops(): array
+    {
+        return $this->pdo->query('SELECT * FROM document_ignored_cfops ORDER BY cfop ASC')->fetchAll();
+    }
+
+    public function documentCfopOptions(): array
+    {
+        $this->indexMissingDocumentItems(10000);
+        $ignored = array_map(static fn(array $row): string => (string)$row['cfop'], $this->documentIgnoredCfops());
+        $params = [];
+        $where = "WHERE COALESCE(cfop, '') <> ''";
+        if ($ignored) {
+            $placeholders = [];
+            foreach ($ignored as $idx => $cfop) {
+                $key = 'cfop_' . $idx;
+                $placeholders[] = ':' . $key;
+                $params[$key] = $cfop;
+            }
+            $where .= ' AND cfop NOT IN (' . implode(',', $placeholders) . ')';
+        }
+        $stmt = $this->pdo->prepare("SELECT DISTINCT cfop FROM document_items {$where} ORDER BY cfop ASC LIMIT 500");
+        $stmt->execute($params);
+        return array_map(static fn(array $row): string => (string)$row['cfop'], $stmt->fetchAll());
+    }
+
+    public function saveDocumentIgnoredCfop(string $cfop, string $reason, ?array $user): void
+    {
+        $cfop = preg_replace('/\D+/', '', $cfop) ?: '';
+        if ($cfop === '') {
+            throw new \RuntimeException('Selecione um CFOP para ignorar.');
+        }
+        $stmt = $this->pdo->prepare('INSERT INTO document_ignored_cfops(cfop, reason, user_id, user_name, created_at)
+            VALUES(:cfop, :reason, :user_id, :user_name, :created_at)
+            ON CONFLICT(cfop) DO UPDATE SET reason = excluded.reason, user_id = excluded.user_id, user_name = excluded.user_name, created_at = excluded.created_at');
+        $stmt->execute([
+            'cfop' => $cfop,
+            'reason' => trim($reason),
+            'user_id' => $user['id'] ?? null,
+            'user_name' => $user['name'] ?? ($user['email'] ?? null),
+            'created_at' => date('c'),
+        ]);
+    }
+
+    public function deleteDocumentIgnoredCfop(int $id): void
+    {
+        $stmt = $this->pdo->prepare('DELETE FROM document_ignored_cfops WHERE id = :id');
+        $stmt->execute(['id' => $id]);
     }
 
     private function indexMissingDocumentItems(int $limit = 10000): void

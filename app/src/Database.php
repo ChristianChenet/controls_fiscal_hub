@@ -168,6 +168,15 @@ final class Database
                 created_at TEXT NOT NULL
             )",
             "CREATE INDEX IF NOT EXISTS idx_document_cte_takers_cnpj ON document_cte_takers(taker_cnpj)",
+            "CREATE TABLE IF NOT EXISTS document_ignored_cfops (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                cfop TEXT NOT NULL UNIQUE,
+                reason TEXT NULL,
+                user_id INTEGER NULL,
+                user_name TEXT NULL,
+                created_at TEXT NOT NULL
+            )",
+            "CREATE INDEX IF NOT EXISTS idx_document_ignored_cfops_cfop ON document_ignored_cfops(cfop)",
             "CREATE TABLE IF NOT EXISTS document_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 company_id INTEGER NULL,
@@ -458,6 +467,15 @@ final class Database
                 created_at TIMESTAMP NOT NULL DEFAULT NOW()
             )",
             "CREATE INDEX IF NOT EXISTS idx_document_cte_takers_cnpj ON document_cte_takers(taker_cnpj)",
+            "CREATE TABLE IF NOT EXISTS document_ignored_cfops (
+                id SERIAL PRIMARY KEY,
+                cfop VARCHAR(10) NOT NULL UNIQUE,
+                reason TEXT NULL,
+                user_id INTEGER NULL,
+                user_name TEXT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )",
+            "CREATE INDEX IF NOT EXISTS idx_document_ignored_cfops_cfop ON document_ignored_cfops(cfop)",
             "CREATE TABLE IF NOT EXISTS document_events (
                 id SERIAL PRIMARY KEY,
                 company_id INTEGER NULL REFERENCES companies(id) ON DELETE SET NULL,

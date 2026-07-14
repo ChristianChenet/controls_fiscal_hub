@@ -69,6 +69,7 @@ function document_filters_from_request(array $source): array
         'product_q' => $source['product_q'] ?? '',
         'cfop_q' => $source['cfop_q'] ?? '',
         'cte_taker_only' => $source['cte_taker_only'] ?? '',
+        'ignore_cfops' => array_key_exists('ignore_cfops', $source) ? (string)$source['ignore_cfops'] : '1',
         'source_q' => $source['source_q'] ?? '',
         'q' => $source['q'] ?? '',
         'sort_by' => $source['sort_by'] ?? 'issue_date',
@@ -747,6 +748,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'recipient_q',
                     'access_key_q',
                     'referenced_nfe_q',
+                    'product_q',
+                    'cfop_q',
+                    'cte_taker_only',
+                    'ignore_cfops',
                     'source_q',
                     'q',
                     'sort_by',
@@ -760,7 +765,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $returnQuery['page'] = 'documents';
                 $exportDir = trim((string)($_POST['export_dir'] ?? ''));
 
-                if (isset($_POST['bulk_manifest'])) {
+                if (isset($_POST['save_ignored_cfop'])) {
+                    $repo->saveDocumentIgnoredCfop((string)($_POST['ignored_cfop'] ?? ''), (string)($_POST['ignored_reason'] ?? ''), $auth->user());
+                    flash_set('success', 'CFOP adicionado a lista de ignorados.');
+                } elseif (isset($_POST['delete_ignored_cfop'])) {
+                    $repo->deleteDocumentIgnoredCfop((int)($_POST['ignored_cfop_id'] ?? 0));
+                    flash_set('success', 'CFOP removido da lista de ignorados.');
+                } elseif (isset($_POST['bulk_manifest'])) {
                     if (!$ids) {
                         flash_set('warning', 'Selecione ao menos um documento.');
                         redirect_to(base_url('?' . http_build_query($returnQuery)));
@@ -1475,6 +1486,8 @@ switch ($page) {
         $viewData['documentPerPage'] = $documentPerPage;
         $viewData['documentTotals'] = $repo->documentsTotals($documentFilters);
         $viewData['documents'] = $repo->documentsPage($documentFilters, $documentPage, $documentPerPage);
+        $viewData['documentIgnoredCfops'] = $repo->documentIgnoredCfops();
+        $viewData['documentCfopOptions'] = $repo->documentCfopOptions();
         include __DIR__ . '/../templates/documents.php';
         break;
     case 'period_closure':

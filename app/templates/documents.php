@@ -9,6 +9,10 @@ $baseQuery = array_filter($filters, static fn($value) => $value !== '' && $value
 $baseQuery['page'] = 'documents';
 $exportQuery = $baseQuery;
 $exportQuery['page'] = 'documents_export';
+$documentFilterKeys = [
+    'company_id','doc_type','status','manifestation_status','posted_to_erp','without_referenced_nfe','cte_taker_only','ignore_cfops','entry_only','date_start','date_end',
+    'company_q','number_q','issuer_q','recipient_q','access_key_q','referenced_nfe_q','product_q','cfop_q','source_q','q','sort_by','sort_dir',
+];
 ?>
 <div class="page-header split-header documents-page-header">
     <div>
@@ -34,6 +38,13 @@ $exportQuery['page'] = 'documents_export';
         </label>
         <label>CFOP
             <input type="text" name="cfop_q" placeholder="CFOP do item" value="<?= h((string)($filters['cfop_q'] ?? '')) ?>">
+        </label>
+        <label>Ignorar CFOPs <span class="hint" title="NÃ£o mostrar documentos com os CFOPs informados, pois nÃ£o realizamos a escrituraÃ§Ã£o Fiscal desses documentos.">?</span>
+            <span class="inline cfop-ignore-control">
+                <input type="hidden" name="ignore_cfops" value="0">
+                <span class="checkbox-inline"><input type="checkbox" name="ignore_cfops" value="1" <?= ((string)($filters['ignore_cfops'] ?? '1') !== '0') ? 'checked' : '' ?>> Ativo</span>
+                <button class="button-link button-compact" type="button" data-open-ignored-cfops>Lista de CFOPs</button>
+            </span>
         </label>
         <label>Empresa
             <select name="company_id">
@@ -148,10 +159,7 @@ $exportQuery['page'] = 'documents_export';
 
 <form method="post" class="card documents-card">
     <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
-    <?php foreach ([
-        'company_id','doc_type','status','manifestation_status','posted_to_erp','without_referenced_nfe','cte_taker_only','entry_only','date_start','date_end',
-        'company_q','number_q','issuer_q','recipient_q','access_key_q','referenced_nfe_q','product_q','cfop_q','source_q','q','sort_by','sort_dir',
-    ] as $filterKey): ?>
+    <?php foreach ($documentFilterKeys as $filterKey): ?>
         <input type="hidden" name="<?= h($filterKey) ?>" value="<?= h((string)($filters[$filterKey] ?? '')) ?>">
     <?php endforeach; ?>
     <div class="grid-toolbar documents-grid-toolbar"><div><h2>Grid de entradas</h2><small>Exportação respeita todos os filtros aplicados.</small></div></div>
@@ -280,6 +288,68 @@ $exportQuery['page'] = 'documents_export';
     </div>
 </form>
 
+<div class="modal-backdrop ignored-cfops-modal is-hidden" id="ignored-cfops-modal" role="dialog" aria-modal="true" aria-labelledby="ignored-cfops-title">
+    <div class="modal-panel">
+        <div class="modal-header">
+            <div>
+                <h2 id="ignored-cfops-title">CFOPs ignorados em Entradas</h2>
+                <small>NÃ£o mostrar documentos com esses CFOPs quando o filtro estiver ativo.</small>
+            </div>
+            <button type="button" class="modal-close" data-close-ignored-cfops>&times;</button>
+        </div>
+        <form method="post" class="ignored-cfop-form">
+            <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
+            <?php foreach ($documentFilterKeys as $filterKey): ?>
+                <input type="hidden" name="<?= h($filterKey) ?>" value="<?= h((string)($filters[$filterKey] ?? '')) ?>">
+            <?php endforeach; ?>
+            <div class="form-row">
+                <label>CFOP existente
+                    <select name="ignored_cfop" required>
+                        <option value="">Selecione</option>
+                        <?php foreach (($documentCfopOptions ?? []) as $cfop): ?>
+                            <option value="<?= h((string)$cfop) ?>"><?= h((string)$cfop) ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </label>
+                <label>Motivo
+                    <input type="text" name="ignored_reason" placeholder="Motivo opcional">
+                </label>
+                <label class="form-action-label">
+                    <span>&nbsp;</span>
+                    <button class="primary button-compact" name="save_ignored_cfop" value="1">Adicionar</button>
+                </label>
+            </div>
+            <?php if (empty($documentCfopOptions)): ?><p class="empty-state">Nenhum CFOP novo encontrado nos itens indexados.</p><?php endif; ?>
+        </form>
+        <div class="table-wrap">
+            <table class="table documents-items-table">
+                <thead><tr><th>CFOP</th><th>Motivo</th><th>Usuario</th><th>Adicionado em</th><th>Acao</th></tr></thead>
+                <tbody>
+                <?php foreach (($documentIgnoredCfops ?? []) as $ignored): ?>
+                    <tr>
+                        <td><strong><?= h((string)$ignored['cfop']) ?></strong></td>
+                        <td><?= h((string)($ignored['reason'] ?? '')) ?></td>
+                        <td><?= h((string)($ignored['user_name'] ?? '')) ?></td>
+                        <td><?= h(format_date($ignored['created_at'] ?? null)) ?></td>
+                        <td>
+                            <form method="post" class="inline-form">
+                                <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
+                                <?php foreach ($documentFilterKeys as $filterKey): ?>
+                                    <input type="hidden" name="<?= h($filterKey) ?>" value="<?= h((string)($filters[$filterKey] ?? '')) ?>">
+                                <?php endforeach; ?>
+                                <input type="hidden" name="ignored_cfop_id" value="<?= h((string)$ignored['id']) ?>">
+                                <button class="row-action row-action-button" name="delete_ignored_cfop" value="1">Remover</button>
+                            </form>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if (empty($documentIgnoredCfops)): ?><tr><td colspan="5">Nenhum CFOP ignorado cadastrado.</td></tr><?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 <div class="modal-backdrop documents-items-modal is-hidden" id="document-items-modal" role="dialog" aria-modal="true" aria-labelledby="document-items-title">
     <div class="modal-panel">
         <div class="modal-header">
@@ -321,6 +391,7 @@ $exportQuery['page'] = 'documents_export';
     <input type="hidden" name="posted_to_erp" value="<?= h((string)($filters['posted_to_erp'] ?? '')) ?>">
     <input type="hidden" name="without_referenced_nfe" value="<?= h((string)($filters['without_referenced_nfe'] ?? '')) ?>">
     <input type="hidden" name="cte_taker_only" value="<?= h((string)($filters['cte_taker_only'] ?? '')) ?>">
+    <input type="hidden" name="ignore_cfops" value="<?= h((string)($filters['ignore_cfops'] ?? '1')) ?>">
     <input type="hidden" name="date_start" value="<?= h((string)($filters['date_start'] ?? '')) ?>">
     <input type="hidden" name="date_end" value="<?= h((string)($filters['date_end'] ?? '')) ?>">
     <input type="hidden" name="product_q" value="<?= h((string)($filters['product_q'] ?? '')) ?>">
@@ -329,6 +400,27 @@ $exportQuery['page'] = 'documents_export';
     <input type="hidden" name="sort_by" value="<?= h((string)($filters['sort_by'] ?? 'issue_date')) ?>">
     <input type="hidden" name="sort_dir" value="<?= h((string)($filters['sort_dir'] ?? 'desc')) ?>">
 </form>
+
+<script>
+(function () {
+    var modal = document.getElementById('ignored-cfops-modal');
+    if (!modal) return;
+    function openModal() { modal.classList.remove('is-hidden'); }
+    function closeModal() { modal.classList.add('is-hidden'); }
+    document.querySelectorAll('[data-open-ignored-cfops]').forEach(function (button) {
+        button.addEventListener('click', openModal);
+    });
+    document.querySelectorAll('[data-close-ignored-cfops]').forEach(function (button) {
+        button.addEventListener('click', closeModal);
+    });
+    modal.addEventListener('click', function (event) {
+        if (event.target === modal) closeModal();
+    });
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') closeModal();
+    });
+})();
+</script>
 
 <script>
 (function () {

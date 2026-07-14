@@ -1494,4 +1494,8 @@ textarea{
 .modal-close{border:0;background:#eef3f1;border-radius:6px;width:34px;height:34px;font-size:22px;line-height:1;cursor:pointer}
 .documents-items-table th,.documents-items-table td{white-space:nowrap}
 .documents-items-table td:nth-child(3){min-width:280px;white-space:normal}
+.cfop-ignore-control{align-items:center;gap:8px;margin-top:6px}
+.ignored-cfop-form{margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #e5ede9}
+.form-action-label{align-self:end}
+.inline-form{display:inline}
 .actions-col{min-width:160px}
