@@ -655,6 +655,9 @@ $documentFilterKeys = [
             });
             fixed.forEach(function (cell) { row.appendChild(cell); });
             order.forEach(function (column) { if (byColumn[column]) row.appendChild(byColumn[column]); });
+            Object.keys(byColumn).forEach(function (column) {
+                if (order.indexOf(column) < 0) row.appendChild(byColumn[column]);
+            });
         });
     }
     try { applyOrder(JSON.parse(localStorage.getItem(key) || '[]')); } catch (e) {}

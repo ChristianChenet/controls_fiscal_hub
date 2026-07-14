@@ -717,9 +717,13 @@ final class Repository
 
     private function ensureReferencedDocumentNumbers(int $limit = 10000): void
     {
-        $stmt = $this->pdo->prepare("SELECT id, raw_xml, xml_path FROM documents
+        $stmt = $this->pdo->prepare("SELECT id, doc_type, access_key, referenced_nfe_keys, raw_xml, xml_path FROM documents
             WHERE doc_type IN ('NFE', 'NFCE', 'CTE')
-              AND (referenced_document_numbers IS NULL OR referenced_nfe_keys IS NULL)
+              AND (
+                  referenced_document_numbers IS NULL
+                  OR referenced_nfe_keys IS NULL
+                  OR COALESCE(referenced_nfe_keys, '') = COALESCE(access_key, '')
+              )
               AND (COALESCE(raw_xml, '') <> '' OR COALESCE(xml_path, '') <> '')
             ORDER BY id DESC
             LIMIT :limit");
@@ -732,9 +736,13 @@ final class Repository
             if (trim($xml) === '' && $path !== '' && is_file($path)) {
                 $xml = (string)file_get_contents($path);
             }
-            $keys = $this->parseReferencedNFeKeysFromXml($xml);
-            $numbers = $this->parseReferencedDocumentNumbersFromXml($xml);
-            $update->execute(['keys' => $keys, 'numbers' => $numbers, 'updated_at' => date('c'), 'id' => (int)$doc['id']]);
+            $type = strtoupper((string)($doc['doc_type'] ?? ''));
+            $keys = $this->parseReferencedNFeKeysFromXml($xml, $type);
+            $numbers = $this->parseReferencedDocumentNumbersFromXml($xml, $type);
+            $currentKey = preg_replace('/\D+/', '', (string)($doc['referenced_nfe_keys'] ?? '')) ?: '';
+            $ownKey = preg_replace('/\D+/', '', (string)($doc['access_key'] ?? '')) ?: '';
+            $shouldReplaceKeys = $currentKey === '' || ($ownKey !== '' && $currentKey === $ownKey);
+            $update->execute(['keys' => $shouldReplaceKeys ? $keys : (string)($doc['referenced_nfe_keys'] ?? ''), 'numbers' => $numbers, 'updated_at' => date('c'), 'id' => (int)$doc['id']]);
         }
     }
 
@@ -993,7 +1001,7 @@ final class Repository
         return preg_replace('/\D+/', '', $value) ?: '';
     }
 
-    private function parseReferencedDocumentNumbersFromXml(string $xml): string
+    private function parseReferencedDocumentNumbersFromXml(string $xml, string $type): string
     {
         if (trim($xml) === '') {
             return '';
@@ -1004,13 +1012,16 @@ final class Repository
         }
         $xp = new \DOMXPath($dom);
         $numbers = [];
-        foreach ($xp->query('//*[local-name()="chNFe" or local-name()="refNFe"] | //*[local-name()="infNFe"]/*[local-name()="chave"]') ?: [] as $node) {
+        $keyExpr = $type === 'CTE'
+            ? '//*[local-name()="infNFe"]/*[local-name()="chave" or local-name()="chNFe"]'
+            : '//*[local-name()="NFref"]/*[local-name()="refNFe"]';
+        foreach ($xp->query($keyExpr) ?: [] as $node) {
             $number = $this->numberFromAccessKey((string)$node->textContent);
             if ($number !== '') {
                 $numbers[$number] = true;
             }
         }
-        foreach ($xp->query('//*[local-name()="NFref"]//*[local-name()="nNF"] | //*[local-name()="infNFe"]/*[local-name()="nDoc"]') ?: [] as $node) {
+        foreach ($xp->query('//*[local-name()="NFref"]//*[local-name()="nNF"]') ?: [] as $node) {
             $number = ltrim(preg_replace('/\D+/', '', trim((string)$node->textContent)) ?: '', '0');
             if ($number !== '') {
                 $numbers[$number] = true;
@@ -1019,7 +1030,7 @@ final class Repository
         return $numbers ? implode(', ', array_keys($numbers)) : '';
     }
 
-    private function parseReferencedNFeKeysFromXml(string $xml): string
+    private function parseReferencedNFeKeysFromXml(string $xml, string $type): string
     {
         if (trim($xml) === '') {
             return '';
@@ -1030,7 +1041,10 @@ final class Repository
         }
         $xp = new \DOMXPath($dom);
         $keys = [];
-        foreach ($xp->query('//*[local-name()="chNFe" or local-name()="refNFe"] | //*[local-name()="infNFe"]/*[local-name()="chave"]') ?: [] as $node) {
+        $expr = $type === 'CTE'
+            ? '//*[local-name()="infNFe"]/*[local-name()="chave" or local-name()="chNFe"]'
+            : '//*[local-name()="NFref"]/*[local-name()="refNFe"]';
+        foreach ($xp->query($expr) ?: [] as $node) {
             $key = preg_replace('/\D+/', '', trim((string)$node->textContent));
             if (strlen($key) === 44) {
                 $keys[$key] = true;
