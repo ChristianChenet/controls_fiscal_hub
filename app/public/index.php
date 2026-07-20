@@ -782,6 +782,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $justification = trim((string)($_POST['manifest_justification'] ?? ''));
                     $count = $manifestation->manifest($ids, $type, $justification ?: null);
                     flash_set('success', $count . ' documento(s) manifestado(s).');
+                } elseif (isset($_POST['bulk_check_cancelled'])) {
+                    $checkFilters = $postFilters;
+                    $checkFilters['posted_to_erp'] = '0';
+                    $checkFilters['status'] = '';
+                    $docs = array_values(array_filter($repo->documents($checkFilters), static function (array $doc): bool {
+                        $type = strtoupper((string)($doc['doc_type'] ?? ''));
+                        $status = (string)($doc['status'] ?? '');
+                        $key = preg_replace('/\D+/', '', (string)($doc['access_key'] ?? ''));
+                        return in_array($type, ['NFE', 'NFCE'], true)
+                            && strlen($key) === 44
+                            && !in_array($status, ['cancelado', 'denegado'], true);
+                    }));
+                    $limit = 100;
+                    $candidateCount = count($docs);
+                    $docs = array_slice($docs, 0, $limit);
+                    if (!$docs) {
+                        flash_set('warning', 'Nenhuma NF-e/NFC-e não lançada no ERP disponível para verificar com os filtros atuais.');
+                        redirect_to(base_url('?' . http_build_query($returnQuery)));
+                    }
+
+                    $byCompany = [];
+                    foreach ($docs as $doc) {
+                        $byCompany[(int)$doc['company_id']][] = $doc;
+                    }
+
+                    $checked = 0;
+                    $cancelled = 0;
+                    $updated = 0;
+                    $errors = 0;
+                    $logs = [];
+                    $jobId = $repo->createJob('nfe_cancel_check', null, 'Verificação em massa de cancelamento');
+
+                    foreach ($byCompany as $companyId => $companyDocs) {
+                        $company = $repo->findCompany((int)$companyId);
+                        if (!$company) {
+                            $errors += count($companyDocs);
+                            $logs[] = 'Empresa #' . $companyId . ': cadastro não encontrado.';
+                            continue;
+                        }
+                        $connector = $collectors['nfe'];
+                        $connector->setCompanyContext($company);
+                        foreach ($companyDocs as $doc) {
+                            $key = preg_replace('/\D+/', '', (string)$doc['access_key']);
+                            try {
+                                $beforeStatus = (string)($doc['status'] ?? '');
+                                $result = $connector->collectByAccessKey($key);
+                                $checked++;
+                                $updated += (int)$result['updated'];
+                                $after = $repo->findDocumentByAccessKey('NFE', $key, (int)$companyId)
+                                    ?: $repo->findDocumentByAccessKey('NFCE', $key, (int)$companyId);
+                                if ($after && $beforeStatus !== 'cancelado' && (string)($after['status'] ?? '') === 'cancelado') {
+                                    $cancelled++;
+                                }
+                            } catch (Throwable $e) {
+                                $errors++;
+                                $logs[] = 'Chave ' . $key . ': ' . $e->getMessage();
+                            }
+                        }
+                    }
+
+                    $repo->finishJob($jobId, $errors > 0 ? 'warning' : 'success', 0, $updated, $errors, implode(PHP_EOL, $logs));
+                    $repo->logAction('nfe_cancel_check', 'Verificação em massa de cancelamento: ' . $checked . ' chave(s), ' . $cancelled . ' cancelada(s), ' . $errors . ' erro(s).');
+                    $message = 'Verificação concluída: ' . $checked . ' chave(s) consultada(s), ' . $cancelled . ' marcada(s) como cancelada(s).';
+                    if ($candidateCount > $limit) {
+                        $message .= ' Limite de ' . $limit . ' por execução; rode novamente para continuar.';
+                    }
+                    flash_set($errors > 0 ? 'warning' : 'success', $message);
                 } elseif (isset($_POST['bulk_export'])) {
                     if (!$ids) {
                         flash_set('warning', 'Selecione ao menos um documento.');

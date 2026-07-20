@@ -177,6 +177,7 @@ $documentFilterKeys = [
             </select>
             <input type="text" name="manifest_justification" placeholder="Justificativa quando exigida">
             <button class="primary" name="bulk_manifest" value="1">Manifestar selecionados</button>
+            <button class="button-compact" name="bulk_check_cancelled" value="1" title="Consulta em massa as NF-e/NFC-e não lançadas no ERP pelos filtros atuais para tentar identificar cancelamentos antes do lançamento.">Verificar cancelamentos dos filtrados</button>
         </div>
     </div>
     <div class="export-panel is-collapsed compact-export-panel" id="documents-export-panel">
