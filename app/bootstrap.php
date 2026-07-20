@@ -126,6 +126,11 @@ if ($repo->getSetting('migrate_informative_events_20260522', '') !== '1') {
     $repo->setSetting('migrate_informative_events_20260522', '1');
     $repo->logAction('document_event_migration', 'Eventos informativos migrados: ' . $events['migrated'] . ', removidos da contagem de documentos: ' . $events['deleted'] . '.');
 }
+if ($repo->getSetting('repair_cancelled_events_20260720', '') !== '1') {
+    $cancelled = $repo->repairCancelledDocumentsFromEvents();
+    $repo->setSetting('repair_cancelled_events_20260720', '1');
+    $repo->logAction('document_repair', 'Notas marcadas como canceladas por eventos SEFAZ: ' . $cancelled . '.');
+}
 
 $runtimeSettingKeys = [
     'default_download_dir',

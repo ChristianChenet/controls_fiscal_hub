@@ -357,7 +357,8 @@ final class Repository
         }
         $digest = (string)($data['digest'] ?? hash('sha256', (string)($data['raw_xml'] ?? json_encode($data))));
         $document = $this->findDocumentByAccessKey('NFE', $accessKey, !empty($data['company_id']) ? (int)$data['company_id'] : null)
-            ?: $this->findDocumentByAccessKey('NFCE', $accessKey, !empty($data['company_id']) ? (int)$data['company_id'] : null);
+            ?: $this->findDocumentByAccessKey('NFCE', $accessKey, !empty($data['company_id']) ? (int)$data['company_id'] : null)
+            ?: $this->findDocumentByAccessKey('CTE', $accessKey, !empty($data['company_id']) ? (int)$data['company_id'] : null);
 
         $stmt = $this->pdo->prepare("INSERT INTO document_events(company_id, document_id, access_key, event_type, event_name, event_date, protocol, issuer_cnpj, schema_name, raw_xml, digest, created_at)
             VALUES(:company_id, :document_id, :access_key, :event_type, :event_name, :event_date, :protocol, :issuer_cnpj, :schema_name, :raw_xml, :digest, :created_at)
@@ -376,6 +377,9 @@ final class Repository
             'digest' => $digest,
             'created_at' => date('c'),
         ]);
+        if ($this->isCancellationEvent($data) && $document) {
+            $this->markDocumentCancelledFromEvent((int)$document['id'], (string)($data['event_date'] ?? ''), (string)($data['protocol'] ?? ''));
+        }
     }
 
     private function attachEventSummaries(array $documents): array
@@ -637,7 +641,12 @@ final class Repository
         if (!empty($filters['status'])) { $where[] = 'status = :status'; $params['status'] = $filters['status']; }
         if (!empty($filters['manifestation_status'])) { $where[] = 'manifestation_status = :manifestation_status'; $params['manifestation_status'] = $filters['manifestation_status']; }
         if ((string)($filters['posted_to_erp'] ?? '') === '1') { $where[] = 'COALESCE(posted_to_erp, FALSE) = TRUE'; }
-        if ((string)($filters['posted_to_erp'] ?? '') === '0') { $where[] = 'COALESCE(posted_to_erp, FALSE) = FALSE'; }
+        if ((string)($filters['posted_to_erp'] ?? '') === '0') {
+            $where[] = 'COALESCE(posted_to_erp, FALSE) = FALSE';
+            if (empty($filters['status'])) {
+                $where[] = "status NOT IN ('cancelado', 'denegado')";
+            }
+        }
         if (!empty($filters['without_referenced_nfe'])) { $where[] = "(doc_type = 'CTE' AND COALESCE(referenced_nfe_keys, '') = '')"; }
         if (!empty($filters['cte_taker_only'])) {
             $companyDigits = $this->digitsOnlySql('documents.company_cnpj');
@@ -1759,6 +1768,27 @@ final class Repository
         return ['migrated' => $migrated, 'deleted' => $deleted, 'types' => $types];
     }
 
+    public function repairCancelledDocumentsFromEvents(): int
+    {
+        $stmt = $this->pdo->query("SELECT e.document_id, e.access_key, e.event_type, e.event_name, e.event_date, e.protocol
+            FROM document_events e
+            WHERE e.event_type = '110111' OR LOWER(COALESCE(e.event_name, '')) LIKE '%cancel%'");
+        $updated = 0;
+        foreach ($stmt->fetchAll() as $event) {
+            $documentId = (int)($event['document_id'] ?? 0);
+            if ($documentId <= 0) {
+                $doc = $this->findDocumentByAccessKey('NFE', (string)$event['access_key'])
+                    ?: $this->findDocumentByAccessKey('NFCE', (string)$event['access_key'])
+                    ?: $this->findDocumentByAccessKey('CTE', (string)$event['access_key']);
+                $documentId = (int)($doc['id'] ?? 0);
+            }
+            if ($documentId > 0) {
+                $updated += $this->markDocumentCancelledFromEvent($documentId, (string)($event['event_date'] ?? ''), (string)($event['protocol'] ?? ''));
+            }
+        }
+        return $updated;
+    }
+
     public function parseInformativeEventXml(string $xml): ?array
     {
         if (trim($xml) === '') {
@@ -1781,7 +1811,7 @@ final class Repository
             $text = trim((string)$nodes->item(0)?->textContent);
             return $text === '' ? null : $text;
         };
-        $accessKey = preg_replace('/\D+/', '', (string)$value('chNFe'));
+        $accessKey = preg_replace('/\D+/', '', (string)($value('chNFe') ?: $value('chCTe')));
         if (strlen($accessKey) !== 44) {
             return null;
         }
@@ -1813,6 +1843,37 @@ final class Repository
         $sets[] = 'updated_at = :updated_at';
         $stmt = $this->pdo->prepare('UPDATE documents SET ' . implode(', ', $sets) . ' WHERE id = :id');
         $stmt->execute($params);
+    }
+
+    private function isCancellationEvent(array $event): bool
+    {
+        $type = preg_replace('/\D+/', '', (string)($event['event_type'] ?? ''));
+        $name = mb_strtolower((string)($event['event_name'] ?? ''));
+        return $type === '110111' || str_contains($name, 'cancel');
+    }
+
+    private function markDocumentCancelledFromEvent(int $documentId, string $eventDate = '', string $protocol = ''): int
+    {
+        $noteParts = ['Documento cancelado conforme evento recebido da SEFAZ.'];
+        if ($eventDate !== '') {
+            $noteParts[] = 'Evento em ' . $eventDate . '.';
+        }
+        if ($protocol !== '') {
+            $noteParts[] = 'Protocolo ' . $protocol . '.';
+        }
+        $stmt = $this->pdo->prepare("UPDATE documents
+            SET status = 'cancelado',
+                manifestation_status = 'not_applicable',
+                notes = TRIM(COALESCE(notes, '') || ' ' || :note),
+                updated_at = :updated_at
+            WHERE id = :id
+              AND status <> 'cancelado'");
+        $stmt->execute([
+            'id' => $documentId,
+            'note' => implode(' ', $noteParts),
+            'updated_at' => date('c'),
+        ]);
+        return $stmt->rowCount();
     }
 
     private function xmlRootAndValues(string $xml): array
