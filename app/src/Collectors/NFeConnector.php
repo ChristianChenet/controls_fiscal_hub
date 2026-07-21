@@ -87,6 +87,38 @@ final class NFeConnector extends AbstractFiscalCollector
         ];
     }
 
+    public function queryProtocolStatus(string $accessKey): array
+    {
+        $company = $this->currentCompany();
+        $this->certificates->assertMatchesCompany((int)$company['id'], (string)$company['cnpj']);
+        $accessKey = preg_replace('/\D+/', '', $accessKey);
+        if (strlen($accessKey) !== 44) {
+            throw new \RuntimeException('Chave NF-e inválida.');
+        }
+
+        $requestXml = $this->buildConsSitNFeXml($accessKey);
+        $url = $this->consultaProtocoloUrl($accessKey);
+        $soap = $this->soapClient()->send(
+            $url,
+            (string)$this->config['nfe_consulta_protocolo_action'],
+            $requestXml,
+            'http://www.portalfiscal.inf.br/nfe/wsdl/NFeConsultaProtocolo4',
+            'nfeConsultaNF',
+            'nfeDadosMsg',
+            (int)$company['id']
+        );
+        $status = $this->parseProtocolStatusResponse($soap);
+        $updated = $this->repo->applyNFeProtocolStatus($accessKey, $status, (int)$company['id']);
+        $message = trim(($status['cStat'] ?? '') . ' ' . ($status['xMotivo'] ?? ''));
+        $this->storage->appendLog('collector_nfe_status.log', 'NF-e situação [' . $company['cnpj'] . '] chave=' . $accessKey . ' URL=' . $url . ' retorno=' . $message);
+        return [
+            'updated' => $updated,
+            'errors' => 0,
+            'cStat' => (string)($status['cStat'] ?? ''),
+            'message' => 'Situação NF-e ' . $accessKey . ': ' . ($message ?: 'sem retorno'),
+        ];
+    }
+
     public function collect(): array
     {
         $company = $this->currentCompany();
@@ -283,5 +315,59 @@ XML;
   </consChNFe>
 </distDFeInt>
 XML;
+    }
+
+    private function buildConsSitNFeXml(string $accessKey): string
+    {
+        $tpAmb = (string)$this->config['sefaz_environment'];
+        return <<<XML
+<?xml version="1.0" encoding="UTF-8"?>
+<consSitNFe xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">
+  <tpAmb>{$tpAmb}</tpAmb>
+  <xServ>CONSULTAR</xServ>
+  <chNFe>{$accessKey}</chNFe>
+</consSitNFe>
+XML;
+    }
+
+    private function consultaProtocoloUrl(string $accessKey): string
+    {
+        $configured = trim((string)($this->config['nfe_consulta_protocolo_url'] ?? ''));
+        if ($configured !== '') {
+            return $configured;
+        }
+        $environment = (string)($this->config['sefaz_environment'] ?? '1');
+        $uf = substr($accessKey, 0, 2);
+        $production = [
+            '41' => 'https://nfe.sefa.pr.gov.br/nfe/NFeConsultaProtocolo4',
+        ];
+        $homologation = [
+            '41' => 'https://homologacao.nfe.sefa.pr.gov.br/nfe/NFeConsultaProtocolo4',
+        ];
+        $map = $environment === '2' ? $homologation : $production;
+        if (!empty($map[$uf])) {
+            return $map[$uf];
+        }
+        throw new \RuntimeException('URL de consulta de protocolo NF-e não configurada para a UF da chave ' . $uf . '. Configure NFE_CONSULTA_PROTOCOLO_URL no ambiente.');
+    }
+
+    private function parseProtocolStatusResponse(string $soap): array
+    {
+        $xml = $this->extractReturnXml($soap);
+        $dom = new \DOMDocument();
+        if (!$dom->loadXML($xml, LIBXML_NOCDATA | LIBXML_NOBLANKS)) {
+            return ['cStat' => '', 'xMotivo' => 'Retorno inválido da consulta de situação.'];
+        }
+        $xp = new \DOMXPath($dom);
+        $first = static function (string $name) use ($xp): string {
+            $nodes = $xp->query('//*[local-name()="' . $name . '"]');
+            return ($nodes && $nodes->length > 0) ? trim((string)$nodes->item(0)?->textContent) : '';
+        };
+        return [
+            'cStat' => $first('cStat'),
+            'xMotivo' => $first('xMotivo'),
+            'nProt' => $first('nProt'),
+            'dhRecbto' => $first('dhRecbto'),
+        ];
     }
 }

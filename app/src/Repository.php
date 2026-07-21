@@ -1798,6 +1798,59 @@ final class Repository
         return $updated;
     }
 
+    public function applyNFeProtocolStatus(string $accessKey, array $status, ?int $companyId = null): int
+    {
+        $accessKey = preg_replace('/\D+/', '', $accessKey) ?: '';
+        if (strlen($accessKey) !== 44) {
+            return 0;
+        }
+        $cStat = preg_replace('/\D+/', '', (string)($status['cStat'] ?? '')) ?: '';
+        $xMotivo = trim((string)($status['xMotivo'] ?? ''));
+        $protocol = trim((string)($status['nProt'] ?? ''));
+        $receivedAt = trim((string)($status['dhRecbto'] ?? ''));
+        $newStatus = match ($cStat) {
+            '101', '151', '155' => 'cancelado',
+            '110', '301', '302', '303' => 'denegado',
+            '100', '150' => 'xml_completo',
+            default => null,
+        };
+        if ($newStatus === null) {
+            return 0;
+        }
+
+        $note = 'Situação consultada na SEFAZ: cStat=' . $cStat . ($xMotivo !== '' ? ' - ' . $xMotivo : '') . '.';
+        if ($protocol !== '') {
+            $note .= ' Protocolo ' . $protocol . '.';
+        }
+        if ($receivedAt !== '') {
+            $note .= ' Retorno em ' . $receivedAt . '.';
+        }
+
+        $params = [
+            'access_key' => $accessKey,
+            'status' => $newStatus,
+            'manifestation_status' => 'not_applicable',
+            'note' => $note,
+            'updated_at' => date('c'),
+        ];
+        $whereCompany = '';
+        if ($companyId !== null && $companyId > 0) {
+            $whereCompany = ' AND company_id = :company_id';
+            $params['company_id'] = $companyId;
+        }
+        $stmt = $this->pdo->prepare("UPDATE documents
+            SET status = :status,
+                manifestation_status = :manifestation_status,
+                notes = TRIM(COALESCE(notes, '') || ' ' || :note),
+                updated_at = :updated_at
+            WHERE access_key = :access_key
+              AND doc_type IN ('NFE', 'NFCE')
+              {$whereCompany}
+              AND status <> :status");
+        $stmt->execute($params);
+        return $stmt->rowCount();
+    }
+
     public function parseInformativeEventXml(string $xml): ?array
     {
         if (trim($xml) === '') {

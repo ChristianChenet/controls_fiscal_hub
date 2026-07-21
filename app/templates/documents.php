@@ -1,6 +1,7 @@
 <?php include __DIR__ . '/layout_top.php'; ?>
 <?php
 $filters = $documentFilters ?? [];
+$documentsDeferred = !empty($documentsDeferred);
 $totals = $documentTotals ?? ['total' => 0, 'total_value' => 0];
 $currentPage = (int)($documentPage ?? 1);
 $perPage = (int)($documentPerPage ?? 200);
@@ -188,6 +189,9 @@ $documentFilterKeys = [
     </div>
 
     <div class="table-wrap documents-table-wrap">
+        <?php if ($documentsDeferred): ?>
+            <div class="empty-state">Use os filtros acima e clique em Filtrar entradas para carregar o grid.</div>
+        <?php endif; ?>
         <table class="table documents-table">
             <thead>
                 <tr>

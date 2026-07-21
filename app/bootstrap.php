@@ -69,6 +69,8 @@ $config = [
     'nfe_distribution_action' => env_value('NFE_DISTRIBUTION_ACTION', 'http://www.portalfiscal.inf.br/nfe/wsdl/NFeDistribuicaoDFe/nfeDistDFeInteresse'),
     'nfe_recepcaoevento_url' => env_value('NFE_RECEPCAOEVENTO_URL', 'https://www1.nfe.fazenda.gov.br/NFeRecepcaoEvento4/NFeRecepcaoEvento4.asmx'),
     'nfe_recepcaoevento_action' => env_value('NFE_RECEPCAOEVENTO_ACTION', 'http://www.portalfiscal.inf.br/nfe/wsdl/NFeRecepcaoEvento4/nfeRecepcaoEventoNF'),
+    'nfe_consulta_protocolo_url' => env_value('NFE_CONSULTA_PROTOCOLO_URL', ''),
+    'nfe_consulta_protocolo_action' => env_value('NFE_CONSULTA_PROTOCOLO_ACTION', 'http://www.portalfiscal.inf.br/nfe/wsdl/NFeConsultaProtocolo4/nfeConsultaNF'),
 
     'cte_distribution_url' => env_value('CTE_DISTRIBUTION_URL', 'https://www1.cte.fazenda.gov.br/CTeDistribuicaoDFe/CTeDistribuicaoDFe.asmx'),
     'cte_distribution_action' => env_value('CTE_DISTRIBUTION_ACTION', 'http://www.portalfiscal.inf.br/cte/wsdl/CTeDistribuicaoDFe/cteDistDFeInteresse'),
@@ -140,6 +142,8 @@ $runtimeSettingKeys = [
     'nfe_distribution_action',
     'nfe_recepcaoevento_url',
     'nfe_recepcaoevento_action',
+    'nfe_consulta_protocolo_url',
+    'nfe_consulta_protocolo_action',
     'cte_distribution_url',
     'cte_distribution_action',
     'nfse_base_url',

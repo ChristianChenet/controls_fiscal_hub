@@ -321,8 +321,9 @@ final class JobRunner
             $key = preg_replace('/\D+/', '', (string)$doc['access_key']);
             try {
                 $result = $collector->collectByAccessKey($key);
+                $statusResult = method_exists($collector, 'queryProtocolStatus') ? $collector->queryProtocolStatus($key) : ['updated' => 0, 'message' => 'Consulta de situação indisponível.'];
                 $checked++;
-                $updated += (int)($result['updated'] ?? 0);
+                $updated += (int)($result['updated'] ?? 0) + (int)($statusResult['updated'] ?? 0);
                 $message = (string)($result['message'] ?? '');
                 if (str_contains(mb_strtolower($message), 'bloquead') || str_contains($message, 'Consumo Indevido')) {
                     break;

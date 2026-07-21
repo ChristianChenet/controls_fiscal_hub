@@ -564,6 +564,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'nfe_distribution_action',
                         'nfe_recepcaoevento_url',
                         'nfe_recepcaoevento_action',
+                        'nfe_consulta_protocolo_url',
+                        'nfe_consulta_protocolo_action',
                         'cte_distribution_url',
                         'cte_distribution_action',
                         'nfse_base_url',
@@ -840,8 +842,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             try {
                                 $beforeStatus = (string)($doc['status'] ?? '');
                                 $result = $connector->collectByAccessKey($key);
+                                $statusResult = method_exists($connector, 'queryProtocolStatus') ? $connector->queryProtocolStatus($key) : ['updated' => 0, 'message' => 'Consulta de situação indisponível.'];
                                 $checked++;
-                                $updated += (int)$result['updated'];
+                                $updated += (int)($statusResult['updated'] ?? 0) + (int)$result['updated'];
                                 $after = $repo->findDocumentByAccessKey('NFE', $key, (int)$companyId)
                                     ?: $repo->findDocumentByAccessKey('NFCE', $key, (int)$companyId);
                                 if ($after && $beforeStatus !== 'cancelado' && (string)($after['status'] ?? '') === 'cancelado') {
@@ -1469,6 +1472,8 @@ $viewData = [
         'nfe_distribution_action' => $repo->getSetting('nfe_distribution_action', $config['nfe_distribution_action']),
         'nfe_recepcaoevento_url' => $repo->getSetting('nfe_recepcaoevento_url', $config['nfe_recepcaoevento_url']),
         'nfe_recepcaoevento_action' => $repo->getSetting('nfe_recepcaoevento_action', $config['nfe_recepcaoevento_action']),
+        'nfe_consulta_protocolo_url' => $repo->getSetting('nfe_consulta_protocolo_url', $config['nfe_consulta_protocolo_url'] ?? ''),
+        'nfe_consulta_protocolo_action' => $repo->getSetting('nfe_consulta_protocolo_action', $config['nfe_consulta_protocolo_action'] ?? ''),
         'cte_distribution_url' => $repo->getSetting('cte_distribution_url', $config['cte_distribution_url']),
         'cte_distribution_action' => $repo->getSetting('cte_distribution_action', $config['cte_distribution_action']),
         'nfse_base_url' => $repo->getSetting('nfse_base_url', $config['nfse_base_url']),
@@ -1563,11 +1568,13 @@ switch ($page) {
         $documentFilters = document_filters_from_request($_GET);
         $documentPage = max(1, (int)($_GET['p'] ?? 1));
         $documentPerPage = 200;
+        $documentShouldQuery = count(array_diff(array_keys($_GET), ['page'])) > 0;
         $viewData['documentFilters'] = $documentFilters;
         $viewData['documentPage'] = $documentPage;
         $viewData['documentPerPage'] = $documentPerPage;
-        $viewData['documentTotals'] = $repo->documentsTotals($documentFilters);
-        $viewData['documents'] = $repo->documentsPage($documentFilters, $documentPage, $documentPerPage);
+        $viewData['documentsDeferred'] = !$documentShouldQuery;
+        $viewData['documentTotals'] = $documentShouldQuery ? $repo->documentsTotals($documentFilters) : ['total' => 0, 'total_value' => 0];
+        $viewData['documents'] = $documentShouldQuery ? $repo->documentsPage($documentFilters, $documentPage, $documentPerPage) : [];
         $viewData['documentIgnoredCfops'] = $repo->documentIgnoredCfops();
         $viewData['documentCfopOptions'] = $repo->documentCfopOptions();
         include __DIR__ . '/../templates/documents.php';
