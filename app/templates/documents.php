@@ -162,6 +162,7 @@ $documentFilterKeys = [
 <form method="post" class="card documents-card">
     <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
     <?= hidden_filter_inputs($documentFilterKeys, $filters) ?>
+    <input type="hidden" name="p" value="<?= h((string)$currentPage) ?>">
     <div class="grid-toolbar documents-grid-toolbar"><div><h2>Grid de entradas</h2><small>Exportação respeita todos os filtros aplicados.</small></div></div>
     <div class="toolbar">
         <div class="inline">
@@ -173,7 +174,7 @@ $documentFilterKeys = [
             </select>
             <input type="text" name="manifest_justification" placeholder="Justificativa quando exigida">
             <button class="primary" name="bulk_manifest" value="1">Manifestar selecionados</button>
-            <button class="button-compact" name="bulk_check_cancelled" value="1" title="Consulta em massa as NF-e/NFC-e não lançadas no ERP pelos filtros atuais para tentar identificar cancelamentos antes do lançamento.">Verificar cancelamentos dos filtrados</button>
+            <button class="button-compact" name="bulk_check_cancelled" value="1" title="Consulta a situação na SEFAZ das NF-e/NFC-e selecionadas, independente de lançamento no ERP.">Verificar cancelamentos selecionados</button>
         </div>
     </div>
     <div class="export-panel is-collapsed compact-export-panel" id="documents-export-panel">

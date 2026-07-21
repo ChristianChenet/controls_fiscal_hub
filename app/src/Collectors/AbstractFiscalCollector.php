@@ -80,7 +80,7 @@ abstract class AbstractFiscalCollector implements CollectorInterface
         $dom = new DOMDocument();
         $dom->loadXML($soapResponse, LIBXML_NOCDATA | LIBXML_NOBLANKS);
         $xp = new DOMXPath($dom);
-        $nodes = $xp->query('//*[local-name()="nfeDistDFeInteresseResult" or local-name()="cteDistDFeInteresseResult" or local-name()="nfeRecepcaoEventoResult" or local-name()="nfeRecepcaoEventoNFResult"]');
+        $nodes = $xp->query('//*[local-name()="nfeDistDFeInteresseResult" or local-name()="cteDistDFeInteresseResult" or local-name()="nfeRecepcaoEventoResult" or local-name()="nfeRecepcaoEventoNFResult" or local-name()="nfeConsultaNFResult"]');
         if ($nodes && $nodes->length > 0) {
             $resultNode = $nodes->item(0);
             foreach ($resultNode?->childNodes ?? [] as $childNode) {
@@ -90,7 +90,7 @@ abstract class AbstractFiscalCollector implements CollectorInterface
             }
             return html_entity_decode((string)$resultNode?->textContent, ENT_QUOTES | ENT_XML1, 'UTF-8');
         }
-        $nodes = $xp->query('//*[local-name()="retDistDFeInt" or local-name()="retEnvEvento"]');
+        $nodes = $xp->query('//*[local-name()="retDistDFeInt" or local-name()="retEnvEvento" or local-name()="retConsSitNFe"]');
         if ($nodes && $nodes->length > 0) return $dom->saveXML($nodes->item(0));
         return $soapResponse;
     }
