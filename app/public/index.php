@@ -846,6 +846,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             try {
                                 $beforeStatus = (string)($doc['status'] ?? '');
                                 $statusResult = method_exists($connector, 'queryProtocolStatus') ? $connector->queryProtocolStatus($key) : $connector->collectByAccessKey($key);
+                                $statusCode = preg_replace('/\D+/', '', (string)($statusResult['cStat'] ?? '')) ?: '';
+                                if (in_array($statusCode, ['100', '150'], true)) {
+                                    $distributionResult = $connector->collectByAccessKey($key);
+                                    $eventUpdated = $repo->repairCancelledDocumentsFromEvents();
+                                    $statusResult['updated'] = (int)($statusResult['updated'] ?? 0) + (int)($distributionResult['updated'] ?? 0) + $eventUpdated;
+                                    $statusResult['message'] = trim((string)($statusResult['message'] ?? 'consulta de protocolo concluida') . ' | Distribuicao por chave: ' . (string)($distributionResult['message'] ?? 'sem retorno'));
+                                }
                                 $checked++;
                                 $updated += (int)($statusResult['updated'] ?? 0);
                                 $after = $repo->findDocumentByAccessKey('NFE', $key, (int)$companyId)
@@ -867,7 +874,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($candidateCount > $limit) {
                         $message .= ' Limite de ' . $limit . ' por execucao; rode novamente para continuar.';
                     }
-                    if ($errors > 0 && $logs) {
+                    if (($errors > 0 || $cancelled === 0) && $logs) {
                         $message .= ' Detalhe: ' . implode(' | ', array_slice($logs, 0, 3));
                     }
                     flash_set($errors > 0 ? 'warning' : 'success', $message);
