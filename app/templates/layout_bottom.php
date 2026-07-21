@@ -55,6 +55,54 @@
             syncLabel();
         });
     });
+    document.querySelectorAll('[data-multi-open]').forEach(function (button) {
+        var id = button.getAttribute('data-multi-open');
+        var modal = document.querySelector('[data-multi-modal="' + id + '"]');
+        var field = button.closest('.compact-multi-field');
+        var hidden = document.querySelector('[data-multi-hidden="' + id + '"]');
+        if (!modal || !field || !hidden) return;
+        var caption = button.querySelector('[data-multi-caption]');
+        var baseName = hidden.getAttribute('data-multi-name') || '';
+        function sync() {
+            var checked = Array.from(modal.querySelectorAll('[data-multi-checkbox="' + id + '"]:checked'));
+            var inputName = baseName;
+            hidden.innerHTML = '';
+            checked.forEach(function (checkbox) {
+                var input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = inputName + '[]';
+                input.value = checkbox.value;
+                hidden.appendChild(input);
+            });
+            if (caption) {
+                caption.textContent = checked.length === 0 ? 'Todas' : (checked.length === 1 ? '1 selecionada' : checked.length + ' selecionadas');
+            }
+        }
+        button.addEventListener('click', function () {
+            modal.classList.remove('is-hidden');
+            modal.querySelector('[data-multi-search="' + id + '"]')?.focus();
+        });
+        modal.querySelectorAll('[data-multi-close="' + id + '"]').forEach(function (close) {
+            close.addEventListener('click', function () { modal.classList.add('is-hidden'); });
+        });
+        modal.addEventListener('click', function (event) {
+            if (event.target === modal) modal.classList.add('is-hidden');
+        });
+        modal.querySelector('[data-multi-clear="' + id + '"]')?.addEventListener('click', function () {
+            modal.querySelectorAll('[data-multi-checkbox="' + id + '"]').forEach(function (checkbox) { checkbox.checked = false; });
+            sync();
+        });
+        modal.querySelectorAll('[data-multi-checkbox="' + id + '"]').forEach(function (checkbox) {
+            checkbox.addEventListener('change', sync);
+        });
+        modal.querySelector('[data-multi-search="' + id + '"]')?.addEventListener('input', function (event) {
+            var term = (event.target.value || '').toLowerCase();
+            modal.querySelectorAll('[data-multi-option]').forEach(function (option) {
+                option.style.display = option.getAttribute('data-multi-option').indexOf(term) >= 0 ? '' : 'none';
+            });
+        });
+        sync();
+    });
 })();
 </script>
 </body>

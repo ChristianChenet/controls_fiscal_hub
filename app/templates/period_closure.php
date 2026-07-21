@@ -3,6 +3,10 @@
 $selectedClosure = $selectedClosure ?? null;
 $summary = $selectedClosure && !empty($selectedClosure['summary_json']) ? (json_decode((string)$selectedClosure['summary_json'], true) ?: []) : [];
 $periodItems = $periodItems ?? [];
+$periodCompanyOptions = array_map(static fn(array $co): array => [
+    'value' => (string)$co['id'],
+    'label' => (string)$co['company_name'] . ' - ' . (string)$co['cnpj'],
+], $companies ?? []);
 ?>
 <div class="page-header split-header">
     <div>
@@ -35,14 +39,7 @@ $periodItems = $periodItems ?? [];
         <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
         <div id="period-form-body" class="collapsible-area">
         <div class="form-row radar-main">
-            <label>Empresas
-                <select name="company_ids[]" multiple size="3">
-                    <option value="0">Todos os CNPJs ativos</option>
-                    <?php foreach (($companies ?? []) as $co): ?>
-                        <option value="<?= h((string)$co['id']) ?>"><?= h($co['company_name']) ?> - <?= h($co['cnpj']) ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </label>
+            <?= compact_multi_picker('Empresas', 'company_ids', $periodCompanyOptions, []) ?>
             <label>Tipos
                 <select name="doc_types[]" multiple size="3">
                     <option value="nfe" selected>NF-e</option>

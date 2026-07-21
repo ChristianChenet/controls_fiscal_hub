@@ -278,6 +278,68 @@ final class JobRunner
             }
         }
 
+        $cancelCheck = $this->checkRetroactiveNfeCancellations($company);
+        $updated += (int)$cancelCheck['updated'];
+        $errors += (int)$cancelCheck['errors'];
+        $logs[] = (string)$cancelCheck['message'];
+
         return compact('created', 'updated', 'errors', 'logs');
+    }
+
+    private function checkRetroactiveNfeCancellations(array $company): array
+    {
+        if (empty($this->collectors['nfe']) || !method_exists($this->collectors['nfe'], 'collectByAccessKey')) {
+            return ['updated' => 0, 'errors' => 0, 'message' => 'Verificação de cancelamentos retroativos indisponível.'];
+        }
+
+        $limit = max(1, min(100, (int)$this->repo->getSetting('nfe_cancel_check_limit_per_run', '20')));
+        $docs = $this->repo->documents([
+            'company_id' => [(string)$company['id']],
+            'doc_type' => 'NFE',
+            'posted_to_erp' => '0',
+            'entry_only' => '1',
+            'sort_by' => 'imported_at',
+            'sort_dir' => 'desc',
+        ]);
+        $docs = array_values(array_filter($docs, static function (array $doc): bool {
+            $key = preg_replace('/\D+/', '', (string)($doc['access_key'] ?? ''));
+            return strlen($key) === 44 && !in_array((string)($doc['status'] ?? ''), ['cancelado', 'denegado'], true);
+        }));
+        $docs = array_slice($docs, 0, $limit);
+        if (!$docs) {
+            return ['updated' => 0, 'errors' => 0, 'message' => 'Verificação de cancelamentos retroativos: nenhuma NF-e não lançada elegível.'];
+        }
+
+        $collector = $this->collectors['nfe'];
+        $collector->setCompanyContext($company);
+        $checked = 0;
+        $cancelled = 0;
+        $updated = 0;
+        $errors = 0;
+
+        foreach ($docs as $doc) {
+            $key = preg_replace('/\D+/', '', (string)$doc['access_key']);
+            try {
+                $result = $collector->collectByAccessKey($key);
+                $checked++;
+                $updated += (int)($result['updated'] ?? 0);
+                $message = (string)($result['message'] ?? '');
+                if (str_contains(mb_strtolower($message), 'bloquead') || str_contains($message, 'Consumo Indevido')) {
+                    break;
+                }
+                $after = $this->repo->findDocumentByAccessKey('NFE', $key, (int)$company['id']);
+                if ($after && (string)($after['status'] ?? '') === 'cancelado') {
+                    $cancelled++;
+                }
+            } catch (\Throwable $e) {
+                $errors++;
+            }
+        }
+
+        return [
+            'updated' => $updated,
+            'errors' => $errors,
+            'message' => 'Verificação de cancelamentos retroativos: ' . $checked . ' chave(s), ' . $cancelled . ' cancelada(s), ' . $errors . ' erro(s).',
+        ];
     }
 }

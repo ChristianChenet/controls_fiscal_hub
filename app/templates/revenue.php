@@ -23,6 +23,14 @@ $exportUrl = static function (string $grid) use ($baseQuery): string {
 $hint = static function (string $text): string {
     return '<span class="hint" title="' . h($text) . '">?</span>';
 };
+$issuingStoreOptions = array_map(static fn(array $store): array => [
+    'value' => (string)($store['cnpj'] ?? ''),
+    'label' => trim((string)($store['name'] ?? '') . ' - ' . (string)($store['cnpj'] ?? '')),
+], $revenueOptions['issuingStores'] ?? []);
+$orderStoreOptions = array_map(static fn(array $store): array => [
+    'value' => (string)($store['name'] ?? ''),
+    'label' => trim((string)($store['name'] ?? '') . ' - ' . (string)($store['cnpj'] ?? '')),
+], $revenueOptions['orderStores'] ?? []);
 $taxFields = [
     'icms_amount' => 'ICMS',
     'pis_amount' => 'PIS',
@@ -132,22 +140,8 @@ $storeChart = static function (string $title, array $rows) use ($breakdownHtml):
                     <?php endforeach; ?>
                 </select>
             </label>
-            <label>Loja de emissão <?= $hint('CNPJ responsável pela emissão fiscal e pelo certificado digital.') ?>
-                <select name="issuing_store_cnpj">
-                    <option value="">Todas</option>
-                    <?php foreach (($revenueOptions['issuingStores'] ?? []) as $store): ?>
-                        <option value="<?= h((string)$store['cnpj']) ?>" <?= (($filters['issuing_store_cnpj'] ?? '') === (string)$store['cnpj']) ? 'selected' : '' ?>><?= h((string)$store['name']) ?> - <?= h((string)$store['cnpj']) ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </label>
-            <label>Loja do pedido <?= $hint('Loja onde a venda nasceu comercialmente, mesmo que a emissão ocorra em outro CNPJ.') ?>
-                <select name="order_store_name">
-                    <option value="">Todas</option>
-                    <?php foreach (($revenueOptions['orderStores'] ?? []) as $store): ?>
-                        <option value="<?= h((string)$store['name']) ?>" <?= (($filters['order_store_name'] ?? '') === (string)$store['name']) ? 'selected' : '' ?>><?= h((string)$store['name']) ?> - <?= h((string)$store['cnpj']) ?></option>
-                    <?php endforeach; ?>
-                </select>
-            </label>
+            <?= compact_multi_picker('Loja de emissão', 'issuing_store_cnpj', $issuingStoreOptions, $filters['issuing_store_cnpj'] ?? [], $hint('CNPJ responsável pela emissão fiscal e pelo certificado digital.')) ?>
+            <?= compact_multi_picker('Loja do pedido', 'order_store_name', $orderStoreOptions, $filters['order_store_name'] ?? [], $hint('Loja onde a venda nasceu comercialmente, mesmo que a emissão ocorra em outro CNPJ.')) ?>
             <label>Cliente
                 <input type="text" name="customer_name" value="<?= h((string)($filters['customer_name'] ?? '')) ?>" placeholder="Nome do cliente">
             </label>
@@ -440,7 +434,7 @@ var revenueFilterKey = 'controls.revenue.lastFilters';
 var currentParams = new URLSearchParams(window.location.search);
 if (currentParams.get('page') === 'revenue') {
     var hasBusinessFilter = Array.from(currentParams.keys()).some(function (key) {
-        return ['date_start','date_end','sale_return','document_type','document_status','issuing_store_cnpj','order_store_name','customer_name','customer_document','seller_name','order_link','order_number','number','series','access_key','product','product_group','cfop','ncm','cst_csosn','xml_available','amount_min','amount_max'].indexOf(key) >= 0;
+        return ['date_start','date_end','sale_return','document_type','document_status','issuing_store_cnpj','issuing_store_cnpj[]','order_store_name','order_store_name[]','customer_name','customer_document','seller_name','order_link','order_number','number','series','access_key','product','product_group','cfop','ncm','cst_csosn','xml_available','amount_min','amount_max'].indexOf(key) >= 0;
     });
     if (!hasBusinessFilter && localStorage.getItem(revenueFilterKey)) {
         var saved = localStorage.getItem(revenueFilterKey);

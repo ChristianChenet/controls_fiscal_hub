@@ -636,7 +636,16 @@ final class Repository
         if (!empty($filters['entry_only'])) {
             $where[] = "doc_type IN ('NFE', 'CTE')";
         }
-        if (!empty($filters['company_id'])) { $where[] = 'company_id = :company_id'; $params['company_id'] = (int)$filters['company_id']; }
+        $companyIds = $this->filterIntValues($filters['company_id'] ?? '');
+        if ($companyIds) {
+            $placeholders = [];
+            foreach ($companyIds as $idx => $companyId) {
+                $key = 'company_id_' . $idx;
+                $placeholders[] = ':' . $key;
+                $params[$key] = $companyId;
+            }
+            $where[] = 'company_id IN (' . implode(',', $placeholders) . ')';
+        }
         if (!empty($filters['doc_type'])) { $where[] = 'doc_type = :doc_type'; $params['doc_type'] = $filters['doc_type']; }
         if (!empty($filters['status'])) { $where[] = 'status = :status'; $params['status'] = $filters['status']; }
         if (!empty($filters['manifestation_status'])) { $where[] = 'manifestation_status = :manifestation_status'; $params['manifestation_status'] = $filters['manifestation_status']; }
@@ -1923,15 +1932,29 @@ final class Repository
             }
         }
         foreach (['issuing_store_cnpj' => 'issuing_store_cnpj', 'order_store_cnpj' => 'order_store_cnpj'] as $filterKey => $column) {
-            $digits = preg_replace('/\D+/', '', (string)($filters[$filterKey] ?? ''));
-            if ($digits !== '') {
-                $where[] = $this->digitsOnlySql("{$prefix}{$column}") . " = :{$filterKey}";
-                $params[$filterKey] = $digits;
+            $values = $this->filterDigitValues($filters[$filterKey] ?? '');
+            if ($values) {
+                $placeholders = [];
+                foreach ($values as $idx => $value) {
+                    $key = $filterKey . '_' . $idx;
+                    $placeholders[] = ':' . $key;
+                    $params[$key] = $value;
+                }
+                $where[] = $this->digitsOnlySql("{$prefix}{$column}") . ' IN (' . implode(',', $placeholders) . ')';
             }
+        }
+        $orderStoreNames = $this->filterStringValues($filters['order_store_name'] ?? '');
+        if ($orderStoreNames) {
+            $placeholders = [];
+            foreach ($orderStoreNames as $idx => $value) {
+                $key = 'order_store_name_' . $idx;
+                $placeholders[] = ':' . $key;
+                $params[$key] = mb_strtolower($value);
+            }
+            $where[] = 'LOWER(COALESCE(' . $prefix . 'order_store_name, \'\')) IN (' . implode(',', $placeholders) . ')';
         }
         foreach ([
             'issuing_store_name' => 'issuing_store_name',
-            'order_store_name' => 'order_store_name',
             'customer_name' => 'customer_name',
             'customer_document' => 'customer_document',
             'seller_name' => 'seller_name',
@@ -2305,6 +2328,25 @@ final class Repository
             $row['tax_balance'] = (float)$row['total_taxes'];
         }
         return $row;
+    }
+
+    private function filterStringValues(mixed $value): array
+    {
+        $values = is_array($value) ? $value : [$value];
+        $values = array_map(static fn(mixed $item): string => trim((string)$item), $values);
+        return array_values(array_unique(array_filter($values, static fn(string $item): bool => $item !== '')));
+    }
+
+    private function filterDigitValues(mixed $value): array
+    {
+        $values = array_map(static fn(string $item): string => preg_replace('/\D+/', '', $item) ?: '', $this->filterStringValues($value));
+        return array_values(array_unique(array_filter($values, static fn(string $item): bool => $item !== '')));
+    }
+
+    private function filterIntValues(mixed $value): array
+    {
+        $values = array_map('intval', $this->filterStringValues($value));
+        return array_values(array_unique(array_filter($values, static fn(int $item): bool => $item > 0)));
     }
 
     public function revenueDocumentsPage(array $filters, int $page = 1, int $perPage = 200): array

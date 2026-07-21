@@ -7,6 +7,18 @@ extract(app_container());
 
 $page = $_GET['page'] ?? 'dashboard';
 
+function request_values(array $source, string $key): array|string
+{
+    if (!array_key_exists($key, $source)) {
+        return '';
+    }
+    $value = $source[$key];
+    if (is_array($value)) {
+        return array_values(array_filter(array_map('strval', $value), static fn(string $item): bool => trim($item) !== ''));
+    }
+    return (string)$value;
+}
+
 function revenue_filters_from_request(array $source): array
 {
     return [
@@ -16,10 +28,10 @@ function revenue_filters_from_request(array $source): array
         'document_status' => $source['document_status'] ?? '',
         'purpose' => $source['purpose'] ?? '',
         'sale_return' => $source['sale_return'] ?? '',
-        'issuing_store_cnpj' => $source['issuing_store_cnpj'] ?? '',
+        'issuing_store_cnpj' => request_values($source, 'issuing_store_cnpj'),
         'issuing_store_name' => $source['issuing_store_name'] ?? '',
         'order_store_cnpj' => $source['order_store_cnpj'] ?? '',
-        'order_store_name' => $source['order_store_name'] ?? '',
+        'order_store_name' => request_values($source, 'order_store_name'),
         'customer_name' => $source['customer_name'] ?? '',
         'customer_document' => $source['customer_document'] ?? '',
         'seller_name' => $source['seller_name'] ?? '',
@@ -51,7 +63,7 @@ function document_filters_from_request(array $source): array
         $docType = '';
     }
     return [
-        'company_id' => $source['company_id'] ?? '',
+        'company_id' => request_values($source, 'company_id'),
         'doc_type' => $docType,
         'status' => $source['status'] ?? '',
         'manifestation_status' => $source['manifestation_status'] ?? '',

@@ -9,6 +9,10 @@ $baseQuery = array_filter($filters, static fn($value) => $value !== '' && $value
 $baseQuery['page'] = 'documents';
 $exportQuery = $baseQuery;
 $exportQuery['page'] = 'documents_export';
+$companyOptions = array_map(static fn(array $co): array => [
+    'value' => (string)$co['id'],
+    'label' => (string)$co['company_name'] . ' - ' . (string)$co['cnpj'],
+], $companies ?? []);
 $documentFilterKeys = [
     'company_id','doc_type','status','manifestation_status','posted_to_erp','without_referenced_nfe','cte_taker_only','ignore_cfops','entry_only','date_start','date_end',
     'company_q','number_q','issuer_q','recipient_q','access_key_q','referenced_nfe_q','referenced_number_q','product_q','cfop_q','source_q','q','sort_by','sort_dir',
@@ -49,14 +53,7 @@ $documentFilterKeys = [
                 <button class="cfop-ignore-link" type="button" data-open-ignored-cfops>Ignorar CFOPs cadastrados</button>
             </span>
         </label>
-        <label>Empresa
-            <select name="company_id">
-                <option value="">Todos os CNPJs</option>
-                <?php foreach (($companies ?? []) as $co): ?>
-                    <option value="<?= h((string)$co['id']) ?>" <?= (($filters['company_id'] ?? '') == (string)$co['id']) ? 'selected' : '' ?>><?= h($co['company_name']) ?> - <?= h($co['cnpj']) ?></option>
-                <?php endforeach; ?>
-            </select>
-        </label>
+        <?= compact_multi_picker('Empresa', 'company_id', $companyOptions, $filters['company_id'] ?? []) ?>
         <label>Tipo
             <select name="doc_type">
                 <option value="">NF-e e CT-e</option>
@@ -163,9 +160,7 @@ $documentFilterKeys = [
 
 <form method="post" class="card documents-card">
     <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
-    <?php foreach ($documentFilterKeys as $filterKey): ?>
-        <input type="hidden" name="<?= h($filterKey) ?>" value="<?= h((string)($filters[$filterKey] ?? '')) ?>">
-    <?php endforeach; ?>
+    <?= hidden_filter_inputs($documentFilterKeys, $filters) ?>
     <div class="grid-toolbar documents-grid-toolbar"><div><h2>Grid de entradas</h2><small>Exportação respeita todos os filtros aplicados.</small></div></div>
     <div class="toolbar">
         <div class="inline">
@@ -307,9 +302,7 @@ $documentFilterKeys = [
         </div>
         <form method="post" class="ignored-cfop-form">
             <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
-            <?php foreach ($documentFilterKeys as $filterKey): ?>
-                <input type="hidden" name="<?= h($filterKey) ?>" value="<?= h((string)($filters[$filterKey] ?? '')) ?>">
-            <?php endforeach; ?>
+            <?= hidden_filter_inputs($documentFilterKeys, $filters) ?>
             <div class="form-row">
                 <label>CFOP existente
                     <select name="ignored_cfop" required>
@@ -342,9 +335,7 @@ $documentFilterKeys = [
                         <td>
                             <form method="post" class="inline-form">
                                 <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
-                                <?php foreach ($documentFilterKeys as $filterKey): ?>
-                                    <input type="hidden" name="<?= h($filterKey) ?>" value="<?= h((string)($filters[$filterKey] ?? '')) ?>">
-                                <?php endforeach; ?>
+                                <?= hidden_filter_inputs($documentFilterKeys, $filters) ?>
                                 <input type="hidden" name="ignored_cfop_id" value="<?= h((string)$ignored['id']) ?>">
                                 <button class="row-action row-action-button" name="delete_ignored_cfop" value="1">Remover</button>
                             </form>
@@ -393,7 +384,10 @@ $documentFilterKeys = [
 <form id="column-filter-form" method="get">
     <input type="hidden" name="page" value="documents">
     <input type="hidden" name="q" value="<?= h((string)($filters['q'] ?? '')) ?>">
-    <input type="hidden" name="company_id" value="<?= h((string)($filters['company_id'] ?? '')) ?>">
+    <?php $companyFilterValues = is_array($filters['company_id'] ?? '') ? ($filters['company_id'] ?? []) : array_filter([(string)($filters['company_id'] ?? '')]); ?>
+    <?php foreach ($companyFilterValues as $companyFilterValue): ?>
+        <input type="hidden" name="company_id[]" value="<?= h((string)$companyFilterValue) ?>">
+    <?php endforeach; ?>
     <input type="hidden" name="doc_type" value="<?= h((string)($filters['doc_type'] ?? '')) ?>">
     <input type="hidden" name="status" value="<?= h((string)($filters['status'] ?? '')) ?>">
     <input type="hidden" name="posted_to_erp" value="<?= h((string)($filters['posted_to_erp'] ?? '')) ?>">
