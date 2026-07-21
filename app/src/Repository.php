@@ -1808,6 +1808,8 @@ final class Repository
         $xMotivo = trim((string)($status['xMotivo'] ?? ''));
         $protocol = trim((string)($status['nProt'] ?? ''));
         $receivedAt = trim((string)($status['dhRecbto'] ?? ''));
+        $eventType = trim((string)($status['event_type'] ?? ''));
+        $eventStatus = trim((string)($status['event_cStat'] ?? ''));
         $newStatus = match ($cStat) {
             '101', '151', '155' => 'cancelado',
             '110', '301', '302', '303' => 'denegado',
@@ -1819,6 +1821,9 @@ final class Repository
         }
 
         $note = 'Situação consultada na SEFAZ: cStat=' . $cStat . ($xMotivo !== '' ? ' - ' . $xMotivo : '') . '.';
+        if ($eventType !== '' || $eventStatus !== '') {
+            $note .= ' Evento' . ($eventType !== '' ? ' ' . $eventType : '') . ($eventStatus !== '' ? ' cStat=' . $eventStatus : '') . '.';
+        }
         if ($protocol !== '') {
             $note .= ' Protocolo ' . $protocol . '.';
         }

@@ -359,15 +359,49 @@ XML;
             return ['cStat' => '', 'xMotivo' => 'Retorno inválido da consulta de situação.'];
         }
         $xp = new \DOMXPath($dom);
-        $first = static function (string $name) use ($xp): string {
-            $nodes = $xp->query('//*[local-name()="' . $name . '"]');
+        $text = static function (string $query, ?\DOMNode $context = null) use ($xp): string {
+            $nodes = $context ? $xp->query($query, $context) : $xp->query($query);
             return ($nodes && $nodes->length > 0) ? trim((string)$nodes->item(0)?->textContent) : '';
         };
+
+        $events = $xp->query('//*[local-name()="procEventoNFe" or local-name()="retEvento" or local-name()="evento"]');
+        foreach ($events ?: [] as $event) {
+            $eventType = $text('.//*[local-name()="tpEvento"]', $event);
+            $eventName = $text('.//*[local-name()="xEvento"]', $event);
+            $eventStatus = $text('.//*[local-name()="retEvento"]/*[local-name()="infEvento"]/*[local-name()="cStat"]', $event);
+            if ($eventStatus === '') {
+                $eventStatus = $text('.//*[local-name()="infEvento"]/*[local-name()="cStat"]', $event);
+            }
+            $isCancellation = $eventType === '110111' || str_contains(strtolower($eventName), 'cancel');
+            $isAccepted = in_array($eventStatus, ['101', '135', '136', '155'], true);
+            if ($isCancellation && ($isAccepted || $eventStatus === '')) {
+                $reason = $text('.//*[local-name()="retEvento"]/*[local-name()="infEvento"]/*[local-name()="xMotivo"]', $event);
+                if ($reason === '') {
+                    $reason = $text('.//*[local-name()="infEvento"]/*[local-name()="xMotivo"]', $event);
+                }
+                return [
+                    'cStat' => '101',
+                    'xMotivo' => $reason !== '' ? $reason : 'Cancelamento localizado na consulta de protocolo.',
+                    'nProt' => $text('.//*[local-name()="retEvento"]/*[local-name()="infEvento"]/*[local-name()="nProt"]', $event)
+                        ?: $text('.//*[local-name()="infEvento"]/*[local-name()="nProt"]', $event),
+                    'dhRecbto' => $text('.//*[local-name()="retEvento"]/*[local-name()="infEvento"]/*[local-name()="dhRegEvento"]', $event)
+                        ?: $text('.//*[local-name()="infEvento"]/*[local-name()="dhRegEvento"]', $event),
+                    'event_cStat' => $eventStatus,
+                    'event_type' => $eventType,
+                ];
+            }
+        }
+
+        $retConsSit = $xp->query('//*[local-name()="retConsSitNFe"]')->item(0);
+        $context = $retConsSit instanceof \DOMNode ? $retConsSit : null;
+
         return [
-            'cStat' => $first('cStat'),
-            'xMotivo' => $first('xMotivo'),
-            'nProt' => $first('nProt'),
-            'dhRecbto' => $first('dhRecbto'),
+            'cStat' => $context ? $text('./*[local-name()="cStat"]', $context) : $text('//*[local-name()="cStat"]'),
+            'xMotivo' => $context ? $text('./*[local-name()="xMotivo"]', $context) : $text('//*[local-name()="xMotivo"]'),
+            'nProt' => $text('//*[local-name()="protNFe"]/*[local-name()="infProt"]/*[local-name()="nProt"]')
+                ?: $text('//*[local-name()="nProt"]'),
+            'dhRecbto' => $text('//*[local-name()="protNFe"]/*[local-name()="infProt"]/*[local-name()="dhRecbto"]')
+                ?: $text('//*[local-name()="dhRecbto"]'),
         ];
     }
 }
