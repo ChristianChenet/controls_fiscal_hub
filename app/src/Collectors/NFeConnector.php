@@ -320,14 +320,11 @@ XML;
     private function buildConsSitNFeXml(string $accessKey): string
     {
         $tpAmb = (string)$this->config['sefaz_environment'];
-        return <<<XML
-<?xml version="1.0" encoding="UTF-8"?>
-<consSitNFe xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00">
-  <tpAmb>{$tpAmb}</tpAmb>
-  <xServ>CONSULTAR</xServ>
-  <chNFe>{$accessKey}</chNFe>
-</consSitNFe>
-XML;
+        return '<consSitNFe xmlns="http://www.portalfiscal.inf.br/nfe" versao="4.00"><tpAmb>'
+            . $tpAmb
+            . '</tpAmb><xServ>CONSULTAR</xServ><chNFe>'
+            . $accessKey
+            . '</chNFe></consSitNFe>';
     }
 
     private function consultaProtocoloUrl(string $accessKey): string

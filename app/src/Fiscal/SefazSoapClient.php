@@ -79,7 +79,7 @@ final class SefazSoapClient
         string $methodName,
         string $messageNodeName
     ): string {
-        $messageXml = $this->stripXmlDeclaration($messageXml);
+        $messageXml = $this->compactXml($this->stripXmlDeclaration($messageXml));
 
         return <<<XML
 <?xml version="1.0" encoding="utf-8"?>
@@ -98,6 +98,11 @@ XML;
     private function stripXmlDeclaration(string $xml): string
     {
         return trim((string) preg_replace('/^(?:\xEF\xBB\xBF)?\s*<\?xml[^?]*\?>\s*/i', '', $xml, 1));
+    }
+
+    private function compactXml(string $xml): string
+    {
+        return trim((string) preg_replace('/>\s+</', '><', $xml));
     }
 
     private function appendDebugLog(string $content): void
