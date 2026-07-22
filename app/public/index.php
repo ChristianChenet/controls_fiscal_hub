@@ -753,12 +753,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'doc_type',
                     'status',
                     'manifestation_status',
-                    'order_presence',
+                    'posted_to_erp',
+                    'without_referenced_nfe',
                     'date_start',
                     'date_end',
                     'company_q',
                     'number_q',
-                    'order_number_q',
                     'issuer_q',
                     'recipient_q',
                     'access_key_q',
@@ -787,9 +787,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (isset($_POST['save_ignored_cfop'])) {
                     $repo->saveDocumentIgnoredCfop((string)($_POST['ignored_cfop'] ?? ''), (string)($_POST['ignored_reason'] ?? ''), $auth->user());
                     flash_set('success', 'CFOP adicionado a lista de ignorados.');
+                    redirect_to(base_url('?' . http_build_query($returnQuery)));
                 } elseif (isset($_POST['delete_ignored_cfop'])) {
                     $repo->deleteDocumentIgnoredCfop((int)($_POST['ignored_cfop_id'] ?? 0));
                     flash_set('success', 'CFOP removido da lista de ignorados.');
+                    redirect_to(base_url('?' . http_build_query($returnQuery)));
+                } elseif (isset($_POST['save_ignored_documents'])) {
+                    $count = $repo->saveDocumentIgnoredDocuments($ids, (string)($_POST['ignored_document_reason'] ?? ''), $auth->user());
+                    flash_set($count > 0 ? 'success' : 'warning', $count . ' nota(s) adicionada(s) a lista de ignoradas.');
+                    redirect_to(base_url('?' . http_build_query($returnQuery)));
+                } elseif (isset($_POST['delete_ignored_document'])) {
+                    $repo->deleteDocumentIgnoredDocument((int)($_POST['ignored_document_id'] ?? 0));
+                    flash_set('success', 'Nota removida da lista de ignoradas.');
+                    redirect_to(base_url('?' . http_build_query($returnQuery)));
                 } elseif (isset($_POST['bulk_manifest'])) {
                     if (!$ids) {
                         flash_set('warning', 'Selecione ao menos um documento.');
@@ -1590,6 +1600,7 @@ switch ($page) {
         $viewData['documentTotals'] = $documentShouldQuery ? $repo->documentsTotals($documentFilters) : ['total' => 0, 'total_value' => 0];
         $viewData['documents'] = $documentShouldQuery ? $repo->documentsPage($documentFilters, $documentPage, $documentPerPage) : [];
         $viewData['documentIgnoredCfops'] = $repo->documentIgnoredCfops();
+        $viewData['documentIgnoredDocuments'] = $repo->documentIgnoredDocuments();
         $viewData['documentCfopOptions'] = $repo->documentCfopOptions();
         include __DIR__ . '/../templates/documents.php';
         break;

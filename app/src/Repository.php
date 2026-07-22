@@ -723,6 +723,12 @@ final class Repository
                 JOIN document_ignored_cfops dic ON dic.cfop = dix.cfop
                 WHERE dix.document_id = documents.id
             )";
+            $where[] = "NOT EXISTS (
+                SELECT 1
+                FROM document_ignored_documents did
+                WHERE did.document_id = documents.id
+                   OR (COALESCE(did.access_key, '') <> '' AND did.access_key = documents.access_key)
+            )";
         }
         return [$where, $params];
     }
@@ -812,6 +818,57 @@ final class Repository
     public function deleteDocumentIgnoredCfop(int $id): void
     {
         $stmt = $this->pdo->prepare('DELETE FROM document_ignored_cfops WHERE id = :id');
+        $stmt->execute(['id' => $id]);
+    }
+
+    public function documentIgnoredDocuments(): array
+    {
+        return $this->pdo->query('SELECT * FROM document_ignored_documents ORDER BY created_at DESC, id DESC LIMIT 500')->fetchAll();
+    }
+
+    public function saveDocumentIgnoredDocuments(array $ids, string $reason, ?array $user): int
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids), static fn(int $id): bool => $id > 0)));
+        $reason = trim($reason);
+        if (!$ids) {
+            throw new \RuntimeException('Selecione ao menos uma nota para ignorar.');
+        }
+        if ($reason === '') {
+            throw new \RuntimeException('Informe a justificativa para ignorar a nota.');
+        }
+
+        $stmt = $this->pdo->prepare('INSERT INTO document_ignored_documents(document_id, access_key, doc_type, document_number, issuer_name, issuer_cnpj, company_name, company_cnpj, reason, user_id, user_name, created_at)
+            VALUES(:document_id, :access_key, :doc_type, :document_number, :issuer_name, :issuer_cnpj, :company_name, :company_cnpj, :reason, :user_id, :user_name, :created_at)
+            ON CONFLICT(document_id) DO UPDATE SET access_key = excluded.access_key, doc_type = excluded.doc_type, document_number = excluded.document_number, issuer_name = excluded.issuer_name, issuer_cnpj = excluded.issuer_cnpj, company_name = excluded.company_name, company_cnpj = excluded.company_cnpj, reason = excluded.reason, user_id = excluded.user_id, user_name = excluded.user_name, created_at = excluded.created_at');
+
+        $saved = 0;
+        foreach ($ids as $id) {
+            $doc = $this->findDocument($id);
+            if (!$doc) {
+                continue;
+            }
+            $stmt->execute([
+                'document_id' => (int)$doc['id'],
+                'access_key' => (string)($doc['access_key'] ?? ''),
+                'doc_type' => (string)($doc['doc_type'] ?? ''),
+                'document_number' => (string)($doc['number'] ?? ''),
+                'issuer_name' => (string)($doc['issuer_name'] ?? ''),
+                'issuer_cnpj' => (string)($doc['issuer_cnpj'] ?? ''),
+                'company_name' => (string)($doc['company_name'] ?? ''),
+                'company_cnpj' => (string)($doc['company_cnpj'] ?? ''),
+                'reason' => $reason,
+                'user_id' => $user['id'] ?? null,
+                'user_name' => $user['name'] ?? ($user['email'] ?? null),
+                'created_at' => date('c'),
+            ]);
+            $saved++;
+        }
+        return $saved;
+    }
+
+    public function deleteDocumentIgnoredDocument(int $id): void
+    {
+        $stmt = $this->pdo->prepare('DELETE FROM document_ignored_documents WHERE id = :id');
         $stmt->execute(['id' => $id]);
     }
 

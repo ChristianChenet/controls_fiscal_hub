@@ -47,11 +47,11 @@ $documentFilterKeys = [
         <label>CFOP
             <input type="text" name="cfop_q" placeholder="CFOP do item" value="<?= h((string)($filters['cfop_q'] ?? '')) ?>">
         </label>
-        <label class="cfop-ignore-field">CFOPs ignorados
+        <label class="cfop-ignore-field">Ignorados
             <input type="hidden" name="ignore_cfops" value="0">
             <span class="cfop-ignore-line">
                 <input type="checkbox" name="ignore_cfops" value="1" <?= ((string)($filters['ignore_cfops'] ?? '1') !== '0') ? 'checked' : '' ?>>
-                <button class="cfop-ignore-link" type="button" data-open-ignored-cfops>Ignorar CFOPs cadastrados</button>
+                <button class="cfop-ignore-link" type="button" data-open-ignored-cfops>Ignorar CFOPs/notas cadastrados</button>
             </span>
         </label>
         <?= compact_multi_picker('Empresa', 'company_id', $companyOptions, $filters['company_id'] ?? []) ?>
@@ -175,6 +175,8 @@ $documentFilterKeys = [
             <input type="text" name="manifest_justification" placeholder="Justificativa quando exigida">
             <button class="primary" name="bulk_manifest" value="1">Manifestar selecionados</button>
             <button class="button-compact" name="bulk_check_cancelled" value="1" title="Consulta a situação na SEFAZ das NF-e/NFC-e selecionadas, independente de lançamento no ERP.">Verificar cancelamentos selecionados</button>
+            <input type="text" name="ignored_document_reason" placeholder="Justificativa para ignorar">
+            <button class="button-compact" name="save_ignored_documents" value="1">Ignorar notas selecionadas</button>
         </div>
     </div>
     <div class="export-panel is-collapsed compact-export-panel" id="documents-export-panel">
@@ -300,8 +302,8 @@ $documentFilterKeys = [
     <div class="modal-panel">
         <div class="modal-header">
             <div>
-                <h2 id="ignored-cfops-title">CFOPs ignorados em Entradas</h2>
-                <small>Nao mostrar documentos com os CFOPs informados, pois nao realizamos a escrituracao Fiscal desses documentos.</small>
+                <h2 id="ignored-cfops-title">Ignorados em Entradas</h2>
+                <small>Nao mostrar documentos com os CFOPs ou notas informados, pois nao realizamos a escrituracao Fiscal desses documentos.</small>
             </div>
             <button type="button" class="modal-close" data-close-ignored-cfops>&times;</button>
         </div>
@@ -348,6 +350,36 @@ $documentFilterKeys = [
                     </tr>
                 <?php endforeach; ?>
                 <?php if (empty($documentIgnoredCfops)): ?><tr><td colspan="5">Nenhum CFOP ignorado cadastrado.</td></tr><?php endif; ?>
+                </tbody>
+            </table>
+        </div>
+        <h3 class="modal-section-title">Notas ignoradas</h3>
+        <div class="table-wrap">
+            <table class="table documents-items-table">
+                <thead><tr><th>Nota</th><th>Emissor</th><th>Empresa</th><th>Justificativa</th><th>Usuario</th><th>Ignorada em</th><th>Acao</th></tr></thead>
+                <tbody>
+                <?php foreach (($documentIgnoredDocuments ?? []) as $ignoredDoc): ?>
+                    <tr>
+                        <td>
+                            <strong><?= h((string)($ignoredDoc['document_number'] ?? '')) ?></strong><br>
+                            <small><?= h((string)($ignoredDoc['doc_type'] ?? '')) ?> <?= h((string)($ignoredDoc['access_key'] ?? '')) ?></small>
+                        </td>
+                        <td><?= h((string)($ignoredDoc['issuer_name'] ?? '')) ?><br><small><?= h((string)($ignoredDoc['issuer_cnpj'] ?? '')) ?></small></td>
+                        <td><?= h((string)($ignoredDoc['company_name'] ?? '')) ?><br><small><?= h((string)($ignoredDoc['company_cnpj'] ?? '')) ?></small></td>
+                        <td><?= h((string)($ignoredDoc['reason'] ?? '')) ?></td>
+                        <td><?= h((string)($ignoredDoc['user_name'] ?? '')) ?></td>
+                        <td><?= h(format_date($ignoredDoc['created_at'] ?? null)) ?></td>
+                        <td>
+                            <form method="post" class="inline-form">
+                                <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
+                                <?= hidden_filter_inputs($documentFilterKeys, $filters) ?>
+                                <input type="hidden" name="ignored_document_id" value="<?= h((string)$ignoredDoc['id']) ?>">
+                                <button class="row-action row-action-button" name="delete_ignored_document" value="1">Remover</button>
+                            </form>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                <?php if (empty($documentIgnoredDocuments)): ?><tr><td colspan="7">Nenhuma nota ignorada cadastrada.</td></tr><?php endif; ?>
                 </tbody>
             </table>
         </div>

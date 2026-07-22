@@ -179,6 +179,23 @@ final class Database
                 created_at TEXT NOT NULL
             )",
             "CREATE INDEX IF NOT EXISTS idx_document_ignored_cfops_cfop ON document_ignored_cfops(cfop)",
+            "CREATE TABLE IF NOT EXISTS document_ignored_documents (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                document_id INTEGER NOT NULL UNIQUE,
+                access_key TEXT NULL,
+                doc_type TEXT NULL,
+                document_number TEXT NULL,
+                issuer_name TEXT NULL,
+                issuer_cnpj TEXT NULL,
+                company_name TEXT NULL,
+                company_cnpj TEXT NULL,
+                reason TEXT NOT NULL,
+                user_id INTEGER NULL,
+                user_name TEXT NULL,
+                created_at TEXT NOT NULL
+            )",
+            "CREATE INDEX IF NOT EXISTS idx_document_ignored_documents_document ON document_ignored_documents(document_id)",
+            "CREATE INDEX IF NOT EXISTS idx_document_ignored_documents_access_key ON document_ignored_documents(access_key)",
             "CREATE TABLE IF NOT EXISTS document_events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 company_id INTEGER NULL,
@@ -480,6 +497,23 @@ final class Database
                 created_at TIMESTAMP NOT NULL DEFAULT NOW()
             )",
             "CREATE INDEX IF NOT EXISTS idx_document_ignored_cfops_cfop ON document_ignored_cfops(cfop)",
+            "CREATE TABLE IF NOT EXISTS document_ignored_documents (
+                id SERIAL PRIMARY KEY,
+                document_id INTEGER NOT NULL UNIQUE REFERENCES documents(id) ON DELETE CASCADE,
+                access_key VARCHAR(60) NULL,
+                doc_type VARCHAR(20) NULL,
+                document_number VARCHAR(80) NULL,
+                issuer_name TEXT NULL,
+                issuer_cnpj VARCHAR(20) NULL,
+                company_name TEXT NULL,
+                company_cnpj VARCHAR(20) NULL,
+                reason TEXT NOT NULL,
+                user_id INTEGER NULL,
+                user_name TEXT NULL,
+                created_at TIMESTAMP NOT NULL DEFAULT NOW()
+            )",
+            "CREATE INDEX IF NOT EXISTS idx_document_ignored_documents_document ON document_ignored_documents(document_id)",
+            "CREATE INDEX IF NOT EXISTS idx_document_ignored_documents_access_key ON document_ignored_documents(access_key)",
             "CREATE TABLE IF NOT EXISTS document_events (
                 id SERIAL PRIMARY KEY,
                 company_id INTEGER NULL REFERENCES companies(id) ON DELETE SET NULL,

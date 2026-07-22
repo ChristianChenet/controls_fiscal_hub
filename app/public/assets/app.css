@@ -1512,6 +1512,7 @@ textarea{
 .cfop-ignore-link{border:0;background:transparent;padding:0;color:#17312d;font-weight:800;font-size:12px;line-height:1.2;text-align:left;cursor:pointer}
 .cfop-ignore-link:hover{color:#08a43c;text-decoration:underline}
 .ignored-cfop-form{margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #e5ede9}
+.modal-section-title{margin:18px 0 10px;font-size:15px;color:#102035}
 .form-action-label{align-self:end}
 .inline-form{display:inline}
 .actions-col{min-width:160px}
