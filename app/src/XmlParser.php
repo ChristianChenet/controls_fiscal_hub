@@ -79,10 +79,17 @@ final class XmlParser
         $issueDate = $this->x($xp, '//c:ide/c:dhEmi') ?: $this->x($xp, '//c:ide/c:dEmi') ?: $this->firstAny($xp, ['//*[local-name()="ide"]/*[local-name()="dhEmi"]', '//*[local-name()="ide"]/*[local-name()="dEmi"]']);
         $accessKey = $this->attr($xp, '//*[local-name()="infCte" or local-name()="infCteOS"]/@Id') ?: $this->firstAny($xp, ['//*[local-name()="chCTe"]']) ?: $this->attr($xp, '//@Id');
         $accessKey = preg_replace('/^CTe/', '', $accessKey ?? '');
+        $model = $this->x($xp, '//c:ide/c:mod') ?: $this->firstAny($xp, ['//*[local-name()="ide"]/*[local-name()="mod"]']) ?: '57';
+        $protocolStatus = $this->firstAny($xp, ['//*[local-name()="protCTe"]/*[local-name()="infProt"]/*[local-name()="cStat"]']);
+        $status = match ($protocolStatus) {
+            '101', '151', '155' => 'cancelado',
+            '110', '301', '302', '303' => 'denegado',
+            default => 'xml_completo',
+        };
 
         return [
             'doc_type' => 'CTE',
-            'model' => '57',
+            'model' => $model,
             'access_key' => $accessKey ?: null,
             'referenced_nfe_keys' => $this->referencedNFeKeys($xp, 'CTE', $accessKey),
             'referenced_document_numbers' => $this->referencedDocumentNumbers($xp, 'CTE', $accessKey),
@@ -90,11 +97,11 @@ final class XmlParser
             'order_number' => $this->firstAny($xp, ['//*[local-name()="xPed"]']),
             'issuer_cnpj' => $this->x($xp, '//c:emit/c:CNPJ') ?: $this->firstAny($xp, ['//*[local-name()="emit"]/*[local-name()="CNPJ"]']),
             'issuer_name' => $this->x($xp, '//c:emit/c:xNome') ?: $this->firstAny($xp, ['//*[local-name()="emit"]/*[local-name()="xNome"]']),
-            'recipient_cnpj' => $this->x($xp, '//c:rem/c:CNPJ') ?: $this->x($xp, '//c:dest/c:CNPJ') ?: $this->firstAny($xp, ['//*[local-name()="dest"]/*[local-name()="CNPJ"]', '//*[local-name()="rem"]/*[local-name()="CNPJ"]', '//*[local-name()="toma4"]/*[local-name()="CNPJ"]']),
+            'recipient_cnpj' => $this->x($xp, '//c:dest/c:CNPJ') ?: $this->x($xp, '//c:dest/c:CPF') ?: $this->firstAny($xp, ['//*[local-name()="dest"]/*[local-name()="CNPJ"]', '//*[local-name()="dest"]/*[local-name()="CPF"]']) ?: $this->x($xp, '//c:rem/c:CNPJ') ?: $this->x($xp, '//c:rem/c:CPF') ?: $this->firstAny($xp, ['//*[local-name()="rem"]/*[local-name()="CNPJ"]', '//*[local-name()="rem"]/*[local-name()="CPF"]', '//*[local-name()="toma4"]/*[local-name()="CNPJ"]', '//*[local-name()="toma4"]/*[local-name()="CPF"]']),
             'recipient_name' => $this->x($xp, '//c:dest/c:xNome') ?: $this->x($xp, '//c:rem/c:xNome') ?: $this->firstAny($xp, ['//*[local-name()="dest"]/*[local-name()="xNome"]', '//*[local-name()="rem"]/*[local-name()="xNome"]', '//*[local-name()="toma4"]/*[local-name()="xNome"]']),
             'issue_date' => $issueDate ?: null,
             'total_value' => $this->toFloat($this->x($xp, '//c:vPrest/c:vTPrest') ?: $this->firstAny($xp, ['//*[local-name()="vPrest"]/*[local-name()="vTPrest"]', '//*[local-name()="vTPrest"]', '//*[local-name()="vRec"]'])),
-            'status' => 'xml_completo',
+            'status' => $status,
             'manifestation_status' => 'not_applicable',
             'source' => 'manual_import',
             'notes' => null,

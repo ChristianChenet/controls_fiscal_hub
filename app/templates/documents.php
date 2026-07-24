@@ -174,7 +174,7 @@ $documentFilterKeys = [
             </select>
             <input type="text" name="manifest_justification" placeholder="Justificativa quando exigida">
             <button class="primary" name="bulk_manifest" value="1">Manifestar selecionados</button>
-            <button class="button-compact" name="bulk_check_cancelled" value="1" title="Consulta a situação na SEFAZ das NF-e/NFC-e selecionadas, independente de lançamento no ERP.">Verificar cancelamentos selecionados</button>
+            <button class="button-compact" name="bulk_check_cancelled" value="1" title="Consulta a situação na SEFAZ das NF-e/NFC-e/CT-e selecionadas, independente de lançamento no ERP.">Verificar cancelamentos selecionados</button>
             <input type="text" name="ignored_document_reason" placeholder="Justificativa para ignorar">
             <button class="button-compact" name="save_ignored_documents" value="1">Ignorar notas selecionadas</button>
         </div>
