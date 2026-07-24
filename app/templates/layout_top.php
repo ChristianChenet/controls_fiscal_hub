@@ -21,23 +21,23 @@
 
         <nav class="nav-menu">
             <?php if (!empty($isAdmin)): ?>
-            <a class="<?= $page === 'dashboard' ? 'active' : '' ?>" href="<?= h(base_url()) ?>" title="Resumo XMLs"><span class="nav-icon">&#9638;</span><span class="nav-label">Resumo XMLs</span></a>
+            <a class="<?= $page === 'dashboard' ? 'active' : '' ?>" href="<?= h(base_url()) ?>" title="Resumo XMLs"><span class="nav-icon">▦</span><span class="nav-label">Resumo XMLs</span></a>
             <?php endif; ?>
-            <a class="<?= $page === 'revenue' ? 'active' : '' ?>" href="<?= h(base_url('?page=revenue')) ?>" title="Faturamento"><span class="nav-icon">&#9635;</span><span class="nav-label">Faturamento</span></a>
+            <a class="<?= $page === 'revenue' ? 'active' : '' ?>" href="<?= h(base_url('?page=revenue')) ?>" title="Faturamento"><span class="nav-icon">▣</span><span class="nav-label">Faturamento</span></a>
             <?php if (!empty($isAdmin)): ?>
-            <a class="<?= $page === 'companies' ? 'active' : '' ?>" href="<?= h(base_url('?page=companies')) ?>" title="Empresas"><span class="nav-icon">&#9636;</span><span class="nav-label">Empresas</span></a>
-            <a class="<?= $page === 'import' ? 'active' : '' ?>" href="<?= h(base_url('?page=import')) ?>" title="Importar XML"><span class="nav-icon">&#8679;</span><span class="nav-label">Importar XML</span></a>
+            <a class="<?= $page === 'companies' ? 'active' : '' ?>" href="<?= h(base_url('?page=companies')) ?>" title="Empresas"><span class="nav-icon">▥</span><span class="nav-label">Empresas</span></a>
+            <a class="<?= $page === 'import' ? 'active' : '' ?>" href="<?= h(base_url('?page=import')) ?>" title="Importar XML"><span class="nav-icon">⇪</span><span class="nav-label">Importar XML</span></a>
             <?php endif; ?>
-            <a class="<?= $page === 'documents' ? 'active' : '' ?>" href="<?= h(base_url('?page=documents')) ?>" title="Entradas"><span class="nav-icon">&#9776;</span><span class="nav-label">Entradas</span></a>
+            <a class="<?= $page === 'documents' ? 'active' : '' ?>" href="<?= h(base_url('?page=documents')) ?>" title="Entradas"><span class="nav-icon">☰</span><span class="nav-label">Entradas</span></a>
             <?php if (!empty($isAdmin)): ?>
-            <a class="<?= $page === 'jobs' ? 'active' : '' ?>" href="<?= h(base_url('?page=jobs')) ?>" title="Radar de XML"><span class="nav-icon">&#8635;</span><span class="nav-label">Radar de XML</span></a>
-            <a class="<?= $page === 'nfe_keys' ? 'active' : '' ?>" href="<?= h(base_url('?page=nfe_keys')) ?>" title="Busca por Chave"><span class="nav-icon">#</span><span class="nav-label">Busca por Chave</span></a>
-            <a class="<?= $page === 'nfe_rescan' ? 'active' : '' ?>" href="<?= h(base_url('?page=nfe_rescan')) ?>" title="Revarrer NF-e"><span class="nav-icon">&#8634;</span><span class="nav-label">Revarrer NF-e</span></a>
-            <a class="<?= $page === 'users' ? 'active' : '' ?>" href="<?= h(base_url('?page=users')) ?>" title="Usuarios"><span class="nav-icon">&#9673;</span><span class="nav-label">Usuarios</span></a>
-            <a class="<?= $page === 'settings' ? 'active' : '' ?>" href="<?= h(base_url('?page=settings')) ?>" title="Configuracoes"><span class="nav-icon">&#9881;</span><span class="nav-label">Configuracoes</span></a>
+            <a class="<?= $page === 'jobs' ? 'active' : '' ?>" href="<?= h(base_url('?page=jobs')) ?>" title="Radar de XML"><span class="nav-icon">⟳</span><span class="nav-label">Radar de XML</span></a>
+            <a class="<?= $page === 'nfe_keys' ? 'active' : '' ?>" href="<?= h(base_url('?page=nfe_keys')) ?>" title="Busca por Chave"><span class="nav-icon">⌕</span><span class="nav-label">Busca por Chave</span></a>
+            <a class="<?= $page === 'nfe_rescan' ? 'active' : '' ?>" href="<?= h(base_url('?page=nfe_rescan')) ?>" title="Revarrer NF-e"><span class="nav-icon">↺</span><span class="nav-label">Revarrer NF-e</span></a>
+            <a class="<?= $page === 'users' ? 'active' : '' ?>" href="<?= h(base_url('?page=users')) ?>" title="Usuarios"><span class="nav-icon">◉</span><span class="nav-label">Usuarios</span></a>
+            <a class="<?= $page === 'settings' ? 'active' : '' ?>" href="<?= h(base_url('?page=settings')) ?>" title="Configuracoes"><span class="nav-icon">⚙</span><span class="nav-label">Configuracoes</span></a>
             <?php endif; ?>
             <?php if ($config['auth_enabled']): ?>
-                <a href="<?= h(base_url('?page=logout')) ?>" title="Sair"><span class="nav-icon">&#8594;</span><span class="nav-label">Sair</span></a>
+                <a href="<?= h(base_url('?page=logout')) ?>" title="Sair"><span class="nav-icon">→</span><span class="nav-label">Sair</span></a>
             <?php endif; ?>
         </nav>
 

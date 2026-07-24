@@ -634,8 +634,6 @@ final class Repository
 
     private function documentWhere(array $filters): array
     {
-        $driver = (string)$this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
-        $likeOp = $driver === 'sqlite' ? 'LIKE' : 'ILIKE';
         $where = ["status <> 'evento_informativo'"];
         $params = [];
         if (!empty($filters['entry_only'])) {
@@ -673,7 +671,8 @@ final class Repository
         if ($dateEnd !== null) { $where[] = 'issue_date <= :date_end'; $params['date_end'] = $dateEnd . ' 23:59:59'; }
         $recipientFilter = trim((string)($filters['recipient_q'] ?? ''));
         if ($recipientFilter !== '') {
-            $recipientParts = ["recipient_name {$likeOp} :recipient_q", "recipient_cnpj {$likeOp} :recipient_q"];
+            $driver = (string)$this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+            $recipientParts = ['recipient_name ILIKE :recipient_q', 'recipient_cnpj ILIKE :recipient_q'];
             $params['recipient_q'] = '%' . $recipientFilter . '%';
 
             $recipientDigits = preg_replace('/\D+/', '', $recipientFilter);
@@ -681,7 +680,7 @@ final class Repository
                 // Destinatario pode ser filtrado por CNPJ com ou sem mascara.
                 $recipientParts[] = $driver === 'sqlite'
                     ? 'recipient_cnpj LIKE :recipient_digits'
-                    : "regexp_replace(COALESCE(recipient_cnpj, ''), '\\D', '', 'g') {$likeOp} :recipient_digits";
+                    : "regexp_replace(COALESCE(recipient_cnpj, ''), '\\D', '', 'g') ILIKE :recipient_digits";
                 $params['recipient_digits'] = '%' . $recipientDigits . '%';
             }
             $where[] = '(' . implode(' OR ', $recipientParts) . ')';
@@ -698,14 +697,14 @@ final class Repository
             if (!empty($filters[$filterKey])) {
                 $parts = [];
                 foreach ($columns as $column) {
-                    $parts[] = $column . ' ' . $likeOp . ' :' . $filterKey;
+                    $parts[] = $column . ' ILIKE :' . $filterKey;
                 }
                 $where[] = '(' . implode(' OR ', $parts) . ')';
                 $params[$filterKey] = '%' . $filters[$filterKey] . '%';
             }
         }
         if (!empty($filters['q'])) {
-            $where[] = "(issuer_name {$likeOp} :q OR issuer_cnpj {$likeOp} :q OR recipient_name {$likeOp} :q OR recipient_cnpj {$likeOp} :q OR access_key {$likeOp} :q OR number {$likeOp} :q OR company_name {$likeOp} :q OR company_cnpj {$likeOp} :q)";
+            $where[] = '(issuer_name ILIKE :q OR issuer_cnpj ILIKE :q OR recipient_name ILIKE :q OR recipient_cnpj ILIKE :q OR access_key ILIKE :q OR number ILIKE :q OR company_name ILIKE :q OR company_cnpj ILIKE :q)';
             $params['q'] = '%'.$filters['q'].'%';
         }
         $itemParts = [];

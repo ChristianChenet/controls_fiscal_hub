@@ -1114,10 +1114,19 @@ body{
   height:24px;
   display:grid;
   place-items:center;
-  color:inherit;
-  font-size:17px;
-  font-weight:700;
+  color:#d7e2f0;
+  font-size:16px;
+  font-weight:850;
   line-height:1;
+  border-radius:6px;
+  background:rgba(255,255,255,.055);
+  border:1px solid rgba(255,255,255,.06);
+}
+.nav-menu a:hover .nav-icon,
+.nav-menu a.active .nav-icon{
+  color:var(--green-strong);
+  background:rgba(103,255,61,.10);
+  border-color:rgba(103,255,61,.18);
 }
 .nav-label{
   font-size:14px;
@@ -1237,18 +1246,18 @@ body{
 .client-brand{
   min-width:270px;
   max-width:360px;
-  min-height:86px;
+  min-height:72px;
   display:flex;
   align-items:center;
   gap:12px;
-  padding:8px 12px;
+  padding:9px 12px;
   border-radius:8px;
   background:transparent;
   border:0;
 }
 .client-brand-logo{
-  width:76px;
-  height:76px;
+  width:58px;
+  height:58px;
   border-radius:0;
   object-fit:contain;
   border:0;
