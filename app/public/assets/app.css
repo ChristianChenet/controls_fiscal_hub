@@ -1161,7 +1161,7 @@ body{
     url("fundo-control-s.png") center top / cover fixed no-repeat;
 }
 .topbar{
-  min-height:82px;
+  min-height:116px;
   margin:0 0 12px;
   padding:0;
   align-items:center;
@@ -1234,22 +1234,22 @@ body{
   color:#101827;
 }
 .client-brand{
-  min-width:270px;
-  max-width:360px;
-  min-height:72px;
+  min-width:320px;
+  max-width:420px;
+  min-height:112px;
   display:flex;
   align-items:center;
   gap:12px;
-  padding:9px 12px;
+  padding:8px 12px;
   border-radius:8px;
   background:rgba(255,255,255,.64);
   border:1px solid rgba(16,24,39,.04);
 }
 .client-brand-logo{
-  width:58px;
-  height:58px;
+  width:104px;
+  height:104px;
   border-radius:8px;
-  object-fit:cover;
+  object-fit:contain;
   border:1px solid rgba(16,24,39,.08);
 }
 .client-brand span,
