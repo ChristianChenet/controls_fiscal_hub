@@ -1162,7 +1162,7 @@ body{
     url("fundo-control-s.png") center top / cover fixed no-repeat;
 }
 .topbar{
-  min-height:116px;
+  min-height:82px;
   margin:0 0 12px;
   padding:0;
   align-items:center;
@@ -1235,9 +1235,9 @@ body{
   color:#101827;
 }
 .client-brand{
-  min-width:320px;
-  max-width:420px;
-  min-height:112px;
+  min-width:270px;
+  max-width:360px;
+  min-height:86px;
   display:flex;
   align-items:center;
   gap:12px;
@@ -1247,8 +1247,8 @@ body{
   border:0;
 }
 .client-brand-logo{
-  width:104px;
-  height:104px;
+  width:76px;
+  height:76px;
   border-radius:0;
   object-fit:contain;
   border:0;
