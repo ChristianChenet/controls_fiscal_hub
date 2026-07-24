@@ -1114,19 +1114,9 @@ body{
   height:24px;
   display:grid;
   place-items:center;
-  color:#d7e2f0;
-  font-size:16px;
-  font-weight:850;
+  color:inherit;
+  font-size:17px;
   line-height:1;
-  border-radius:6px;
-  background:rgba(255,255,255,.055);
-  border:1px solid rgba(255,255,255,.06);
-}
-.nav-menu a:hover .nav-icon,
-.nav-menu a.active .nav-icon{
-  color:var(--green-strong);
-  background:rgba(103,255,61,.10);
-  border-color:rgba(103,255,61,.18);
 }
 .nav-label{
   font-size:14px;
@@ -1252,16 +1242,15 @@ body{
   gap:12px;
   padding:9px 12px;
   border-radius:8px;
-  background:transparent;
-  border:0;
+  background:rgba(255,255,255,.64);
+  border:1px solid rgba(16,24,39,.04);
 }
 .client-brand-logo{
   width:58px;
   height:58px;
-  border-radius:0;
-  object-fit:contain;
-  border:0;
-  background:transparent;
+  border-radius:8px;
+  object-fit:cover;
+  border:1px solid rgba(16,24,39,.08);
 }
 .client-brand span,
 .client-brand strong{

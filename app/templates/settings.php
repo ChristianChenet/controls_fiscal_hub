@@ -79,12 +79,6 @@ $autoNfseAll = ($settings['auto_nfse_all_companies'] ?? '0') === '1' || ($active
         <label>SOAP Action distribuição
             <input type="text" name="cte_distribution_action" value="<?= h($settings['cte_distribution_action']) ?>">
         </label>
-        <label>URL consulta protocolo
-            <input type="text" name="cte_consulta_protocolo_url" value="<?= h($settings['cte_consulta_protocolo_url'] ?? '') ?>" placeholder="Vazio usa endpoint da UF da chave">
-        </label>
-        <label>SOAP Action consulta protocolo
-            <input type="text" name="cte_consulta_protocolo_action" value="<?= h($settings['cte_consulta_protocolo_action'] ?? '') ?>">
-        </label>
         <h2>Automação CT-e</h2>
         <label class="checkbox-inline">
             <input type="checkbox" name="auto_cte_enabled" value="1" <?= ($settings['auto_cte_enabled'] ?? '0') === '1' ? 'checked' : '' ?>>

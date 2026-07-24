@@ -560,7 +560,6 @@ final class Repository
 
     public function documents(array $filters = []): array
     {
-        $this->refreshCteDocumentFieldsOnce();
         $this->ensureReferencedDocumentNumbers();
         $this->ensureDocumentItemsForFilters($filters);
         [$where, $params] = $this->documentWhere($filters);
@@ -577,7 +576,6 @@ final class Repository
 
     public function documentsPage(array $filters = [], int $page = 1, int $perPage = 200): array
     {
-        $this->refreshCteDocumentFieldsOnce();
         $this->ensureReferencedDocumentNumbers();
         $this->ensureDocumentItemsForFilters($filters);
         [$where, $params] = $this->documentWhere($filters);
@@ -600,7 +598,6 @@ final class Repository
 
     public function documentsTotals(array $filters = []): array
     {
-        $this->refreshCteDocumentFieldsOnce();
         $this->ensureReferencedDocumentNumbers();
         $this->ensureDocumentItemsForFilters($filters);
         [$where, $params] = $this->documentWhere($filters);
@@ -742,84 +739,6 @@ final class Repository
             return;
         }
         $this->indexMissingDocumentItems(10000);
-        if (!empty($filters['cte_taker_only'])) {
-            $this->refreshCteTakerIndexOnce();
-        }
-    }
-
-    private function refreshCteTakerIndexOnce(): void
-    {
-        $version = '20260724_toma4';
-        if ($this->getSetting('cte_taker_index_version', '') === $version) {
-            return;
-        }
-        $stmt = $this->pdo->prepare("SELECT id, raw_xml, xml_path FROM documents
-            WHERE doc_type = 'CTE'
-              AND (COALESCE(raw_xml, '') <> '' OR COALESCE(xml_path, '') <> '')
-            ORDER BY id DESC
-            LIMIT 20000");
-        $stmt->execute();
-        $delete = $this->pdo->prepare('DELETE FROM document_cte_takers WHERE document_id = :document_id');
-        $insert = $this->pdo->prepare('INSERT INTO document_cte_takers(document_id, taker_cnpj, created_at) VALUES(:document_id, :taker_cnpj, :created_at)');
-        foreach ($stmt->fetchAll() as $doc) {
-            $xml = (string)($doc['raw_xml'] ?? '');
-            $path = (string)($doc['xml_path'] ?? '');
-            if (trim($xml) === '' && $path !== '' && is_file($path)) {
-                $xml = (string)file_get_contents($path);
-            }
-            $delete->execute(['document_id' => (int)$doc['id']]);
-            $insert->execute([
-                'document_id' => (int)$doc['id'],
-                'taker_cnpj' => $this->parseCteTakerCnpjFromXml($xml),
-                'created_at' => date('c'),
-            ]);
-        }
-        $this->setSetting('cte_taker_index_version', $version);
-    }
-
-    private function refreshCteDocumentFieldsOnce(): void
-    {
-        $version = '20260724_dest_status';
-        if ($this->getSetting('cte_document_fields_version', '') === $version) {
-            return;
-        }
-        $stmt = $this->pdo->prepare("SELECT id, status, raw_xml, xml_path FROM documents
-            WHERE doc_type = 'CTE'
-              AND (COALESCE(raw_xml, '') <> '' OR COALESCE(xml_path, '') <> '')
-            ORDER BY id DESC
-            LIMIT 20000");
-        $stmt->execute();
-        $update = $this->pdo->prepare('UPDATE documents
-            SET model = :model,
-                recipient_cnpj = :recipient_cnpj,
-                recipient_name = :recipient_name,
-                status = :status,
-                updated_at = :updated_at
-            WHERE id = :id');
-        foreach ($stmt->fetchAll() as $doc) {
-            $xml = (string)($doc['raw_xml'] ?? '');
-            $path = (string)($doc['xml_path'] ?? '');
-            if (trim($xml) === '' && $path !== '' && is_file($path)) {
-                $xml = (string)file_get_contents($path);
-            }
-            $fields = $this->parseCteDocumentFieldsFromXml($xml);
-            if (!$fields) {
-                continue;
-            }
-            $currentStatus = (string)($doc['status'] ?? '');
-            if (in_array($currentStatus, ['cancelado', 'denegado'], true) && $fields['status'] === 'xml_completo') {
-                $fields['status'] = $currentStatus;
-            }
-            $update->execute([
-                'id' => (int)$doc['id'],
-                'model' => $fields['model'],
-                'recipient_cnpj' => $fields['recipient_cnpj'],
-                'recipient_name' => $fields['recipient_name'],
-                'status' => $fields['status'],
-                'updated_at' => date('c'),
-            ]);
-        }
-        $this->setSetting('cte_document_fields_version', $version);
     }
 
     private function ensureReferencedDocumentNumbers(int $limit = 10000): void
@@ -830,6 +749,8 @@ final class Repository
                   referenced_document_numbers IS NULL
                   OR referenced_nfe_keys IS NULL
                   OR COALESCE(referenced_nfe_keys, '') = COALESCE(access_key, '')
+                  OR COALESCE(referenced_nfe_keys, '') <> ''
+                  OR COALESCE(referenced_document_numbers, '') <> ''
               )
               AND (COALESCE(raw_xml, '') <> '' OR COALESCE(xml_path, '') <> '')
             ORDER BY id DESC
@@ -979,33 +900,6 @@ final class Repository
         $stmt = $this->pdo->prepare('SELECT * FROM document_items WHERE document_id = :document_id ORDER BY item_number ASC, id ASC');
         $stmt->execute(['document_id' => $documentId]);
         return $stmt->fetchAll();
-    }
-
-    private function parseCteDocumentFieldsFromXml(string $xml): array
-    {
-        if (trim($xml) === '') {
-            return [];
-        }
-        $dom = new \DOMDocument();
-        if (!$dom->loadXML($xml, LIBXML_NOCDATA | LIBXML_NOBLANKS)) {
-            return [];
-        }
-        $xp = new \DOMXPath($dom);
-        $protocolStatus = $this->xmlFirst($xp, ['//*[local-name()="protCTe"]/*[local-name()="infProt"]/*[local-name()="cStat"]']);
-        $status = match ($protocolStatus) {
-            '101', '151', '155' => 'cancelado',
-            '110', '301', '302', '303' => 'denegado',
-            default => 'xml_completo',
-        };
-        return [
-            'model' => $this->xmlFirst($xp, ['//*[local-name()="ide"]/*[local-name()="mod"]']) ?: '57',
-            'recipient_cnpj' => preg_replace('/\D+/', '', $this->xmlFirst($xp, [
-                '//*[local-name()="dest"]/*[local-name()="CNPJ"]',
-                '//*[local-name()="dest"]/*[local-name()="CPF"]',
-            ])) ?: '',
-            'recipient_name' => $this->xmlFirst($xp, ['//*[local-name()="dest"]/*[local-name()="xNome"]']),
-            'status' => $status,
-        ];
     }
 
     private function indexDocumentItems(array $doc): void
@@ -2013,64 +1907,6 @@ final class Repository
                 updated_at = :updated_at
             WHERE access_key = :access_key
               AND doc_type IN ('NFE', 'NFCE')
-              {$whereCompany}
-              AND status <> :status");
-        $stmt->execute($params);
-        return $stmt->rowCount();
-    }
-
-    public function applyCTeProtocolStatus(string $accessKey, array $status, ?int $companyId = null): int
-    {
-        $accessKey = preg_replace('/\D+/', '', $accessKey) ?: '';
-        if (strlen($accessKey) !== 44) {
-            return 0;
-        }
-        $cStat = preg_replace('/\D+/', '', (string)($status['cStat'] ?? '')) ?: '';
-        $xMotivo = trim((string)($status['xMotivo'] ?? ''));
-        $protocol = trim((string)($status['nProt'] ?? ''));
-        $receivedAt = trim((string)($status['dhRecbto'] ?? ''));
-        $eventType = trim((string)($status['event_type'] ?? ''));
-        $eventStatus = trim((string)($status['event_cStat'] ?? ''));
-        $newStatus = match ($cStat) {
-            '101', '151', '155' => 'cancelado',
-            '110', '301', '302', '303' => 'denegado',
-            '100', '150' => 'xml_completo',
-            default => null,
-        };
-        if ($newStatus === null) {
-            return 0;
-        }
-
-        $note = 'Situacao CT-e consultada na SEFAZ: cStat=' . $cStat . ($xMotivo !== '' ? ' - ' . $xMotivo : '') . '.';
-        if ($eventType !== '' || $eventStatus !== '') {
-            $note .= ' Evento' . ($eventType !== '' ? ' ' . $eventType : '') . ($eventStatus !== '' ? ' cStat=' . $eventStatus : '') . '.';
-        }
-        if ($protocol !== '') {
-            $note .= ' Protocolo ' . $protocol . '.';
-        }
-        if ($receivedAt !== '') {
-            $note .= ' Retorno em ' . $receivedAt . '.';
-        }
-
-        $params = [
-            'access_key' => $accessKey,
-            'status' => $newStatus,
-            'manifestation_status' => 'not_applicable',
-            'note' => $note,
-            'updated_at' => date('c'),
-        ];
-        $whereCompany = '';
-        if ($companyId !== null && $companyId > 0) {
-            $whereCompany = ' AND company_id = :company_id';
-            $params['company_id'] = $companyId;
-        }
-        $stmt = $this->pdo->prepare("UPDATE documents
-            SET status = :status,
-                manifestation_status = :manifestation_status,
-                notes = TRIM(COALESCE(notes, '') || ' ' || :note),
-                updated_at = :updated_at
-            WHERE access_key = :access_key
-              AND doc_type = 'CTE'
               {$whereCompany}
               AND status <> :status");
         $stmt->execute($params);

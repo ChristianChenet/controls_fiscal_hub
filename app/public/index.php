@@ -568,8 +568,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'nfe_consulta_protocolo_action',
                         'cte_distribution_url',
                         'cte_distribution_action',
-                        'cte_consulta_protocolo_url',
-                        'cte_consulta_protocolo_action',
                         'nfse_base_url',
                         'nfse_distribution_path',
                         'nfse_auth_type',
@@ -813,7 +811,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     flash_set('success', $count . ' documento(s) manifestado(s).');
                 } elseif (isset($_POST['bulk_check_cancelled'])) {
                     if (!$ids) {
-                        flash_set('warning', 'Selecione ao menos uma NF-e/NFC-e/CT-e para verificar cancelamento.');
+                        flash_set('warning', 'Selecione ao menos uma NF-e/NFC-e para verificar cancelamento.');
                         redirect_to(base_url('?' . http_build_query($returnQuery)));
                     }
                     $docs = array_values(array_filter(array_map(fn(int $id) => $repo->findDocument($id), $ids), static function (?array $doc): bool {
@@ -822,13 +820,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                         $type = strtoupper((string)($doc['doc_type'] ?? ''));
                         $key = preg_replace('/\D+/', '', (string)($doc['access_key'] ?? ''));
-                        return in_array($type, ['NFE', 'NFCE', 'CTE'], true) && strlen($key) === 44;
+                        return in_array($type, ['NFE', 'NFCE'], true) && strlen($key) === 44;
                     }));
                     $limit = 200;
                     $candidateCount = count($docs);
                     $docs = array_slice($docs, 0, $limit);
                     if (!$docs) {
-                        flash_set('warning', 'Nenhuma NF-e/NFC-e/CT-e valida foi encontrada entre os documentos selecionados.');
+                        flash_set('warning', 'Nenhuma NF-e/NFC-e valida foi encontrada entre os documentos selecionados.');
                         redirect_to(base_url('?' . http_build_query($returnQuery)));
                     }
 
@@ -842,7 +840,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $updated = 0;
                     $errors = 0;
                     $logs = [];
-                    $jobId = $repo->createJob('document_cancel_check_selected', null, 'Verificacao de cancelamento dos selecionados');
+                    $jobId = $repo->createJob('nfe_cancel_check_selected', null, 'Verificacao de cancelamento dos selecionados');
 
                     foreach ($byCompany as $companyId => $companyDocs) {
                         $company = $repo->findCompany((int)$companyId);
@@ -851,35 +849,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $logs[] = 'Empresa #' . $companyId . ': cadastro nao encontrado.';
                             continue;
                         }
+                        $connector = $collectors['nfe'];
+                        $connector->setCompanyContext($company);
                         foreach ($companyDocs as $doc) {
                             $key = preg_replace('/\D+/', '', (string)$doc['access_key']);
                             try {
-                                $type = strtoupper((string)($doc['doc_type'] ?? ''));
-                                $collectorKey = $type === 'CTE' ? 'cte' : 'nfe';
-                                $connector = $collectors[$collectorKey];
-                                $connector->setCompanyContext($company);
                                 $beforeStatus = (string)($doc['status'] ?? '');
                                 $statusResult = method_exists($connector, 'queryProtocolStatus') ? $connector->queryProtocolStatus($key) : $connector->collectByAccessKey($key);
                                 $statusCode = preg_replace('/\D+/', '', (string)($statusResult['cStat'] ?? '')) ?: '';
-                                if ($collectorKey === 'nfe' && in_array($statusCode, ['100', '150'], true)) {
+                                if (in_array($statusCode, ['100', '150'], true)) {
                                     $distributionResult = $connector->collectByAccessKey($key);
                                     $eventUpdated = $repo->repairCancelledDocumentsFromEvents();
                                     $statusResult['updated'] = (int)($statusResult['updated'] ?? 0) + (int)($distributionResult['updated'] ?? 0) + $eventUpdated;
                                     $statusResult['message'] = trim((string)($statusResult['message'] ?? 'consulta de protocolo concluida') . ' | Distribuicao por chave: ' . (string)($distributionResult['message'] ?? 'sem retorno'));
-                                } elseif ($collectorKey === 'cte') {
-                                    $eventUpdated = $repo->repairCancelledDocumentsFromEvents();
-                                    $statusResult['updated'] = (int)($statusResult['updated'] ?? 0) + $eventUpdated;
                                 }
                                 $checked++;
                                 $updated += (int)($statusResult['updated'] ?? 0);
-                                $after = $repo->findDocumentByAccessKey($type, $key, (int)$companyId);
-                                if (!$after && $type === 'NFE') {
-                                    $after = $repo->findDocumentByAccessKey('NFCE', $key, (int)$companyId);
-                                }
+                                $after = $repo->findDocumentByAccessKey('NFE', $key, (int)$companyId)
+                                    ?: $repo->findDocumentByAccessKey('NFCE', $key, (int)$companyId);
                                 if ($after && $beforeStatus !== 'cancelado' && (string)($after['status'] ?? '') === 'cancelado') {
                                     $cancelled++;
                                 }
-                                $logs[] = $type . ' chave ' . $key . ': ' . (string)($statusResult['message'] ?? 'consulta concluida');
+                                $logs[] = 'Chave ' . $key . ': ' . (string)($statusResult['message'] ?? 'consulta concluida');
                             } catch (Throwable $e) {
                                 $errors++;
                                 $logs[] = 'Chave ' . $key . ': ' . $e->getMessage();
@@ -888,7 +879,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
 
                     $repo->finishJob($jobId, $errors > 0 ? 'warning' : 'success', 0, $updated, $errors, implode(PHP_EOL, $logs));
-                    $repo->logAction('document_cancel_check_selected', 'Verificacao de cancelamento dos selecionados: ' . $checked . ' chave(s), ' . $cancelled . ' cancelada(s), ' . $errors . ' erro(s).');
+                    $repo->logAction('nfe_cancel_check_selected', 'Verificacao de cancelamento dos selecionados: ' . $checked . ' chave(s), ' . $cancelled . ' cancelada(s), ' . $errors . ' erro(s).');
                     $message = 'Verificacao concluida nos selecionados: ' . $checked . ' chave(s) consultada(s), ' . $cancelled . ' marcada(s) como cancelada(s).';
                     if ($candidateCount > $limit) {
                         $message .= ' Limite de ' . $limit . ' por execucao; rode novamente para continuar.';
@@ -1509,8 +1500,6 @@ $viewData = [
         'nfe_consulta_protocolo_action' => $repo->getSetting('nfe_consulta_protocolo_action', $config['nfe_consulta_protocolo_action'] ?? ''),
         'cte_distribution_url' => $repo->getSetting('cte_distribution_url', $config['cte_distribution_url']),
         'cte_distribution_action' => $repo->getSetting('cte_distribution_action', $config['cte_distribution_action']),
-        'cte_consulta_protocolo_url' => $repo->getSetting('cte_consulta_protocolo_url', $config['cte_consulta_protocolo_url'] ?? ''),
-        'cte_consulta_protocolo_action' => $repo->getSetting('cte_consulta_protocolo_action', $config['cte_consulta_protocolo_action'] ?? ''),
         'nfse_base_url' => $repo->getSetting('nfse_base_url', $config['nfse_base_url']),
         'nfse_distribution_path' => $repo->getSetting('nfse_distribution_path', $config['nfse_distribution_path']),
         'nfse_auth_type' => $repo->getSetting('nfse_auth_type', $config['nfse_auth_type']),
