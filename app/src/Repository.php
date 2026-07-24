@@ -75,23 +75,6 @@ final class Repository
             )",
             "CREATE INDEX IF NOT EXISTS idx_document_ignored_documents_document ON document_ignored_documents(document_id)",
             "CREATE INDEX IF NOT EXISTS idx_document_ignored_documents_access_key ON document_ignored_documents(access_key)",
-            "CREATE TABLE IF NOT EXISTS document_events (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                company_id INTEGER NULL,
-                document_id INTEGER NULL,
-                access_key TEXT NOT NULL,
-                event_type TEXT NULL,
-                event_name TEXT NULL,
-                event_date TEXT NULL,
-                protocol TEXT NULL,
-                issuer_cnpj TEXT NULL,
-                schema_name TEXT NULL,
-                raw_xml TEXT NULL,
-                digest TEXT NOT NULL UNIQUE,
-                created_at TEXT NOT NULL
-            )",
-            "CREATE INDEX IF NOT EXISTS idx_document_events_access_key ON document_events(access_key)",
-            "CREATE INDEX IF NOT EXISTS idx_document_events_document ON document_events(document_id)",
         ] : [
             "CREATE TABLE IF NOT EXISTS document_items (
                 id SERIAL PRIMARY KEY,
@@ -146,23 +129,6 @@ final class Repository
             )",
             "CREATE INDEX IF NOT EXISTS idx_document_ignored_documents_document ON document_ignored_documents(document_id)",
             "CREATE INDEX IF NOT EXISTS idx_document_ignored_documents_access_key ON document_ignored_documents(access_key)",
-            "CREATE TABLE IF NOT EXISTS document_events (
-                id SERIAL PRIMARY KEY,
-                company_id INTEGER NULL REFERENCES companies(id) ON DELETE SET NULL,
-                document_id INTEGER NULL REFERENCES documents(id) ON DELETE SET NULL,
-                access_key VARCHAR(60) NOT NULL,
-                event_type VARCHAR(30) NULL,
-                event_name TEXT NULL,
-                event_date TIMESTAMP NULL,
-                protocol VARCHAR(80) NULL,
-                issuer_cnpj VARCHAR(20) NULL,
-                schema_name VARCHAR(80) NULL,
-                raw_xml TEXT NULL,
-                digest VARCHAR(128) NOT NULL UNIQUE,
-                created_at TIMESTAMP NOT NULL DEFAULT NOW()
-            )",
-            "CREATE INDEX IF NOT EXISTS idx_document_events_access_key ON document_events(access_key)",
-            "CREATE INDEX IF NOT EXISTS idx_document_events_document ON document_events(document_id)",
         ];
         foreach ($statements as $statement) {
             $this->pdo->exec($statement);
@@ -712,7 +678,9 @@ final class Repository
 
     public function documents(array $filters = []): array
     {
-        $this->prepareDocumentQuery($filters);
+        $this->refreshCteDocumentFieldsOnce();
+        $this->ensureReferencedDocumentNumbers();
+        $this->ensureDocumentItemsForFilters($filters);
         [$where, $params] = $this->documentWhere($filters);
         $sql = 'SELECT * FROM documents';
         if ($where) $sql .= ' WHERE ' . implode(' AND ', $where);
@@ -727,7 +695,9 @@ final class Repository
 
     public function documentsPage(array $filters = [], int $page = 1, int $perPage = 200): array
     {
-        $this->prepareDocumentQuery($filters);
+        $this->refreshCteDocumentFieldsOnce();
+        $this->ensureReferencedDocumentNumbers();
+        $this->ensureDocumentItemsForFilters($filters);
         [$where, $params] = $this->documentWhere($filters);
         $offset = max(0, ($page - 1) * $perPage);
         $sql = 'SELECT * FROM documents';
@@ -748,7 +718,9 @@ final class Repository
 
     public function documentsTotals(array $filters = []): array
     {
-        $this->prepareDocumentQuery($filters);
+        $this->refreshCteDocumentFieldsOnce();
+        $this->ensureReferencedDocumentNumbers();
+        $this->ensureDocumentItemsForFilters($filters);
         [$where, $params] = $this->documentWhere($filters);
         $sql = 'SELECT COUNT(*) AS total, COALESCE(SUM(total_value), 0) AS total_value FROM documents';
         if ($where) $sql .= ' WHERE ' . implode(' AND ', $where);
@@ -756,21 +728,6 @@ final class Repository
         $stmt->execute($params);
         $row = $stmt->fetch() ?: ['total'=>0, 'total_value'=>0];
         return ['total'=>(int)$row['total'], 'total_value'=>(float)$row['total_value']];
-    }
-
-    private function prepareDocumentQuery(array $filters): void
-    {
-        foreach ([
-            'refreshCteDocumentFieldsOnce' => [],
-            'ensureReferencedDocumentNumbers' => [],
-            'ensureDocumentItemsForFilters' => [$filters],
-        ] as $method => $args) {
-            try {
-                $this->{$method}(...$args);
-            } catch (\Throwable $e) {
-                error_log('Entradas: rotina auxiliar ' . $method . ' ignorada para nao derrubar o filtro: ' . $e->getMessage());
-            }
-        }
     }
 
     private function documentOrderBy(array $filters): string
