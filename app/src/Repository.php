@@ -872,6 +872,64 @@ final class Repository
         $stmt->execute(['id' => $id]);
     }
 
+    public function repairCtePartiesAndTakersOnce(): array
+    {
+        $version = '20260724_dest_taker';
+        if ($this->getSetting('repair_cte_parties_takers_version', '') === $version) {
+            return ['processed' => 0, 'updated' => 0, 'takers' => 0, 'skipped' => true];
+        }
+
+        $stmt = $this->pdo->prepare("SELECT id, raw_xml, xml_path FROM documents
+            WHERE doc_type = 'CTE'
+              AND (COALESCE(raw_xml, '') <> '' OR COALESCE(xml_path, '') <> '')
+            ORDER BY id DESC
+            LIMIT 50000");
+        $stmt->execute();
+        $updateDoc = $this->pdo->prepare('UPDATE documents
+            SET recipient_cnpj = :recipient_cnpj,
+                recipient_name = :recipient_name,
+                updated_at = :updated_at
+            WHERE id = :id');
+        $deleteTaker = $this->pdo->prepare('DELETE FROM document_cte_takers WHERE document_id = :document_id');
+        $insertTaker = $this->pdo->prepare('INSERT INTO document_cte_takers(document_id, taker_cnpj, created_at) VALUES(:document_id, :taker_cnpj, :created_at)');
+
+        $processed = 0;
+        $updated = 0;
+        $takers = 0;
+        foreach ($stmt->fetchAll() as $doc) {
+            $xml = (string)($doc['raw_xml'] ?? '');
+            $path = (string)($doc['xml_path'] ?? '');
+            if (trim($xml) === '' && $path !== '' && is_file($path)) {
+                $xml = (string)file_get_contents($path);
+            }
+            if (trim($xml) === '') {
+                continue;
+            }
+            $processed++;
+            $recipient = $this->parseCteRecipientFromXml($xml);
+            if ($recipient['cnpj'] !== '' || $recipient['name'] !== '') {
+                $updateDoc->execute([
+                    'id' => (int)$doc['id'],
+                    'recipient_cnpj' => $recipient['cnpj'],
+                    'recipient_name' => $recipient['name'],
+                    'updated_at' => date('c'),
+                ]);
+                $updated += $updateDoc->rowCount();
+            }
+
+            $deleteTaker->execute(['document_id' => (int)$doc['id']]);
+            $insertTaker->execute([
+                'document_id' => (int)$doc['id'],
+                'taker_cnpj' => $this->parseCteTakerCnpjFromXml($xml),
+                'created_at' => date('c'),
+            ]);
+            $takers++;
+        }
+
+        $this->setSetting('repair_cte_parties_takers_version', $version);
+        return ['processed' => $processed, 'updated' => $updated, 'takers' => $takers, 'skipped' => false];
+    }
+
     private function indexMissingDocumentItems(int $limit = 10000): void
     {
         $stmt = $this->pdo->prepare("SELECT id, doc_type, raw_xml, xml_path FROM documents d
@@ -1076,6 +1134,25 @@ final class Repository
             '//*[local-name()="' . $tag . '"]/*[local-name()="CPF"]',
         ]);
         return preg_replace('/\D+/', '', $value) ?: '';
+    }
+
+    private function parseCteRecipientFromXml(string $xml): array
+    {
+        $result = ['cnpj' => '', 'name' => ''];
+        if (trim($xml) === '') {
+            return $result;
+        }
+        $dom = new \DOMDocument();
+        if (!$dom->loadXML($xml, LIBXML_NOCDATA | LIBXML_NOBLANKS)) {
+            return $result;
+        }
+        $xp = new \DOMXPath($dom);
+        $result['cnpj'] = preg_replace('/\D+/', '', $this->xmlFirst($xp, [
+            '//*[local-name()="dest"]/*[local-name()="CNPJ"]',
+            '//*[local-name()="dest"]/*[local-name()="CPF"]',
+        ])) ?: '';
+        $result['name'] = $this->xmlFirst($xp, ['//*[local-name()="dest"]/*[local-name()="xNome"]']);
+        return $result;
     }
 
     private function parseReferencedDocumentNumbersFromXml(string $xml, string $type, string $ownAccessKey = ''): string

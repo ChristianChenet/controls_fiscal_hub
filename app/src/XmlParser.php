@@ -90,7 +90,7 @@ final class XmlParser
             'order_number' => $this->firstAny($xp, ['//*[local-name()="xPed"]']),
             'issuer_cnpj' => $this->x($xp, '//c:emit/c:CNPJ') ?: $this->firstAny($xp, ['//*[local-name()="emit"]/*[local-name()="CNPJ"]']),
             'issuer_name' => $this->x($xp, '//c:emit/c:xNome') ?: $this->firstAny($xp, ['//*[local-name()="emit"]/*[local-name()="xNome"]']),
-            'recipient_cnpj' => $this->x($xp, '//c:rem/c:CNPJ') ?: $this->x($xp, '//c:dest/c:CNPJ') ?: $this->firstAny($xp, ['//*[local-name()="dest"]/*[local-name()="CNPJ"]', '//*[local-name()="rem"]/*[local-name()="CNPJ"]', '//*[local-name()="toma4"]/*[local-name()="CNPJ"]']),
+            'recipient_cnpj' => $this->x($xp, '//c:dest/c:CNPJ') ?: $this->x($xp, '//c:dest/c:CPF') ?: $this->firstAny($xp, ['//*[local-name()="dest"]/*[local-name()="CNPJ"]', '//*[local-name()="dest"]/*[local-name()="CPF"]']) ?: $this->x($xp, '//c:rem/c:CNPJ') ?: $this->x($xp, '//c:rem/c:CPF') ?: $this->firstAny($xp, ['//*[local-name()="rem"]/*[local-name()="CNPJ"]', '//*[local-name()="rem"]/*[local-name()="CPF"]', '//*[local-name()="toma4"]/*[local-name()="CNPJ"]', '//*[local-name()="toma4"]/*[local-name()="CPF"]']),
             'recipient_name' => $this->x($xp, '//c:dest/c:xNome') ?: $this->x($xp, '//c:rem/c:xNome') ?: $this->firstAny($xp, ['//*[local-name()="dest"]/*[local-name()="xNome"]', '//*[local-name()="rem"]/*[local-name()="xNome"]', '//*[local-name()="toma4"]/*[local-name()="xNome"]']),
             'issue_date' => $issueDate ?: null,
             'total_value' => $this->toFloat($this->x($xp, '//c:vPrest/c:vTPrest') ?: $this->firstAny($xp, ['//*[local-name()="vPrest"]/*[local-name()="vTPrest"]', '//*[local-name()="vTPrest"]', '//*[local-name()="vRec"]'])),
