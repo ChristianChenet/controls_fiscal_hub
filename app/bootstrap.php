@@ -112,11 +112,6 @@ if ($config['auto_migrate']) {
     $database->ensureSchema();
 }
 $repo = new ControlS\Portal\Repository($database->pdo());
-try {
-    $repo->repairCtePartiesAndTakersOnce();
-} catch (Throwable $e) {
-    error_log('Reparo CT-e destinatario/tomador nao executado: ' . $e->getMessage());
-}
 $repo->ensureDefaultAdmin((string)env_value('AUTH_DEFAULT_EMAIL', 'admin@controls.local'), (string)env_value('AUTH_PASS', 'admin'));
 if ($repo->getSetting('repair_mdf_cancel_20260522', '') !== '1') {
     $repair = $repo->repairDocumentClassification();
