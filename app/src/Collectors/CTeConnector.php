@@ -18,9 +18,9 @@ final class CTeConnector extends AbstractFiscalCollector
         $url = $this->consultaProtocoloUrl($accessKey);
         $soap = $this->soapClient()->send(
             $url,
-            (string)($this->config['cte_consulta_protocolo_action'] ?? 'http://www.portalfiscal.inf.br/cte/wsdl/CteConsultaV4/cteConsultaCT'),
+            (string)($this->config['cte_consulta_protocolo_action'] ?? 'http://www.portalfiscal.inf.br/cte/wsdl/CTeConsultaV4/cteConsultaCT'),
             $requestXml,
-            'http://www.portalfiscal.inf.br/cte/wsdl/CteConsultaV4',
+            'http://www.portalfiscal.inf.br/cte/wsdl/CTeConsultaV4',
             'cteConsultaCT',
             'cteDadosMsg',
             (int)$company['id']
@@ -131,16 +131,20 @@ XML;
         $environment = (string)($this->config['sefaz_environment'] ?? '1');
         $uf = substr($accessKey, 0, 2);
         $production = [
+            '35' => 'https://nfe.fazenda.sp.gov.br/CTeWS/WS/CTeConsultaV4.asmx',
             '41' => 'https://cte.fazenda.pr.gov.br/cte4/CTeConsultaV4',
         ];
         $homologation = [
+            '35' => 'https://homologacao.nfe.fazenda.sp.gov.br/CTeWS/WS/CTeConsultaV4.asmx',
             '41' => 'https://homologacao.cte.fazenda.pr.gov.br/cte4/CTeConsultaV4',
         ];
         $map = $environment === '2' ? $homologation : $production;
         if (!empty($map[$uf])) {
             return $map[$uf];
         }
-        throw new \RuntimeException('URL de consulta de protocolo CT-e nao configurada para a UF da chave ' . $uf . '.');
+        return $environment === '2'
+            ? 'https://cte-homologacao.svrs.rs.gov.br/ws/CTeConsultaV4/CTeConsultaV4.asmx'
+            : 'https://cte.svrs.rs.gov.br/ws/CTeConsultaV4/CTeConsultaV4.asmx';
     }
 
     private function parseProtocolStatusResponse(string $soap): array

@@ -199,8 +199,18 @@ function documents_danfe_details(array $doc): array
         $details['extra'] = [
             'CFOP' => xml_first($xp, ['//*[local-name()="ide"]/*[local-name()="CFOP"]']),
             'Natureza da operacao' => xml_first($xp, ['//*[local-name()="ide"]/*[local-name()="natOp"]']),
-            'Inicio/Fim' => trim(xml_first($xp, ['//*[local-name()="ide"]/*[local-name()="UFIni"]']) . ' / ' . xml_first($xp, ['//*[local-name()="ide"]/*[local-name()="UFFim"]'])),
+            'Modelo' => xml_first($xp, ['//*[local-name()="ide"]/*[local-name()="mod"]']),
+            'Serie' => xml_first($xp, ['//*[local-name()="ide"]/*[local-name()="serie"]']),
+            'Tipo de CT-e' => xml_first($xp, ['//*[local-name()="ide"]/*[local-name()="tpCTe"]']),
+            'Modal' => xml_first($xp, ['//*[local-name()="ide"]/*[local-name()="modal"]']),
+            'UF inicio' => xml_first($xp, ['//*[local-name()="ide"]/*[local-name()="UFIni"]']),
+            'UF fim' => xml_first($xp, ['//*[local-name()="ide"]/*[local-name()="UFFim"]']),
             'Valor a receber' => documents_money(xml_first($xp, ['//*[local-name()="vPrest"]/*[local-name()="vRec"]'])),
+            'Protocolo autorizacao' => xml_first($xp, ['//*[local-name()="protCTe"]//*[local-name()="nProt"]']),
+            'Data autorizacao' => format_date(xml_first($xp, ['//*[local-name()="protCTe"]//*[local-name()="dhRecbto"]'])),
+            'Evento' => xml_first($xp, ['//*[local-name()="procEventoCTe"]//*[local-name()="xEvento"]']),
+            'Protocolo evento' => xml_first($xp, ['//*[local-name()="procEventoCTe"]//*[local-name()="nProt"]']),
+            'Data evento' => format_date(xml_first($xp, ['//*[local-name()="procEventoCTe"]//*[local-name()="dhRegEvento"]'])),
             'NF-e vinculadas' => (string)($doc['referenced_nfe_keys'] ?? ''),
         ];
         $details['totals'] = [
@@ -1214,7 +1224,7 @@ if ($page === 'documents_danfe') {
         exit('Espelho DANFE/DACTE indisponivel para documento apenas resumo. Baixe o XML completo antes de imprimir.');
     }
     header('Content-Type: text/html; charset=utf-8');
-    echo documents_danfe_html($doc, true);
+    echo documents_danfe_html($doc, false);
     exit;
 }
 

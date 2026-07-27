@@ -1516,3 +1516,106 @@ textarea{
 .form-action-label{align-self:end}
 .inline-form{display:inline}
 .actions-col{min-width:160px}
+
+.module-lockup{display:flex;align-items:center;gap:14px}
+.module-mark{
+  width:58px;
+  height:58px;
+  border-radius:50%;
+  display:grid;
+  place-items:center;
+  color:#0b2140;
+  font-weight:950;
+  letter-spacing:0;
+  background:linear-gradient(180deg,#eef7ff,#dceeff);
+  border:2px solid #2f72ff;
+  box-shadow:0 8px 20px rgba(47,114,255,.16);
+}
+.client-brand{
+  background:rgba(255,255,255,.62);
+  min-height:126px;
+}
+.client-brand-logo{
+  width:116px;
+  height:116px;
+  border:0;
+  background:transparent;
+}
+.documents-grid-toolbar{
+  align-items:center;
+  gap:16px;
+}
+.documents-action-bar{
+  display:flex;
+  flex-wrap:wrap;
+  justify-content:flex-end;
+  gap:8px;
+  margin-left:auto;
+}
+.documents-action-bar .button-compact{
+  min-width:160px;
+}
+.export-panel.compact-export-panel{
+  grid-template-columns:1fr auto;
+  align-items:center;
+  padding:12px;
+  margin:0 0 14px;
+}
+.export-panel-heading{
+  display:grid;
+  gap:2px;
+}
+.export-panel-heading strong{
+  color:#102035;
+}
+.export-panel-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.action-modal-panel{
+  width:min(560px,94vw);
+}
+.modal-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:10px;
+  margin-top:16px;
+  padding-top:14px;
+  border-top:1px solid #e5ede9;
+}
+.modal-header-actions{
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.documents-danfe-modal{
+  padding:14px;
+}
+.danfe-modal-panel{
+  width:min(1180px,98vw);
+  height:92vh;
+  display:flex;
+  flex-direction:column;
+}
+.document-danfe-frame{
+  width:100%;
+  min-height:0;
+  flex:1 1 auto;
+  border:1px solid #dbe5e1;
+  border-radius:8px;
+  background:#fff;
+}
+@media (max-width:980px){
+  .documents-grid-toolbar,
+  .documents-action-bar,
+  .export-panel.compact-export-panel{
+    display:flex;
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .documents-action-bar .button-compact{
+    min-width:0;
+  }
+}

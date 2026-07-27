@@ -6,7 +6,7 @@
     <title><?= h($title) ?></title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="icon" href="<?= h(base_url('assets/logo-s-novo.jpg')) ?>">
-    <link rel="stylesheet" href="<?= h(base_url('assets/app.css?v=20260526-dashboard-faturamento')) ?>">
+    <link rel="stylesheet" href="<?= h(base_url('assets/app.css?v=20260727-entradas-cte')) ?>">
 </head>
 <body>
 <div class="shell">
@@ -61,8 +61,13 @@
         <header class="topbar">
             <div class="topbar-copy">
                 <div class="topbar-product">
-                    <span class="topbar-eyebrow">Plataforma fiscal</span>
-                    <h1 class="topbar-title">Control S Fiscal Hub</h1>
+                    <span class="module-lockup">
+                        <span class="module-mark">XML</span>
+                        <span>
+                            <span class="topbar-eyebrow">Modulo fiscal</span>
+                            <h1 class="topbar-title">Control S Fiscal Hub</h1>
+                        </span>
+                    </span>
                 </div>
                 <div class="topbar-module" data-topbar-module>
                     <?php if (!empty($moduleTitle)): ?>

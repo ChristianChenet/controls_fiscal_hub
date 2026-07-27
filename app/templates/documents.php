@@ -163,32 +163,28 @@ $documentFilterKeys = [
     <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
     <?= hidden_filter_inputs($documentFilterKeys, $filters) ?>
     <input type="hidden" name="p" value="<?= h((string)$currentPage) ?>">
-    <div class="grid-toolbar documents-grid-toolbar"><div><h2>Grid de entradas</h2><small>Exportação respeita todos os filtros aplicados.</small></div></div>
-    <div class="toolbar">
-        <div class="inline">
-            <select name="manifest_type">
-                <option value="science">Ciencia da Operacao</option>
-                <option value="confirm">Confirmacao da Operacao</option>
-                <option value="unknown">Desconhecimento da Operacao</option>
-                <option value="not_realized">Operacao nao Realizada</option>
-            </select>
-            <input type="text" name="manifest_justification" placeholder="Justificativa quando exigida">
-            <button class="primary" name="bulk_manifest" value="1">Manifestar selecionados</button>
-            <button class="button-compact" name="bulk_check_cancelled" value="1" title="Consulta a situação na SEFAZ das NF-e/NFC-e/CT-e selecionadas, independente de lançamento no ERP.">Verificar cancelamentos selecionados</button>
-            <input type="text" name="ignored_document_reason" placeholder="Justificativa para ignorar">
-            <button class="button-compact" name="save_ignored_documents" value="1">Ignorar notas selecionadas</button>
+    <div class="grid-toolbar documents-grid-toolbar">
+        <div>
+            <h2>Grid de entradas</h2>
+            <small>Selecione as notas e execute as acoes operacionais sem perder os filtros aplicados.</small>
+        </div>
+        <div class="documents-action-bar">
+            <button class="primary button-compact" type="button" data-open-action-modal="manifest">Manifestar selecionados</button>
+            <button class="button-compact" name="bulk_check_cancelled" value="1" title="Consulta a situacao na SEFAZ das NF-e/NFC-e/CT-e selecionadas, independente de lancamento no ERP.">Verificar cancelamentos</button>
+            <button class="button-compact" type="button" data-open-action-modal="ignore">Ignorar notas</button>
         </div>
     </div>
     <div class="export-panel is-collapsed compact-export-panel" id="documents-export-panel">
-        <div class="inline export-panel-actions">
+        <div class="export-panel-heading">
+            <strong>Exportacao</strong>
+            <small>Os arquivos respeitam filtros ou selecao atual.</small>
+        </div>
+        <div class="export-panel-actions">
+            <button class="button-compact" type="button" data-local-zip="selected">Baixar selecionados</button>
+            <button class="button-compact" type="button" data-local-zip="filtered">Baixar todos</button>
             <a class="button-link button-compact" href="<?= h(base_url('?' . http_build_query($exportQuery))) ?>">Exportar Excel</a>
-            <button class="button-compact" type="button" data-local-zip="filtered">Baixar Zip todos os filtrados XML</button>
-            <button class="button-compact" type="button" data-local-zip="selected">Baixar os selecionados XML</button>
-            <button class="button-compact" type="button" data-danfe-zip="filtered">Baixar Zip todos os filtrados DANFE</button>
-            <button class="button-compact" type="button" data-danfe-zip="selected">Baixar os selecionados DANFE</button>
         </div>
         <div id="local-export-feedback" class="export-feedback" aria-live="polite"></div>
-        <small>As exportacoes respeitam filtros ou seleção atual. O navegador permite escolher a pasta conforme a configuração de downloads.</small>
     </div>
 
     <div class="table-wrap documents-table-wrap">
@@ -272,7 +268,7 @@ $documentFilterKeys = [
                     <td data-column="acoes" class="row-actions">
                         <a class="row-action" target="_blank" href="<?= h(base_url('?page=view_xml&id=' . $doc['id'])) ?>">XML</a>
                         <button type="button" class="row-action row-action-button" data-document-items="<?= h((string)$doc['id']) ?>">Produtos</button>
-                        <?php if ((string)($doc['status'] ?? '') !== 'apenas_resumo'): ?><a class="row-action" target="_blank" href="<?= h(base_url('?page=documents_danfe&id=' . $doc['id'])) ?>">Espelho DANFE</a><?php endif; ?>
+                        <?php if ((string)($doc['status'] ?? '') !== 'apenas_resumo'): ?><button type="button" class="row-action row-action-button" data-document-danfe="<?= h((string)$doc['id']) ?>">Espelho</button><?php endif; ?>
                     </td>
                 </tr>
             <?php endforeach; ?>
@@ -294,6 +290,52 @@ $documentFilterKeys = [
         <div class="inline">
             <a class="button-link <?= $currentPage <= 1 ? 'disabled' : '' ?>" href="<?= h(base_url('?' . http_build_query($prevQuery))) ?>">Anterior</a>
             <a class="button-link <?= $currentPage >= $totalPages ? 'disabled' : '' ?>" href="<?= h(base_url('?' . http_build_query($nextQuery))) ?>">Próxima</a>
+        </div>
+    </div>
+    <div class="modal-backdrop action-modal is-hidden" id="documents-manifest-modal" role="dialog" aria-modal="true" aria-labelledby="documents-manifest-title">
+        <div class="modal-panel action-modal-panel">
+            <div class="modal-header">
+                <div>
+                    <h2 id="documents-manifest-title">Manifestar selecionados</h2>
+                    <small>Informe o tipo de manifesto para as notas selecionadas.</small>
+                </div>
+                <button type="button" class="modal-close" data-close-action-modal>&times;</button>
+            </div>
+            <div class="form-row two">
+                <label>Tipo do manifesto
+                    <select name="manifest_type">
+                        <option value="science">Ciencia da Operacao</option>
+                        <option value="confirm">Confirmacao da Operacao</option>
+                        <option value="unknown">Desconhecimento da Operacao</option>
+                        <option value="not_realized">Operacao nao Realizada</option>
+                    </select>
+                </label>
+                <label>Justificativa
+                    <input type="text" name="manifest_justification" placeholder="Obrigatoria em alguns manifestos">
+                </label>
+            </div>
+            <div class="modal-actions">
+                <button type="button" class="button-link button-compact" data-close-action-modal>Cancelar</button>
+                <button class="primary button-compact" name="bulk_manifest" value="1">Confirmar manifesto</button>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop action-modal is-hidden" id="documents-ignore-modal" role="dialog" aria-modal="true" aria-labelledby="documents-ignore-title">
+        <div class="modal-panel action-modal-panel">
+            <div class="modal-header">
+                <div>
+                    <h2 id="documents-ignore-title">Ignorar notas selecionadas</h2>
+                    <small>A justificativa fica gravada no historico com usuario, data e hora.</small>
+                </div>
+                <button type="button" class="modal-close" data-close-action-modal>&times;</button>
+            </div>
+            <label>Justificativa
+                <textarea name="ignored_document_reason" rows="4" placeholder="Explique o motivo para ignorar estas notas"></textarea>
+            </label>
+            <div class="modal-actions">
+                <button type="button" class="button-link button-compact" data-close-action-modal>Cancelar</button>
+                <button class="primary button-compact" name="save_ignored_documents" value="1">Ignorar notas</button>
+            </div>
         </div>
     </div>
 </form>
@@ -418,6 +460,22 @@ $documentFilterKeys = [
     </div>
 </div>
 
+<div class="modal-backdrop documents-danfe-modal is-hidden" id="document-danfe-modal" role="dialog" aria-modal="true" aria-labelledby="document-danfe-title">
+    <div class="modal-panel danfe-modal-panel">
+        <div class="modal-header">
+            <div>
+                <h2 id="document-danfe-title">Espelho do documento</h2>
+                <small>Confira o espelho antes de imprimir.</small>
+            </div>
+            <div class="modal-header-actions">
+                <button type="button" class="primary button-compact" data-print-document-danfe>Imprimir</button>
+                <button type="button" class="modal-close" data-close-document-danfe>&times;</button>
+            </div>
+        </div>
+        <iframe id="document-danfe-frame" class="document-danfe-frame" title="Espelho do documento"></iframe>
+    </div>
+</div>
+
 <form id="column-filter-form" method="get">
     <input type="hidden" name="page" value="documents">
     <input type="hidden" name="q" value="<?= h((string)($filters['q'] ?? '')) ?>">
@@ -443,6 +501,47 @@ $documentFilterKeys = [
 
 <script>
 (function () {
+    var modals = {
+        manifest: document.getElementById('documents-manifest-modal'),
+        ignore: document.getElementById('documents-ignore-modal')
+    };
+    function selectedCount() {
+        return document.querySelectorAll('[data-doc-checkbox]:checked').length;
+    }
+    function closeAll() {
+        Object.keys(modals).forEach(function (key) {
+            if (modals[key]) modals[key].classList.add('is-hidden');
+        });
+    }
+    document.querySelectorAll('[data-open-action-modal]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            if (selectedCount() === 0) {
+                alert('Selecione ao menos uma entrada.');
+                return;
+            }
+            closeAll();
+            var modal = modals[button.getAttribute('data-open-action-modal') || ''];
+            if (modal) modal.classList.remove('is-hidden');
+        });
+    });
+    document.querySelectorAll('[data-close-action-modal]').forEach(function (button) {
+        button.addEventListener('click', closeAll);
+    });
+    Object.keys(modals).forEach(function (key) {
+        var modal = modals[key];
+        if (!modal) return;
+        modal.addEventListener('click', function (event) {
+            if (event.target === modal) closeAll();
+        });
+    });
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') closeAll();
+    });
+})();
+</script>
+
+<script>
+(function () {
     var modal = document.getElementById('ignored-cfops-modal');
     if (!modal) return;
     function openModal() { modal.classList.remove('is-hidden'); }
@@ -452,6 +551,41 @@ $documentFilterKeys = [
     });
     document.querySelectorAll('[data-close-ignored-cfops]').forEach(function (button) {
         button.addEventListener('click', closeModal);
+    });
+    modal.addEventListener('click', function (event) {
+        if (event.target === modal) closeModal();
+    });
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') closeModal();
+    });
+})();
+</script>
+
+<script>
+(function () {
+    var modal = document.getElementById('document-danfe-modal');
+    var frame = document.getElementById('document-danfe-frame');
+    if (!modal || !frame) return;
+    function closeModal() {
+        modal.classList.add('is-hidden');
+        frame.removeAttribute('src');
+    }
+    function openModal(documentId) {
+        modal.classList.remove('is-hidden');
+        frame.src = '?page=documents_danfe&id=' + encodeURIComponent(documentId);
+    }
+    document.querySelectorAll('[data-document-danfe]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            openModal(button.getAttribute('data-document-danfe') || '');
+        });
+    });
+    document.querySelectorAll('[data-close-document-danfe]').forEach(function (button) {
+        button.addEventListener('click', closeModal);
+    });
+    document.querySelectorAll('[data-print-document-danfe]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            if (frame.contentWindow) frame.contentWindow.print();
+        });
     });
     modal.addEventListener('click', function (event) {
         if (event.target === modal) closeModal();

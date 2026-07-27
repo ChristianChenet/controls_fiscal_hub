@@ -593,7 +593,9 @@ final class Repository
         $stmt->bindValue(':limit', $perPage, PDO::PARAM_INT);
         $stmt->bindValue(':offset', $offset, PDO::PARAM_INT);
         $stmt->execute();
-        return $this->attachEventSummaries($this->cleanReferencedDocumentRows($stmt->fetchAll()));
+        $rows = $stmt->fetchAll();
+        $this->repairCtePartiesForRows($rows);
+        return $this->attachEventSummaries($this->cleanReferencedDocumentRows($rows));
     }
 
     public function documentsTotals(array $filters = []): array
@@ -738,7 +740,103 @@ final class Repository
         if (trim((string)($filters['product_q'] ?? '')) === '' && trim((string)($filters['cfop_q'] ?? '')) === '' && empty($filters['cte_taker_only']) && (string)($filters['ignore_cfops'] ?? '1') === '0') {
             return;
         }
+        if (!empty($filters['cte_taker_only'])) {
+            $this->refreshCteTakersForFilter($filters);
+        }
         $this->indexMissingDocumentItems(10000);
+    }
+
+    private function refreshCteTakersForFilter(array $filters, int $limit = 1200): void
+    {
+        $where = ["doc_type = 'CTE'", "(COALESCE(raw_xml, '') <> '' OR COALESCE(xml_path, '') <> '')"];
+        $params = [];
+        $dateStart = $this->normalizeFilterDate((string)($filters['date_start'] ?? ''));
+        $dateEnd = $this->normalizeFilterDate((string)($filters['date_end'] ?? ''));
+        if ($dateStart !== null) {
+            $where[] = 'issue_date >= :date_start';
+            $params['date_start'] = $dateStart . ' 00:00:00';
+        }
+        if ($dateEnd !== null) {
+            $where[] = 'issue_date <= :date_end';
+            $params['date_end'] = $dateEnd . ' 23:59:59';
+        }
+        $sql = 'SELECT id, raw_xml, xml_path FROM documents WHERE ' . implode(' AND ', $where) . ' ORDER BY issue_date DESC NULLS LAST, id DESC LIMIT :limit';
+        if ((string)$this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
+            $sql = str_replace(' NULLS LAST', '', $sql);
+        }
+        try {
+            $stmt = $this->pdo->prepare($sql);
+            foreach ($params as $key => $value) {
+                $stmt->bindValue(':' . $key, $value);
+            }
+            $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+            $stmt->execute();
+            $deleteTaker = $this->pdo->prepare('DELETE FROM document_cte_takers WHERE document_id = :document_id');
+            $insertTaker = $this->pdo->prepare('INSERT INTO document_cte_takers(document_id, taker_cnpj, created_at) VALUES(:document_id, :taker_cnpj, :created_at)');
+            foreach ($stmt->fetchAll() as $doc) {
+                $xml = $this->documentXmlFromRow($doc);
+                if (trim($xml) === '') {
+                    continue;
+                }
+                $deleteTaker->execute(['document_id' => (int)$doc['id']]);
+                $insertTaker->execute([
+                    'document_id' => (int)$doc['id'],
+                    'taker_cnpj' => $this->parseCteTakerCnpjFromXml($xml),
+                    'created_at' => date('c'),
+                ]);
+            }
+        } catch (\Throwable $e) {
+            error_log('Falha ao atualizar tomadores CT-e filtrados: ' . $e->getMessage());
+        }
+    }
+
+    private function repairCtePartiesForRows(array &$rows): void
+    {
+        if (!$rows) {
+            return;
+        }
+        $updateDoc = $this->pdo->prepare('UPDATE documents
+            SET recipient_cnpj = :recipient_cnpj,
+                recipient_name = :recipient_name,
+                updated_at = :updated_at
+            WHERE id = :id');
+        foreach ($rows as &$row) {
+            if (strtoupper((string)($row['doc_type'] ?? '')) !== 'CTE') {
+                continue;
+            }
+            try {
+                $xml = $this->documentXmlFromRow($row);
+                if (trim($xml) === '') {
+                    continue;
+                }
+                $recipient = $this->parseCteRecipientFromXml($xml);
+                if ($recipient['cnpj'] !== '' || $recipient['name'] !== '') {
+                    if ((string)($row['recipient_cnpj'] ?? '') !== $recipient['cnpj'] || (string)($row['recipient_name'] ?? '') !== $recipient['name']) {
+                        $updateDoc->execute([
+                            'id' => (int)$row['id'],
+                            'recipient_cnpj' => $recipient['cnpj'],
+                            'recipient_name' => $recipient['name'],
+                            'updated_at' => date('c'),
+                        ]);
+                    }
+                    $row['recipient_cnpj'] = $recipient['cnpj'];
+                    $row['recipient_name'] = $recipient['name'];
+                }
+            } catch (\Throwable $e) {
+                error_log('Falha ao reparar dados CT-e do documento ' . (string)($row['id'] ?? '') . ': ' . $e->getMessage());
+            }
+        }
+        unset($row);
+    }
+
+    private function documentXmlFromRow(array $doc): string
+    {
+        $xml = (string)($doc['raw_xml'] ?? '');
+        $path = (string)($doc['xml_path'] ?? '');
+        if (trim($xml) === '' && $path !== '' && is_file($path)) {
+            $xml = (string)file_get_contents($path);
+        }
+        return $xml;
     }
 
     private function ensureReferencedDocumentNumbers(int $limit = 10000): void
