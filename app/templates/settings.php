@@ -243,7 +243,7 @@ $autoNfseAll = ($settings['auto_nfse_all_companies'] ?? '0') === '1' || ($active
         <p><strong>Estrutura padrão futura</strong><br><code><?= h($settings['default_download_dir']) ?>/12345678000199/NFE/2026/05</code></p>
         <p><strong>Template</strong><br><code>{base}/{year}/{month}/{doc_type}</code></p>
         <p>O upload de certificado continua na tela <strong>Empresas</strong>, um certificado por CNPJ.</p>
-        <p><strong>Automação CT-e</strong><br>O worker executa em segundo plano quando a opção estiver ativa. Nesta versão ele não grava arquivos automaticamente nas pastas.</p>
+        <p><strong>Automação CT-e</strong><br>O robô executa em segundo plano quando a opção estiver ativa. Nesta versão ele não grava arquivos automaticamente nas pastas.</p>
     </div>
     <div class="card">
         <h2>Historico das automacoes</h2>
