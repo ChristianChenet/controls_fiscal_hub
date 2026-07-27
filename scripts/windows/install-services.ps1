@@ -79,6 +79,35 @@ exit /b %ERRORLEVEL%
     Set-Content -Path $Path -Value $content -Encoding ASCII
 }
 
+function Get-PostgreSqlServiceName {
+    $preferredNames = @("postgresql-x64-17", "postgresql-x64-18", "postgresql-x64-16", "postgresql-x64-15")
+    foreach ($serviceName in $preferredNames) {
+        if (Get-Service -Name $serviceName -ErrorAction SilentlyContinue) {
+            return $serviceName
+        }
+    }
+
+    $detected = Get-Service -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -like "postgresql*" } |
+        Sort-Object Name |
+        Select-Object -First 1
+
+    if ($detected) { return $detected.Name }
+    return $null
+}
+
+function Configure-ServiceStartup {
+    param(
+        [string]$Name,
+        [string]$DependencyName
+    )
+
+    sc.exe config $Name start= delayed-auto | Out-Null
+    if ($DependencyName) {
+        sc.exe config $Name depend= $DependencyName | Out-Null
+    }
+}
+
 function Install-ControlSService {
     param(
         [string]$Name,
@@ -87,7 +116,8 @@ function Install-ControlSService {
         [string[]]$Arguments,
         [string]$AppDirectory,
         [string]$LogName,
-        [string]$Nssm
+        [string]$Nssm,
+        [string]$DependencyName
     )
 
     Stop-And-Remove-Service -Name $Name -Nssm $Nssm
@@ -104,11 +134,18 @@ function Install-ControlSService {
     & $Nssm set $Name AppRotateOnline 1 | Out-Null
     & $Nssm set $Name AppRotateBytes 10485760 | Out-Null
     & $Nssm set $Name AppExit Default Restart | Out-Null
+    Configure-ServiceStartup -Name $Name -DependencyName $DependencyName
 }
 
 Assert-Admin
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 $Nssm = Find-Nssm
+$postgreSqlServiceName = Get-PostgreSqlServiceName
+if ($postgreSqlServiceName) {
+    Write-Host "Dependencia dos servicos: $postgreSqlServiceName"
+} else {
+    Write-Host "Aviso: servico do PostgreSQL nao encontrado para configurar dependencia." -ForegroundColor Yellow
+}
 $serviceScriptDir = Join-Path $ProjectRoot "scripts\windows\services"
 New-Item -ItemType Directory -Force -Path $serviceScriptDir | Out-Null
 
@@ -132,7 +169,8 @@ Install-ControlSService `
     -Arguments @("/d", "/c", "`"`"$portalWrapper`"`"") `
     -AppDirectory $AppRoot `
     -LogName "service_portal.log" `
-    -Nssm $Nssm
+    -Nssm $Nssm `
+    -DependencyName $postgreSqlServiceName
 
 $workers = @{
     "RoboCTe" = "auto_cte_worker.php"
@@ -153,7 +191,8 @@ foreach ($worker in $workers.GetEnumerator()) {
         -Arguments @("/d", "/c", "`"`"$workerWrapper`"`"") `
         -AppDirectory $AppRoot `
         -LogName ("service_" + $worker.Key + ".log") `
-        -Nssm $Nssm
+        -Nssm $Nssm `
+        -DependencyName $postgreSqlServiceName
 }
 
 foreach ($serviceName in @("${ServicePrefix}Portal", "${ServicePrefix}RoboCTe", "${ServicePrefix}RoboNFe", "${ServicePrefix}RoboNFSe")) {
