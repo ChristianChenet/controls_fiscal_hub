@@ -106,6 +106,41 @@ function documents_download_filename(array $doc, string $extension): string
     return preg_replace('/[^a-zA-Z0-9._-]/', '_', $base) . '.' . $extension;
 }
 
+function documents_event_download_filename(array $event): string
+{
+    $type = (string)($event['event_type'] ?? '');
+    $prefix = $type === '610110' ? 'EVENTO_DESACORDO' : 'EVENTO_CANCELAMENTO';
+    $base = $prefix . '_' . ((string)($event['access_key'] ?? '') ?: uniqid('evento_'));
+    if (!empty($event['protocol'])) {
+        $base .= '_' . (string)$event['protocol'];
+    } elseif ($type !== '') {
+        $base .= '_' . $type;
+    }
+    return preg_replace('/[^a-zA-Z0-9._-]/', '_', $base) . '.xml';
+}
+
+function documents_xml_export_files(array $docs, \ControlS\Portal\Repository $repo): array
+{
+    $files = [];
+    foreach ($docs as $doc) {
+        $xml = documents_xml_content($doc);
+        if (trim($xml) !== '') {
+            $name = documents_download_filename($doc, 'xml');
+            if ((string)($doc['status'] ?? '') === 'cancelado') {
+                $name = 'AUTORIZACAO_' . $name;
+            }
+            $files[] = ['name' => $name, 'content' => $xml];
+        }
+    }
+    foreach ($repo->documentCancellationEventXmls($docs) as $event) {
+        $files[] = [
+            'name' => documents_event_download_filename($event),
+            'content' => (string)($event['raw_xml'] ?? ''),
+        ];
+    }
+    return $files;
+}
+
 function documents_danfe_filename(array $doc): string
 {
     return documents_download_filename($doc, 'html');
@@ -526,11 +561,35 @@ if ($page !== 'login') {
     if ($page === 'dashboard' && !$auth->canAccess('dashboard')) {
         redirect_to(page_url(first_allowed_page_for_user($auth)));
     }
-    $permissionPage = $page === 'documents_check_cancel' ? 'documents' : $page;
+    $permissionPage = in_array($page, ['documents_check_cancel', 'documents_filter_ids'], true) ? 'documents' : $page;
     if (!$auth->canAccess($permissionPage)) {
         flash_set('danger', 'Seu perfil tem acesso somente a Faturamento e Entradas.');
         redirect_to(page_url(first_allowed_page_for_user($auth)));
     }
+}
+
+if ($page === 'documents_filter_ids') {
+    header('Content-Type: application/json; charset=utf-8');
+    try {
+        if (!$auth->canAccess('documents')) {
+            throw new RuntimeException('Sem permissao para consultar entradas.');
+        }
+        $filters = document_filters_from_request($_GET);
+        $total = $repo->documentsTotals($filters);
+        $limit = max(1, min(10000, (int)($_GET['limit'] ?? 5000)));
+        $ids = $repo->documentIds($filters, $limit);
+        echo json_encode([
+            'ok' => true,
+            'ids' => $ids,
+            'total' => (int)($total['total'] ?? count($ids)),
+            'truncated' => (int)($total['total'] ?? 0) > count($ids),
+            'limit' => $limit,
+        ], JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $e) {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'message' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
 }
 
 if ($page === 'documents_check_cancel') {
@@ -1248,7 +1307,8 @@ if ($page === 'documents_xml_zip') {
         if ($scope === 'selected') {
             $ids = array_values(array_filter(array_map('intval', explode(',', (string)($_GET['ids'] ?? '')))));
             $docs = array_values(array_filter(array_map(fn(int $id) => $repo->findDocument($id), $ids)));
-            if (count($docs) === 1) {
+            $eventFiles = $repo->documentCancellationEventXmls($docs);
+            if (count($docs) === 1 && (string)($docs[0]['status'] ?? '') !== 'cancelado' && !$eventFiles) {
                 $xml = documents_xml_content($docs[0]);
                 if (trim($xml) === '') {
                     header('Content-Type: text/plain; charset=utf-8');
@@ -1263,13 +1323,7 @@ if ($page === 'documents_xml_zip') {
         } else {
             $docs = $repo->documents(document_filters_from_request($_GET));
         }
-        $files = [];
-        foreach ($docs as $doc) {
-            $xml = documents_xml_content($doc);
-            if (trim($xml) !== '') {
-                $files[] = ['name' => documents_download_filename($doc, 'xml'), 'content' => $xml];
-            }
-        }
+        $files = documents_xml_export_files($docs, $repo);
         documents_zip_response($files, 'xmls_entradas_' . date('Ymd_His') . '.zip', 'Nenhum XML disponivel para exportacao nos filtros informados.');
     } catch (Throwable $e) {
         header('Content-Type: text/plain; charset=utf-8');

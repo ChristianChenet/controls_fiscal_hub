@@ -16,9 +16,10 @@ $companyOptions = array_map(static fn(array $co): array => [
 ], $companies ?? []);
 $statusOptions = array_map(static fn(array $row): string => (string)($row['status'] ?? ''), $documentStatusOptions ?? []);
 $selectedStatus = (string)($filters['status'] ?? '');
-if ($selectedStatus !== '' && !in_array($selectedStatus, $statusOptions, true)) {
+if ($selectedStatus !== '' && $selectedStatus !== 'not_cancelled' && !in_array($selectedStatus, $statusOptions, true)) {
     $statusOptions[] = $selectedStatus;
 }
+$filteredTotal = (int)($totals['total'] ?? 0);
 $documentFilterKeys = [
     'company_id','doc_type','status','manifestation_status','posted_to_erp','without_referenced_nfe','cte_taker_only','ignore_cfops','entry_only','date_start','date_end',
     'company_q','number_q','issuer_q','recipient_q','access_key_q','referenced_nfe_q','referenced_number_q','product_q','cfop_q','source_q','q','sort_by','sort_dir',
@@ -71,6 +72,7 @@ $documentFilterKeys = [
         <label>Status
             <select name="status">
                 <option value="">Todos</option>
+                <option value="not_cancelled" <?= (($filters['status'] ?? '') === 'not_cancelled') ? 'selected' : '' ?>>Exceto cancelados</option>
                 <?php foreach ($statusOptions as $status): ?>
                     <option value="<?= h($status) ?>" <?= (($filters['status'] ?? '') === $status) ? 'selected' : '' ?>><?= h(document_status_label($status)) ?></option>
                 <?php endforeach; ?>
@@ -175,7 +177,7 @@ $documentFilterKeys = [
         </div>
         <div class="documents-action-bar">
             <button class="primary button-compact" type="button" data-open-action-modal="manifest">Manifestar selecionados</button>
-            <button class="button-compact" type="button" data-check-cancel-queue title="Consulta a situacao na SEFAZ em fila, um documento por vez, e marca como cancelado quando houver retorno oficial de cancelamento.">Verificar cancelamentos</button>
+            <button class="button-compact" type="button" data-check-cancel-queue data-filtered-total="<?= h((string)$filteredTotal) ?>" title="Consulta a situacao na SEFAZ em fila, um documento por vez, e marca como cancelado quando houver retorno oficial de cancelamento.">Verificar cancelamentos</button>
             <button class="button-compact" type="button" data-open-action-modal="ignore" title="Adiciona as notas selecionadas a lista de ignoradas com justificativa e historico de usuario, data e hora.">Ignorar notas</button>
         </div>
     </div>
@@ -540,8 +542,23 @@ $documentFilterKeys = [
     var detail = document.getElementById('cancel-check-progress-detail');
     var csrf = document.querySelector('form.documents-card input[name="_csrf"]');
     if (!button || !modal || !panel || !text || !bar || !detail || !csrf) return;
+    function pageIds() {
+        return Array.from(document.querySelectorAll('[data-doc-checkbox]')).map(function (input) { return input.value; }).filter(Boolean);
+    }
     function selectedIds() {
         return Array.from(document.querySelectorAll('[data-doc-checkbox]:checked')).map(function (input) { return input.value; }).filter(Boolean);
+    }
+    async function filteredIds() {
+        var params = new URLSearchParams(window.location.search);
+        params.set('page', 'documents_filter_ids');
+        params.set('limit', '10000');
+        var response = await fetch('?' + params.toString(), {headers: {'Accept': 'application/json'}});
+        var data = await response.json();
+        if (!response.ok || !data.ok) throw new Error((data && data.message) || 'Falha ao carregar os documentos do filtro.');
+        if (data.truncated) {
+            alert('O filtro tem ' + data.total + ' documento(s). A fila carregou os primeiros ' + data.limit + ' para evitar travar o servidor. Refine o filtro e rode novamente para o restante.');
+        }
+        return (data.ids || []).map(function (id) { return String(id); }).filter(Boolean);
     }
     function setProgress(done, total, message) {
         var pct = total > 0 ? Math.round((done / total) * 100) : 0;
@@ -557,6 +574,21 @@ $documentFilterKeys = [
         }
         button.disabled = true;
         modal.classList.remove('is-hidden');
+        try {
+            var visibleIds = pageIds();
+            var filteredTotal = Number(button.getAttribute('data-filtered-total') || 0);
+            if (visibleIds.length > 0 && ids.length === visibleIds.length && filteredTotal > ids.length) {
+                var useAll = confirm('Você marcou todos os documentos desta página. Deseja verificar todos os ' + filteredTotal + ' documento(s) do filtro atual?\\n\\nOK: todos do filtro\\nCancelar: somente os selecionados da página');
+                if (useAll) {
+                    setProgress(0, filteredTotal, 'Carregando documentos do filtro...');
+                    ids = await filteredIds();
+                }
+            }
+        } catch (error) {
+            button.disabled = false;
+            setProgress(0, ids.length, error.message || 'Erro ao preparar a fila.');
+            return;
+        }
         setProgress(0, ids.length, 'Iniciando fila de consulta...');
         var cancelled = 0;
         var errors = 0;

@@ -574,6 +574,26 @@ final class Repository
         return $this->attachEventSummaries($this->cleanReferencedDocumentRows($stmt->fetchAll()));
     }
 
+    public function documentIds(array $filters = [], int $limit = 5000): array
+    {
+        $this->ensureReferencedDocumentNumbers();
+        $this->ensureDocumentItemsForFilters($filters);
+        [$where, $params] = $this->documentWhere($filters);
+        $sql = 'SELECT id FROM documents';
+        if ($where) $sql .= ' WHERE ' . implode(' AND ', $where);
+        $sql .= ' ' . $this->documentOrderBy($filters) . ' LIMIT :limit';
+        if ((string)$this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
+            $sql = str_replace(' NULLS LAST', '', $sql);
+        }
+        $stmt = $this->pdo->prepare($sql);
+        foreach ($params as $key => $value) {
+            $stmt->bindValue(':' . $key, $value);
+        }
+        $stmt->bindValue(':limit', $limit, PDO::PARAM_INT);
+        $stmt->execute();
+        return array_map(static fn(array $row): int => (int)$row['id'], $stmt->fetchAll());
+    }
+
     public function documentsPage(array $filters = [], int $page = 1, int $perPage = 200): array
     {
         $this->ensureReferencedDocumentNumbers();
@@ -649,14 +669,17 @@ final class Repository
             $where[] = 'company_id IN (' . implode(',', $placeholders) . ')';
         }
         if (!empty($filters['doc_type'])) { $where[] = 'doc_type = :doc_type'; $params['doc_type'] = $filters['doc_type']; }
-        if (!empty($filters['status'])) { $where[] = 'status = :status'; $params['status'] = $filters['status']; }
+        $statusFilter = (string)($filters['status'] ?? '');
+        if ($statusFilter === 'not_cancelled') {
+            $where[] = "status <> 'cancelado'";
+        } elseif ($statusFilter !== '') {
+            $where[] = 'status = :status';
+            $params['status'] = $statusFilter;
+        }
         if (!empty($filters['manifestation_status'])) { $where[] = 'manifestation_status = :manifestation_status'; $params['manifestation_status'] = $filters['manifestation_status']; }
         if ((string)($filters['posted_to_erp'] ?? '') === '1') { $where[] = 'COALESCE(posted_to_erp, FALSE) = TRUE'; }
         if ((string)($filters['posted_to_erp'] ?? '') === '0') {
             $where[] = 'COALESCE(posted_to_erp, FALSE) = FALSE';
-            if (empty($filters['status'])) {
-                $where[] = "status NOT IN ('cancelado', 'denegado')";
-            }
         }
         if (!empty($filters['without_referenced_nfe'])) { $where[] = "(doc_type = 'CTE' AND COALESCE(referenced_nfe_keys, '') = '')"; }
         if (!empty($filters['cte_taker_only'])) {
@@ -903,6 +926,38 @@ final class Repository
               AND status <> 'evento_informativo'
             GROUP BY status
             ORDER BY status ASC");
+        return $stmt->fetchAll();
+    }
+
+    public function documentCancellationEventXmls(array $documents): array
+    {
+        $keys = [];
+        foreach ($documents as $doc) {
+            if ((string)($doc['status'] ?? '') !== 'cancelado') {
+                continue;
+            }
+            $key = preg_replace('/\D+/', '', (string)($doc['access_key'] ?? ''));
+            if (strlen($key) === 44) {
+                $keys[$key] = true;
+            }
+        }
+        if (!$keys) {
+            return [];
+        }
+        $params = [];
+        $placeholders = [];
+        foreach (array_keys($keys) as $idx => $key) {
+            $param = 'key_' . $idx;
+            $placeholders[] = ':' . $param;
+            $params[$param] = $key;
+        }
+        $stmt = $this->pdo->prepare("SELECT access_key, event_type, event_name, protocol, raw_xml
+            FROM document_events
+            WHERE access_key IN (" . implode(',', $placeholders) . ")
+              AND event_type IN ('110111', '610110')
+              AND COALESCE(raw_xml, '') <> ''
+            ORDER BY access_key ASC, event_date ASC, id ASC");
+        $stmt->execute($params);
         return $stmt->fetchAll();
     }
 
