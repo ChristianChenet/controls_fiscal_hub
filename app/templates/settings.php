@@ -90,6 +90,10 @@ $autoNfseAll = ($settings['auto_nfse_all_companies'] ?? '0') === '1' || ($active
         <label>SOAP Action distribuição
             <input type="text" name="cte_distribution_action" value="<?= h($settings['cte_distribution_action']) ?>">
         </label>
+        <label>E-mails para alerta de CT-e cancelado lançado no ERP
+            <input type="text" name="cte_cancelled_erp_alert_emails" value="<?= h((string)($settings['cte_cancelled_erp_alert_emails'] ?? '')) ?>" placeholder="fiscal@empresa.com.br;gestor@empresa.com.br">
+            <small>Informe um ou mais e-mails separados por ponto e vírgula (;). O envio será feito pelo n8n para alertar CT-es cancelados que constam como lançados no ERP.</small>
+        </label>
         <h2>Automação CT-e</h2>
         <label class="checkbox-inline">
             <input type="checkbox" name="auto_cte_enabled" value="1" <?= ($settings['auto_cte_enabled'] ?? '0') === '1' ? 'checked' : '' ?>>

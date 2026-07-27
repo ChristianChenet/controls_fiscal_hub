@@ -74,6 +74,7 @@ $config = [
 
     'cte_distribution_url' => env_value('CTE_DISTRIBUTION_URL', 'https://www1.cte.fazenda.gov.br/CTeDistribuicaoDFe/CTeDistribuicaoDFe.asmx'),
     'cte_distribution_action' => env_value('CTE_DISTRIBUTION_ACTION', 'http://www.portalfiscal.inf.br/cte/wsdl/CTeDistribuicaoDFe/cteDistDFeInteresse'),
+    'cte_cancelled_erp_alert_emails' => env_value('CTE_CANCELLED_ERP_ALERT_EMAILS', ''),
 
     'nfse_environment' => env_value('NFSE_ENVIRONMENT', 'production'),
     'nfse_base_url' => env_value('NFSE_BASE_URL', 'https://adn.nfse.gov.br'),
@@ -150,6 +151,7 @@ $runtimeSettingKeys = [
     'nfe_consulta_protocolo_action',
     'cte_distribution_url',
     'cte_distribution_action',
+    'cte_cancelled_erp_alert_emails',
     'nfse_base_url',
     'nfse_distribution_path',
     'nfse_auth_type',
