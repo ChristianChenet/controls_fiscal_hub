@@ -705,7 +705,7 @@ button.primary{
 }
 .documents-filter{margin-bottom:16px}
 .documents-filter-row{
-  grid-template-columns:repeat(auto-fit,minmax(132px,1fr));
+  grid-template-columns:repeat(auto-fit,minmax(164px,1fr));
   align-items:end;
 }
 .documents-summary{
@@ -1506,10 +1506,24 @@ textarea{
 .modal-close{border:0;background:#eef3f1;border-radius:6px;width:34px;height:34px;font-size:22px;line-height:1;cursor:pointer}
 .documents-items-table th,.documents-items-table td{white-space:nowrap}
 .documents-items-table td:nth-child(3){min-width:280px;white-space:normal}
-.cfop-ignore-field{min-width:180px}
+.cfop-ignore-field{
+  min-width:260px;
+  grid-column:span 2;
+}
 .cfop-ignore-line{display:flex;align-items:center;gap:8px;height:36px;margin-top:7px;padding:0 10px;border:1px solid #d5e2dd;border-radius:6px;background:#fff}
 .cfop-ignore-line input{width:15px;height:15px;margin:0;accent-color:var(--green)}
-.cfop-ignore-link{border:0;background:transparent;padding:0;color:#17312d;font-weight:800;font-size:11px;line-height:1.1;text-align:left;cursor:pointer}
+.cfop-ignore-link{
+  border:0;
+  background:transparent;
+  padding:0;
+  color:#17312d;
+  font-weight:800;
+  font-size:12px;
+  line-height:1.1;
+  text-align:left;
+  cursor:pointer;
+  white-space:nowrap;
+}
 .cfop-ignore-link:hover{color:#08a43c;text-decoration:underline}
 .ignored-cfop-form{margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid #e5ede9}
 .modal-section-title{margin:18px 0 10px;font-size:15px;color:#102035}
@@ -1697,5 +1711,12 @@ textarea{
   }
   .documents-action-bar .button-compact{
     min-width:0;
+  }
+  .cfop-ignore-field{
+    grid-column:auto;
+    min-width:0;
+  }
+  .cfop-ignore-link{
+    white-space:normal;
   }
 }
