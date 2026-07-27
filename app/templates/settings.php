@@ -290,7 +290,7 @@ $autoNfseAll = ($settings['auto_nfse_all_companies'] ?? '0') === '1' || ($active
                         <?php
                             $routineLabel = match ((string)$job['job_type']) {
                                 'cte_until_max' => 'Robo CT-e',
-                                'cte_xml_folder_export' => 'Pasta XML CT-e',
+                                'cte_xml_folder_export' => 'Robo CT-e XML na Pasta para o ERP',
                                 'nfe_until_max' => 'Robo NF-e',
                                 'nfe_until_max_science' => 'Robo NF-e + ciencia',
                                 'nfse' => 'Robo NFS-e Nacional',
@@ -334,15 +334,31 @@ document.querySelectorAll('[data-settings-tabs]').forEach((form) => {
     if (!nav) return;
     const saveButton = form.querySelector('button[name="save_settings"]');
     const sections = [];
+    const sectionMap = {};
     let current = null;
+    const groupFor = (title) => {
+        const normalized = title.toLowerCase();
+        if (normalized.includes('ct-e')) return 'CT-e';
+        if (normalized.includes('nf-e') || normalized.includes('nfc-e')) return 'NF-e / NFC-e';
+        if (normalized.includes('nfs-e')) return 'NFS-e';
+        if (normalized.includes('armazenamento')) return 'Armazenamento';
+        if (normalized.includes('sefaz')) return 'SEFAZ';
+        return 'Geral';
+    };
     Array.from(form.children).forEach((child) => {
         if (child === nav || child.name === '_csrf') return;
         if (child.tagName === 'H2') {
-            current = document.createElement('section');
-            current.className = 'settings-tab-panel';
-            current.dataset.settingsPanel = child.textContent.trim().toLowerCase().replace(/\W+/g, '-');
-            form.insertBefore(current, child);
-            sections.push({id: current.dataset.settingsPanel, title: child.textContent.trim(), panel: current});
+            const title = groupFor(child.textContent.trim());
+            if (!sectionMap[title]) {
+                current = document.createElement('section');
+                current.className = 'settings-tab-panel';
+                current.dataset.settingsPanel = title.toLowerCase().replace(/\W+/g, '-');
+                form.insertBefore(current, child);
+                sectionMap[title] = {id: current.dataset.settingsPanel, title, panel: current};
+                sections.push(sectionMap[title]);
+            } else {
+                current = sectionMap[title].panel;
+            }
         }
         if (current && child !== current && child !== saveButton) {
             current.appendChild(child);

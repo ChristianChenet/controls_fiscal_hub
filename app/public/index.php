@@ -1772,7 +1772,7 @@ switch ($page) {
         $viewData['selectedJobCompanyId'] = (string)($_GET['company_id'] ?? '0');
         $viewData['selectedJobType'] = (string)($_GET['job_type'] ?? 'cte_xml_folder_export');
         $viewData['jobs'] = $repo->jobs(20);
-        $viewData['moduleTitle'] = 'Execução manual de Robôs';
+        $viewData['moduleTitle'] = 'Execução Manual de Robôs';
         $viewData['moduleSubtitle'] = 'Acione rotinas operacionais sob demanda e acompanhe o histórico de execução.';
         include __DIR__ . '/../templates/jobs.php';
         break;

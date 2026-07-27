@@ -381,17 +381,19 @@ button.primary{
 .settings-tabs{
   display:flex;
   flex-wrap:wrap;
-  gap:8px;
-  margin:0 0 14px;
+  gap:6px;
+  margin:0 0 12px;
+  align-items:center;
 }
 .settings-tab-button{
-  min-height:38px;
+  min-height:32px;
   border:1px solid var(--line);
   border-radius:8px;
   background:#fff;
   color:#233832;
   font-weight:850;
-  padding:8px 12px;
+  padding:6px 10px;
+  font-size:12px;
   cursor:pointer;
 }
 .settings-tab-button.active{

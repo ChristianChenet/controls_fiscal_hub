@@ -5,12 +5,12 @@ $selectedJobType = (string)($selectedJobType ?? ($_GET['job_type'] ?? 'cte_xml_f
 $routineLabels = [
     'nfe_until_max' => 'Robo NF-e / NFC-e ate ultimo NSU',
     'cte_until_max' => 'Robo CT-e ate ultimo NSU',
-    'cte_xml_folder_export' => 'Gerar pasta XML CT-e para ERP',
+    'cte_xml_folder_export' => 'Robo CT-e XML na Pasta para o ERP',
     'certificate_check' => 'Validar certificado e pasta',
 ];
 ?>
 <div class="page-header">
-    <h1>Execucao manual de Robos</h1>
+    <h1>Execução Manual de Robôs</h1>
     <p>Execute rotinas operacionais sob demanda e acompanhe o historico.</p>
 </div>
 
@@ -25,7 +25,7 @@ $routineLabels = [
                 <?php endforeach; ?>
             </select>
         </label>
-        <label>Execucao manual de robos
+        <label>Execução manual de robôs
             <select name="job_type">
                 <?php foreach ($routineLabels as $value => $label): ?>
                     <option value="<?= h($value) ?>" <?= $selectedJobType === $value ? 'selected' : '' ?>><?= h($label) ?></option>
@@ -37,7 +37,7 @@ $routineLabels = [
         Use execucoes manuais quando precisar antecipar uma rotina ou conferir o ambiente. Em NF-e, ao selecionar uma matriz ou filial, o portal executa todos os CNPJs ativos da mesma raiz, um por vez.
     </div>
     <div class="form-actions">
-        <button class="primary" name="run_job" value="1">Executar robo</button>
+        <button class="primary" name="run_job" value="1">Executar Robô</button>
     </div>
 </form>
 

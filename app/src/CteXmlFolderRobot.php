@@ -39,7 +39,7 @@ final class CteXmlFolderRobot
             'sort_dir' => 'asc',
         ];
 
-        $jobId = $this->repo->createJob('cte_xml_folder_export', null, 'Pasta XML CT-e');
+        $jobId = $this->repo->createJob('cte_xml_folder_export', null, 'Robô CT-e XML na Pasta para o ERP');
         $deleted = 0;
         $copied = 0;
         $skipped = 0;
