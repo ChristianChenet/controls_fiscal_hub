@@ -45,6 +45,16 @@ while (true) {
     $intervalMinutes = max(5, (int)$repo->getSetting('auto_cte_interval_minutes', (string)($config['auto_cte_interval_minutes'] ?? 30)));
     $sleepSeconds = $enabled ? ($intervalMinutes * 60) : 30;
 
+    try {
+        $folderResult = $cteXmlFolderRobot->runScheduledIfDue();
+        if ($folderResult) {
+            $storage->appendLog('auto_cte_worker.log', 'Robô pasta XML CT-e executado: ' . json_encode($folderResult, JSON_UNESCAPED_UNICODE));
+        }
+    } catch (Throwable $e) {
+        $storage->appendLog('auto_cte_worker.log', 'Erro no robô pasta XML CT-e: ' . $e->getMessage());
+        $repo->logAction('cte_xml_folder_export_error', $e->getMessage());
+    }
+
     if (!$enabled) {
         sleep($sleepSeconds);
         continue;

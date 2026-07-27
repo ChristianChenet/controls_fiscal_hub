@@ -714,6 +714,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'auto_cte_interval_minutes',
                         'cte_robot_max_cycles',
                         'cte_robot_time_limit_seconds',
+                        'cte_xml_folder_robot_time',
+                        'cte_xml_folder_robot_delay_days',
+                        'cte_xml_folder_robot_limit',
                         'auto_nfe_company_id',
                         'auto_nfe_rewind_nsu_once',
                         'auto_nfe_interval_minutes',
@@ -745,6 +748,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $repo->setSetting('auto_nfe_company_id', (string)($autoNfeCompanyIds[0] ?? 0));
                     $repo->setSetting('auto_nfse_company_id', (string)($autoNfseCompanyIds[0] ?? 0));
                     $repo->setSetting('auto_cte_enabled', !empty($_POST['auto_cte_enabled']) ? '1' : '0');
+                    $repo->setSetting('cte_xml_folder_robot_enabled', !empty($_POST['cte_xml_folder_robot_enabled']) ? '1' : '0');
                     $repo->setSetting('auto_nfe_enabled', !empty($_POST['auto_nfe_enabled']) ? '1' : '0');
                     $repo->setSetting('auto_nfe_manifest_science', !empty($_POST['auto_nfe_manifest_science']) ? '1' : '0');
                     $repo->setSetting('auto_nfse_enabled', !empty($_POST['auto_nfse_enabled']) ? '1' : '0');
@@ -1643,6 +1647,11 @@ $viewData = [
         'auto_cte_interval_minutes' => $repo->getSetting('auto_cte_interval_minutes', (string)$config['auto_cte_interval_minutes']),
         'cte_robot_max_cycles' => $repo->getSetting('cte_robot_max_cycles', (string)$config['cte_robot_max_cycles']),
         'cte_robot_time_limit_seconds' => $repo->getSetting('cte_robot_time_limit_seconds', (string)$config['cte_robot_time_limit_seconds']),
+        'cte_xml_folder_robot_enabled' => $repo->getSetting('cte_xml_folder_robot_enabled', (string)($config['cte_xml_folder_robot_enabled'] ?? '0')),
+        'cte_xml_folder_robot_time' => $repo->getSetting('cte_xml_folder_robot_time', (string)($config['cte_xml_folder_robot_time'] ?? '02:00')),
+        'cte_xml_folder_robot_delay_days' => $repo->getSetting('cte_xml_folder_robot_delay_days', (string)($config['cte_xml_folder_robot_delay_days'] ?? '2')),
+        'cte_xml_folder_robot_limit' => $repo->getSetting('cte_xml_folder_robot_limit', (string)($config['cte_xml_folder_robot_limit'] ?? '5000')),
+        'cte_xml_folder_robot_last_run_date' => $repo->getSetting('cte_xml_folder_robot_last_run_date', ''),
         'auto_nfe_enabled' => $repo->getSetting('auto_nfe_enabled', (string)$config['auto_nfe_enabled']),
         'auto_nfe_all_companies' => $repo->getSetting('auto_nfe_all_companies', '0'),
         'auto_nfe_company_id' => $repo->getSetting('auto_nfe_company_id', (string)$config['auto_nfe_company_id']),
@@ -1699,7 +1708,7 @@ switch ($page) {
         include __DIR__ . '/../templates/revenue.php';
         break;
     case 'settings':
-        $viewData['automationJobs'] = $repo->jobsByTypes(['cte_until_max', 'nfe_until_max', 'nfe_until_max_science', 'nfse'], 30);
+        $viewData['automationJobs'] = $repo->jobsByTypes(['cte_until_max', 'cte_xml_folder_export', 'nfe_until_max', 'nfe_until_max_science', 'nfse'], 30);
         include __DIR__ . '/../templates/settings.php';
         break;
     case 'companies':

@@ -119,6 +119,28 @@ $autoNfseAll = ($settings['auto_nfse_all_companies'] ?? '0') === '1' || ($active
         <label>Tempo máximo por execução (segundos)
             <input type="text" name="cte_robot_time_limit_seconds" value="<?= h((string)($settings['cte_robot_time_limit_seconds'] ?? '240')) ?>">
         </label>
+        <h3>Pasta XML CT-e para ERP</h3>
+        <label class="checkbox-inline">
+            <input type="checkbox" name="cte_xml_folder_robot_enabled" value="1" <?= ($settings['cte_xml_folder_robot_enabled'] ?? '0') === '1' ? 'checked' : '' ?>>
+            Ativar geração automática da pasta CT-e
+        </label>
+        <label>Horário de execução diária
+            <input type="time" name="cte_xml_folder_robot_time" value="<?= h((string)($settings['cte_xml_folder_robot_time'] ?? '02:00')) ?>">
+            <small>O serviço CT-e verifica esse horário e executa uma vez por dia.</small>
+        </label>
+        <label>Dias de atraso para data final
+            <input type="number" min="0" max="30" step="1" name="cte_xml_folder_robot_delay_days" value="<?= h((string)($settings['cte_xml_folder_robot_delay_days'] ?? '2')) ?>">
+            <small>Ex.: com 2 dias de atraso, hoje ele gera XMLs com emissão até anteontem.</small>
+        </label>
+        <label>Limite máximo de XMLs por execução
+            <input type="number" min="1" max="20000" step="1" name="cte_xml_folder_robot_limit" value="<?= h((string)($settings['cte_xml_folder_robot_limit'] ?? '5000')) ?>">
+        </label>
+        <div class="notice subtle">
+            Filtro aplicado: CT-e, não lançado no ERP, exceto cancelados, somente CT-e em que somos tomador, ignorando CFOPs/notas cadastrados. Antes de gerar, a Pasta CT-e é limpa para ficar somente com os XMLs elegíveis.
+            <?php if (!empty($settings['cte_xml_folder_robot_last_run_date'])): ?>
+                Última execução automática: <?= h((string)$settings['cte_xml_folder_robot_last_run_date']) ?>.
+            <?php endif; ?>
+        </div>
         <h3>Recuo CT-e por CNPJ</h3>
         <div class="table-wrap compact-table">
             <table>
@@ -243,7 +265,7 @@ $autoNfseAll = ($settings['auto_nfse_all_companies'] ?? '0') === '1' || ($active
         <p><strong>Estrutura padrão futura</strong><br><code><?= h($settings['default_download_dir']) ?>/12345678000199/NFE/2026/05</code></p>
         <p><strong>Template</strong><br><code>{base}/{year}/{month}/{doc_type}</code></p>
         <p>O upload de certificado continua na tela <strong>Empresas</strong>, um certificado por CNPJ.</p>
-        <p><strong>Automação CT-e</strong><br>O robô executa em segundo plano quando a opção estiver ativa. Nesta versão ele não grava arquivos automaticamente nas pastas.</p>
+        <p><strong>Automação CT-e</strong><br>O robô de busca executa em segundo plano quando a opção estiver ativa. A geração da pasta CT-e para ERP é configurada separadamente e grava somente os XMLs elegíveis na pasta CT-e.</p>
     </div>
     <div class="card">
         <h2>Historico das automacoes</h2>
@@ -267,6 +289,7 @@ $autoNfseAll = ($settings['auto_nfse_all_companies'] ?? '0') === '1' || ($active
                         <?php
                             $routineLabel = match ((string)$job['job_type']) {
                                 'cte_until_max' => 'Robo CT-e',
+                                'cte_xml_folder_export' => 'Pasta XML CT-e',
                                 'nfe_until_max' => 'Robo NF-e',
                                 'nfe_until_max_science' => 'Robo NF-e + ciencia',
                                 'nfse' => 'Robo NFS-e Nacional',

@@ -28,6 +28,7 @@ $selectedJobType = (string)($selectedJobType ?? ($_GET['job_type'] ?? 'collect_a
                 <option value="nfe_until_max_science" <?= $selectedJobType === 'nfe_until_max_science' ? 'selected' : '' ?>>Robô NF-e + ciência da operação</option>
                 <option value="cte" <?= $selectedJobType === 'cte' ? 'selected' : '' ?>>Coletar CT-e</option>
                 <option value="cte_until_max" <?= $selectedJobType === 'cte_until_max' ? 'selected' : '' ?>>Robô CT-e até último NSU</option>
+                <option value="cte_xml_folder_export" <?= $selectedJobType === 'cte_xml_folder_export' ? 'selected' : '' ?>>Gerar pasta XML CT-e para ERP</option>
                 <option value="nfse" <?= $selectedJobType === 'nfse' ? 'selected' : '' ?>>Coletar NFS-e Nacional</option>
                 <option value="certificate_check" <?= $selectedJobType === 'certificate_check' ? 'selected' : '' ?>>Validar certificado e pasta</option>
             </select>

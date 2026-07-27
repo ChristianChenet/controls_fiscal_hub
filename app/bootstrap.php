@@ -89,6 +89,10 @@ $config = [
     'auto_cte_interval_minutes' => (int) env_value('AUTO_CTE_INTERVAL_MINUTES', '30'),
     'cte_robot_max_cycles' => (int) env_value('CTE_ROBOT_MAX_CYCLES', '10'),
     'cte_robot_time_limit_seconds' => (int) env_value('CTE_ROBOT_TIME_LIMIT_SECONDS', '240'),
+    'cte_xml_folder_robot_enabled' => env_value('CTE_XML_FOLDER_ROBOT_ENABLED', '0'),
+    'cte_xml_folder_robot_time' => env_value('CTE_XML_FOLDER_ROBOT_TIME', '02:00'),
+    'cte_xml_folder_robot_delay_days' => (int) env_value('CTE_XML_FOLDER_ROBOT_DELAY_DAYS', '2'),
+    'cte_xml_folder_robot_limit' => (int) env_value('CTE_XML_FOLDER_ROBOT_LIMIT', '5000'),
     'auto_nfe_enabled' => env_value('AUTO_NFE_ENABLED', '0'),
     'auto_nfe_company_id' => env_value('AUTO_NFE_COMPANY_ID', '0'),
     'auto_nfe_company_ids' => env_value('AUTO_NFE_COMPANY_IDS', ''),
@@ -158,6 +162,11 @@ $runtimeSettingKeys = [
     'auto_cte_interval_minutes',
     'cte_robot_max_cycles',
     'cte_robot_time_limit_seconds',
+    'cte_xml_folder_robot_enabled',
+    'cte_xml_folder_robot_time',
+    'cte_xml_folder_robot_delay_days',
+    'cte_xml_folder_robot_limit',
+    'cte_xml_folder_robot_last_run_date',
     'auto_nfe_enabled',
     'auto_nfe_company_id',
     'auto_nfe_company_ids',
@@ -216,17 +225,18 @@ $certificates = new ControlS\Portal\CertificateService($config, $repo, $storage)
 $httpClient = new ControlS\Portal\Http\MutualTlsHttpClient($config, $storage, $certificates);
 $parser = new ControlS\Portal\XmlParser();
 $manifestation = new ControlS\Portal\ManifestationService($config, $repo, $storage, $certificates, $httpClient, $parser);
+$cteXmlFolderRobot = new ControlS\Portal\CteXmlFolderRobot($config, $repo, $storage);
 $collectors = [
     'nfe' => new ControlS\Portal\Collectors\NFeConnector($config, $repo, $storage, $certificates, $httpClient, $parser),
     'cte' => new ControlS\Portal\Collectors\CTeConnector($config, $repo, $storage, $certificates, $httpClient, $parser),
     'nfse' => new ControlS\Portal\Collectors\NFSeNationalConnector($config, $repo, $storage, $certificates, $httpClient, $parser),
 ];
-$jobRunner = new ControlS\Portal\JobRunner($config, $repo, $collectors, $parser, $storage, $certificates, $manifestation);
+$jobRunner = new ControlS\Portal\JobRunner($config, $repo, $collectors, $parser, $storage, $certificates, $manifestation, $cteXmlFolderRobot);
 $periodClosure = new ControlS\Portal\PeriodClosureService($config, $repo, $storage, $collectors, $manifestation);
 $auth = new ControlS\Portal\Auth($config, $repo);
 
 function app_container(): array
 {
-    global $config, $repo, $storage, $certificates, $parser, $manifestation, $collectors, $jobRunner, $periodClosure, $auth, $database, $httpClient;
-    return compact('config', 'repo', 'storage', 'certificates', 'parser', 'manifestation', 'collectors', 'jobRunner', 'periodClosure', 'auth', 'database', 'httpClient');
+    global $config, $repo, $storage, $certificates, $parser, $manifestation, $collectors, $jobRunner, $periodClosure, $auth, $database, $httpClient, $cteXmlFolderRobot;
+    return compact('config', 'repo', 'storage', 'certificates', 'parser', 'manifestation', 'collectors', 'jobRunner', 'periodClosure', 'auth', 'database', 'httpClient', 'cteXmlFolderRobot');
 }

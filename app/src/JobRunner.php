@@ -15,12 +15,26 @@ final class JobRunner
         private XmlParser $parser,
         private Storage $storage,
         private ?CertificateService $certificates = null,
-        private ?ManifestationService $manifestation = null
+        private ?ManifestationService $manifestation = null,
+        private ?CteXmlFolderRobot $cteXmlFolderRobot = null
     ) {
     }
 
     public function run(string $jobType, int $companyId = 0): array
     {
+        if ($jobType === 'cte_xml_folder_export') {
+            if (!$this->cteXmlFolderRobot) {
+                throw new \RuntimeException('Robô de geração da pasta XML CT-e não disponível.');
+            }
+            $result = $this->cteXmlFolderRobot->run('manual');
+            return [
+                'created' => (int)$result['copied'],
+                'updated' => (int)$result['deleted'],
+                'errors' => (int)$result['errors'],
+                'logs' => (array)$result['logs'],
+            ];
+        }
+
         $companies = $this->companiesForJob($jobType, $companyId);
         if (!$companies) {
             throw new \RuntimeException('Nenhuma empresa ativa cadastrada.');
