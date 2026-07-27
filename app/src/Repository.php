@@ -895,6 +895,17 @@ final class Repository
         return array_map(static fn(array $row): string => (string)$row['cfop'], $stmt->fetchAll());
     }
 
+    public function documentStatusOptions(): array
+    {
+        $stmt = $this->pdo->query("SELECT status, COUNT(*) AS total
+            FROM documents
+            WHERE COALESCE(status, '') <> ''
+              AND status <> 'evento_informativo'
+            GROUP BY status
+            ORDER BY status ASC");
+        return $stmt->fetchAll();
+    }
+
     public function saveDocumentIgnoredCfop(string $cfop, string $reason, ?array $user): void
     {
         $cfop = preg_replace('/\D+/', '', $cfop) ?: '';
@@ -2013,21 +2024,61 @@ final class Repository
     {
         $stmt = $this->pdo->query("SELECT e.document_id, e.access_key, e.event_type, e.event_name, e.event_date, e.protocol
             FROM document_events e
-            WHERE e.event_type = '110111' OR LOWER(COALESCE(e.event_name, '')) LIKE '%cancel%'");
+            WHERE e.event_type IN ('110111', '610110')
+               OR LOWER(COALESCE(e.event_name, '')) LIKE '%cancel%'");
         $updated = 0;
         foreach ($stmt->fetchAll() as $event) {
             $documentId = (int)($event['document_id'] ?? 0);
+            $doc = null;
             if ($documentId <= 0) {
                 $doc = $this->findDocumentByAccessKey('NFE', (string)$event['access_key'])
                     ?: $this->findDocumentByAccessKey('NFCE', (string)$event['access_key'])
                     ?: $this->findDocumentByAccessKey('CTE', (string)$event['access_key']);
                 $documentId = (int)($doc['id'] ?? 0);
+            } else {
+                $doc = $this->findDocument($documentId);
             }
-            if ($documentId > 0) {
+            if ($documentId > 0 && $doc && $this->isDocumentStatusCancellationEvent(strtoupper((string)($doc['doc_type'] ?? '')), $event)) {
                 $updated += $this->markDocumentCancelledFromEvent($documentId, (string)($event['event_date'] ?? ''), (string)($event['protocol'] ?? ''));
             }
         }
         return $updated;
+    }
+
+    public function repairCteCancellationStatuses(): array
+    {
+        $now = date('c');
+        $downgrade = $this->pdo->prepare("UPDATE documents
+            SET status = CASE WHEN COALESCE(raw_xml, '') <> '' OR COALESCE(xml_path, '') <> '' THEN 'xml_completo' ELSE 'apenas_resumo' END,
+                updated_at = :updated_at
+            WHERE doc_type = 'CTE'
+              AND status = 'cancelado'
+              AND COALESCE(notes, '') NOT LIKE '%cStat=101%'
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM document_events e
+                  WHERE (e.document_id = documents.id OR e.access_key = documents.access_key)
+                    AND e.event_type IN ('110111', '610110')
+              )");
+        $downgrade->execute(['updated_at' => $now]);
+        $reopened = $downgrade->rowCount();
+
+        $upgrade = $this->pdo->prepare("UPDATE documents
+            SET status = 'cancelado',
+                manifestation_status = 'not_applicable',
+                notes = TRIM(COALESCE(notes, '') || ' CT-e marcado como cancelado conforme evento 110111 ou 610110 recebido da SEFAZ.'),
+                updated_at = :updated_at
+            WHERE doc_type = 'CTE'
+              AND status <> 'cancelado'
+              AND EXISTS (
+                  SELECT 1
+                  FROM document_events e
+                  WHERE (e.document_id = documents.id OR e.access_key = documents.access_key)
+                    AND e.event_type IN ('110111', '610110')
+              )");
+        $upgrade->execute(['updated_at' => $now]);
+
+        return ['reopened' => $reopened, 'cancelled' => $upgrade->rowCount()];
     }
 
     public function applyNFeProtocolStatus(string $accessKey, array $status, ?int $companyId = null): int
@@ -2107,6 +2158,9 @@ final class Repository
             default => null,
         };
         if ($newStatus === null) {
+            return 0;
+        }
+        if ($newStatus === 'cancelado' && $eventType !== '' && !in_array($eventType, ['110111', '610110'], true)) {
             return 0;
         }
 
@@ -2206,6 +2260,16 @@ final class Repository
     {
         $type = preg_replace('/\D+/', '', (string)($event['event_type'] ?? ''));
         $name = mb_strtolower((string)($event['event_name'] ?? ''));
+        return $type === '110111' || str_contains($name, 'cancel');
+    }
+
+    private function isDocumentStatusCancellationEvent(string $docType, array $event): bool
+    {
+        $type = preg_replace('/\D+/', '', (string)($event['event_type'] ?? ''));
+        $name = mb_strtolower((string)($event['event_name'] ?? ''));
+        if ($docType === 'CTE') {
+            return in_array($type, ['110111', '610110'], true);
+        }
         return $type === '110111' || str_contains($name, 'cancel');
     }
 

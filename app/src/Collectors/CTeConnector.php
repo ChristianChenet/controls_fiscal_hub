@@ -160,6 +160,7 @@ XML;
             return ($nodes && $nodes->length > 0) ? trim((string)$nodes->item(0)?->textContent) : '';
         };
 
+        $statusCancellationEvents = ['110111', '610110'];
         $events = $xp->query('//*[local-name()="procEventoCTe" or local-name()="retEventoCTe" or local-name()="eventoCTe"]');
         foreach ($events ?: [] as $event) {
             $eventType = $text('.//*[local-name()="tpEvento"]', $event);
@@ -168,7 +169,7 @@ XML;
             if ($eventStatus === '') {
                 $eventStatus = $text('.//*[local-name()="infEvento"]/*[local-name()="cStat"]', $event);
             }
-            $isCancellation = $eventType === '110111' || str_contains(strtolower($eventName), 'cancel');
+            $isCancellation = in_array($eventType, $statusCancellationEvents, true);
             $isAccepted = in_array($eventStatus, ['101', '135', '136', '155'], true);
             if ($isCancellation && ($isAccepted || $eventStatus === '')) {
                 $reason = $text('.//*[local-name()="retEventoCTe"]/*[local-name()="infEvento"]/*[local-name()="xMotivo"]', $event);
@@ -177,7 +178,7 @@ XML;
                 }
                 return [
                     'cStat' => '101',
-                    'xMotivo' => $reason !== '' ? $reason : 'Cancelamento localizado na consulta de protocolo CT-e.',
+                    'xMotivo' => $reason !== '' ? $reason : ($eventName !== '' ? $eventName : 'Evento de CT-e localizado na consulta de protocolo.'),
                     'nProt' => $text('.//*[local-name()="retEventoCTe"]/*[local-name()="infEvento"]/*[local-name()="nProt"]', $event)
                         ?: $text('.//*[local-name()="infEvento"]/*[local-name()="nProt"]', $event),
                     'dhRecbto' => $text('.//*[local-name()="retEventoCTe"]/*[local-name()="infEvento"]/*[local-name()="dhRegEvento"]', $event)

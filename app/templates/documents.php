@@ -14,6 +14,11 @@ $companyOptions = array_map(static fn(array $co): array => [
     'value' => (string)$co['id'],
     'label' => (string)$co['company_name'] . ' - ' . (string)$co['cnpj'],
 ], $companies ?? []);
+$statusOptions = array_map(static fn(array $row): string => (string)($row['status'] ?? ''), $documentStatusOptions ?? []);
+$selectedStatus = (string)($filters['status'] ?? '');
+if ($selectedStatus !== '' && !in_array($selectedStatus, $statusOptions, true)) {
+    $statusOptions[] = $selectedStatus;
+}
 $documentFilterKeys = [
     'company_id','doc_type','status','manifestation_status','posted_to_erp','without_referenced_nfe','cte_taker_only','ignore_cfops','entry_only','date_start','date_end',
     'company_q','number_q','issuer_q','recipient_q','access_key_q','referenced_nfe_q','referenced_number_q','product_q','cfop_q','source_q','q','sort_by','sort_dir',
@@ -66,7 +71,7 @@ $documentFilterKeys = [
         <label>Status
             <select name="status">
                 <option value="">Todos</option>
-                <?php foreach (['xml_completo','apenas_resumo','cancelado','denegado','pendente_manifestacao','aguardando_novo_download','ja_existente','erro'] as $status): ?>
+                <?php foreach ($statusOptions as $status): ?>
                     <option value="<?= h($status) ?>" <?= (($filters['status'] ?? '') === $status) ? 'selected' : '' ?>><?= h(document_status_label($status)) ?></option>
                 <?php endforeach; ?>
             </select>
@@ -174,14 +179,6 @@ $documentFilterKeys = [
             <button class="button-compact" type="button" data-open-action-modal="ignore" title="Adiciona as notas selecionadas a lista de ignoradas com justificativa e historico de usuario, data e hora.">Ignorar notas</button>
         </div>
     </div>
-    <div class="queue-progress is-hidden" id="cancel-check-progress" aria-live="polite">
-        <div class="queue-progress-header">
-            <strong>Verificando cancelamentos</strong>
-            <span id="cancel-check-progress-text">0 de 0</span>
-        </div>
-        <div class="queue-progress-bar"><span id="cancel-check-progress-bar"></span></div>
-        <small id="cancel-check-progress-detail">Aguardando seleção.</small>
-    </div>
     <div class="export-panel is-collapsed compact-export-panel" id="documents-export-panel">
         <div class="export-panel-heading">
             <strong>Exportacao</strong>
@@ -193,6 +190,24 @@ $documentFilterKeys = [
             <a class="button-link button-compact" href="<?= h(base_url('?' . http_build_query($exportQuery))) ?>">Exportar Excel</a>
         </div>
         <div id="local-export-feedback" class="export-feedback" aria-live="polite"></div>
+    </div>
+    <div class="modal-backdrop action-modal is-hidden" id="cancel-check-modal" role="dialog" aria-modal="true" aria-labelledby="cancel-check-title">
+        <div class="modal-panel action-modal-panel">
+            <div class="modal-header">
+                <div>
+                    <h2 id="cancel-check-title">Verificando cancelamentos</h2>
+                    <small>Consulta em fila, um documento por vez, sem perder os filtros aplicados.</small>
+                </div>
+            </div>
+            <div class="queue-progress" id="cancel-check-progress" aria-live="polite">
+                <div class="queue-progress-header">
+                    <strong>Consulta SEFAZ</strong>
+                    <span id="cancel-check-progress-text">0 de 0</span>
+                </div>
+                <div class="queue-progress-bar"><span id="cancel-check-progress-bar"></span></div>
+                <small id="cancel-check-progress-detail">Aguardando seleção.</small>
+            </div>
+        </div>
     </div>
 
     <div class="table-wrap documents-table-wrap">
@@ -347,6 +362,14 @@ $documentFilterKeys = [
         </div>
     </div>
 </form>
+
+<div class="modal-backdrop loading-modal is-hidden" id="documents-loading-modal" role="dialog" aria-modal="true" aria-labelledby="documents-loading-title">
+    <div class="modal-panel loading-modal-panel">
+        <h2 id="documents-loading-title">Buscando entradas</h2>
+        <p>Aplicando filtros e preparando o grid.</p>
+        <div class="indeterminate-bar"><span></span></div>
+    </div>
+</div>
 
 <div class="modal-backdrop ignored-cfops-modal is-hidden" id="ignored-cfops-modal" role="dialog" aria-modal="true" aria-labelledby="ignored-cfops-title">
     <div class="modal-panel">
@@ -510,12 +533,13 @@ $documentFilterKeys = [
 <script>
 (function () {
     var button = document.querySelector('[data-check-cancel-queue]');
+    var modal = document.getElementById('cancel-check-modal');
     var panel = document.getElementById('cancel-check-progress');
     var text = document.getElementById('cancel-check-progress-text');
     var bar = document.getElementById('cancel-check-progress-bar');
     var detail = document.getElementById('cancel-check-progress-detail');
     var csrf = document.querySelector('form.documents-card input[name="_csrf"]');
-    if (!button || !panel || !text || !bar || !detail || !csrf) return;
+    if (!button || !modal || !panel || !text || !bar || !detail || !csrf) return;
     function selectedIds() {
         return Array.from(document.querySelectorAll('[data-doc-checkbox]:checked')).map(function (input) { return input.value; }).filter(Boolean);
     }
@@ -532,7 +556,7 @@ $documentFilterKeys = [
             return;
         }
         button.disabled = true;
-        panel.classList.remove('is-hidden');
+        modal.classList.remove('is-hidden');
         setProgress(0, ids.length, 'Iniciando fila de consulta...');
         var cancelled = 0;
         var errors = 0;
@@ -557,6 +581,17 @@ $documentFilterKeys = [
         }
         detail.textContent = 'Fila concluida: ' + ids.length + ' consultado(s), ' + cancelled + ' cancelado(s), ' + errors + ' erro(s). Atualizando a tela...';
         setTimeout(function () { window.location.reload(); }, 900);
+    });
+})();
+</script>
+
+<script>
+(function () {
+    var form = document.querySelector('form.documents-filter');
+    var modal = document.getElementById('documents-loading-modal');
+    if (!form || !modal) return;
+    form.addEventListener('submit', function () {
+        modal.classList.remove('is-hidden');
     });
 })();
 </script>

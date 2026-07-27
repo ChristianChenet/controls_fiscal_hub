@@ -163,7 +163,7 @@ function documents_party(DOMXPath $xp, string $tag): array
     ];
 }
 
-function documents_danfe_details(array $doc): array
+function documents_danfe_details(array $doc, ?\ControlS\Portal\Repository $repo = null): array
 {
     $xml = documents_xml_content($doc);
     $type = strtoupper((string)($doc['doc_type'] ?? ''));
@@ -177,17 +177,17 @@ function documents_danfe_details(array $doc): array
     }
     $xp = new DOMXPath($dom);
     if ($type === 'CTE') {
-        foreach ($xp->query('//*[local-name()="Comp"]') ?: [] as $node) {
-            $local = new DOMXPath($node->ownerDocument);
+        $indexedItems = $repo ? $repo->documentItems((int)($doc['id'] ?? 0)) : [];
+        foreach ($indexedItems as $item) {
             $details['items'][] = [
-                'codigo' => '',
-                'descricao' => xml_first($local, ['//*[local-name()="Comp"]/*[local-name()="xNome"]']),
-                'ncm' => '',
-                'cfop' => xml_first($xp, ['//*[local-name()="ide"]/*[local-name()="CFOP"]']),
-                'quantidade' => '',
-                'unidade' => '',
-                'unitario' => '',
-                'total' => documents_money(xml_first($local, ['//*[local-name()="Comp"]/*[local-name()="vComp"]'])),
+                'codigo' => (string)($item['product_code'] ?? ''),
+                'descricao' => (string)($item['product_name'] ?? ''),
+                'ncm' => (string)($item['ncm'] ?? ''),
+                'cfop' => (string)($item['cfop'] ?? ''),
+                'quantidade' => (string)($item['quantity'] ?? ''),
+                'unidade' => (string)($item['unit'] ?? ''),
+                'unitario' => documents_money((string)($item['unit_amount'] ?? '')),
+                'total' => documents_money((string)($item['total_amount'] ?? '')),
                 'icms' => '',
                 'pis' => '',
                 'cofins' => '',
@@ -374,7 +374,7 @@ function documents_danfe_html(array $doc, bool $autoPrint = false): string
     $type = strtoupper((string)($doc['doc_type'] ?? ''));
     $title = $type === 'CTE' ? 'DACTE' : 'DANFE';
     $subtitle = $type === 'CTE' ? 'Documento Auxiliar do Conhecimento de Transporte Eletronico' : 'Documento Auxiliar da Nota Fiscal Eletronica';
-    $details = documents_danfe_details($doc);
+    $details = documents_danfe_details($doc, $GLOBALS['repo'] ?? null);
     $xml = documents_xml_content($doc);
     $allFields = documents_xml_flat_fields($xml);
     $emit = ['nome' => (string)($doc['issuer_name'] ?? ''), 'documento' => (string)($doc['issuer_cnpj'] ?? ''), 'ie' => '', 'endereco' => ''];
@@ -569,6 +569,9 @@ if ($page === 'documents_check_cancel') {
             $eventUpdated = $repo->repairCancelledDocumentsFromEvents();
             $statusResult['updated'] = (int)($statusResult['updated'] ?? 0) + (int)($distributionResult['updated'] ?? 0) + $eventUpdated;
             $statusResult['message'] = trim((string)($statusResult['message'] ?? 'consulta de protocolo concluida') . ' | Distribuicao por chave: ' . (string)($distributionResult['message'] ?? 'sem retorno'));
+        } elseif ($collectorKey === 'cte') {
+            $cteRepair = $repo->repairCteCancellationStatuses();
+            $statusResult['updated'] = (int)($statusResult['updated'] ?? 0) + (int)($cteRepair['reopened'] ?? 0) + (int)($cteRepair['cancelled'] ?? 0);
         }
         $after = $repo->findDocumentByAccessKey($type, $key, (int)$company['id']);
         if (!$after && $type === 'NFE') {
@@ -1664,6 +1667,7 @@ switch ($page) {
         include __DIR__ . '/../templates/import.php';
         break;
     case 'documents':
+        $repo->repairCteCancellationStatuses();
         if (!empty($_GET['clear_filters'])) {
             unset($_SESSION['documents_last_query']);
             redirect_to(base_url('?page=documents'));
@@ -1690,6 +1694,7 @@ switch ($page) {
         $viewData['documentIgnoredCfops'] = $repo->documentIgnoredCfops();
         $viewData['documentIgnoredDocuments'] = $repo->documentIgnoredDocuments();
         $viewData['documentCfopOptions'] = $repo->documentCfopOptions();
+        $viewData['documentStatusOptions'] = $repo->documentStatusOptions();
         include __DIR__ . '/../templates/documents.php';
         break;
     case 'period_closure':

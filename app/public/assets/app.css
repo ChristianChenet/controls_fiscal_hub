@@ -1642,6 +1642,36 @@ textarea{
 .queue-progress-bar{height:10px;background:#dceee4;border-radius:999px;overflow:hidden}
 .queue-progress-bar span{display:block;height:100%;width:0;background:linear-gradient(90deg,#20c45a,#0b8f3a);transition:width .18s ease}
 .queue-progress small{color:#536579}
+.loading-modal-panel{
+  width:min(420px,92vw);
+  display:grid;
+  gap:10px;
+}
+.loading-modal-panel h2{
+  margin:0;
+}
+.loading-modal-panel p{
+  margin:0;
+  color:var(--muted);
+}
+.indeterminate-bar{
+  height:10px;
+  overflow:hidden;
+  border-radius:999px;
+  background:#dceee4;
+}
+.indeterminate-bar span{
+  display:block;
+  width:42%;
+  height:100%;
+  border-radius:inherit;
+  background:linear-gradient(90deg,#20c45a,#0b8f3a);
+  animation:indeterminate-slide 1.1s ease-in-out infinite;
+}
+@keyframes indeterminate-slide{
+  0%{transform:translateX(-110%)}
+  100%{transform:translateX(250%)}
+}
 .nav-menu a{font-size:13px;font-weight:750}
 .nav-icon{
   width:20px;
