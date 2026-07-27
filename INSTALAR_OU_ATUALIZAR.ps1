@@ -144,7 +144,7 @@ function Instalar-Dependencias-Se-Necessario {
 
 function Configurar-PHP($PhpPath) {
     Titulo "Validando PHP"
-    & $PhpPath -v
+    & $PhpPath -v | Out-Host
 
     $phpDir = Split-Path -Parent $PhpPath
     $phpIni = Join-Path $phpDir "php.ini"
