@@ -687,6 +687,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (isset($_POST['save_settings'])) {
                     foreach ([
                         'default_download_dir',
+                        'xml_download_dir_nfe',
+                        'xml_download_dir_nfse',
+                        'xml_download_dir_cte',
                         'storage_path_mode',
                         'storage_path_template',
                         'client_display_name',
@@ -850,14 +853,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 continue;
                             }
 
-                            $saved = $storage->saveXml(
-                                $parsed['doc_type'],
-                                (string)$parsed['issue_date'],
-                                $xml,
-                                ($_FILES['xml_files']['name'][$idx] ?? null),
-                                (string)($company['cnpj'] ?? ''),
-                                (string)($company['default_download_dir'] ?? '')
-                            );
+                            $saved = ['xml_path' => null, 'storage_dir' => null];
                             $repo->saveDocument($parsed + $saved + [
                                 'company_id' => (int)($company['id'] ?? 0) ?: null,
                                 'company_name' => $company['company_name'] ?? null,
@@ -1615,6 +1611,9 @@ $viewData = [
     'isAdmin' => $auth->isAdmin(),
     'settings' => [
         'default_download_dir' => $repo->getSetting('default_download_dir', $config['default_download_dir']),
+        'xml_download_dir_nfe' => $repo->getSetting('xml_download_dir_nfe', ''),
+        'xml_download_dir_nfse' => $repo->getSetting('xml_download_dir_nfse', ''),
+        'xml_download_dir_cte' => $repo->getSetting('xml_download_dir_cte', ''),
         'storage_path_mode' => $repo->getSetting('storage_path_mode', 'segmented'),
         'storage_path_template' => $repo->getSetting('storage_path_template', '{base}/{cnpj}/{doc_type}/{year}/{month}'),
         'company_cnpj' => $repo->getSetting('company_cnpj', 'multiempresa'),

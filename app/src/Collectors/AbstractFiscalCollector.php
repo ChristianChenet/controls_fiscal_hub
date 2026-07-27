@@ -124,17 +124,6 @@ abstract class AbstractFiscalCollector implements CollectorInterface
             return ['created'=>0, 'updated'=>0, 'status'=>'ja_existente_xml_completo'];
         }
 
-        if (($parsed['status'] ?? '') !== 'apenas_resumo') {
-            $saved = $this->storage->saveXml(
-                $parsed['doc_type'],
-                (string)($parsed['issue_date'] ?? ''),
-                $xml,
-                $this->guessFileName($parsed, $schema, $nsu),
-                (string)$company['cnpj'],
-                (string)($company['default_download_dir'] ?? '')
-            );
-        }
-
         $row = $this->repo->saveDocument($parsed + $saved + [
             'company_id' => (int)$company['id'],
             'company_name' => (string)$company['company_name'],

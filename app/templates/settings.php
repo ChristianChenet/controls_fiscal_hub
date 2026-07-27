@@ -34,6 +34,16 @@ $autoNfseAll = ($settings['auto_nfse_all_companies'] ?? '0') === '1' || ($active
         <h2>Armazenamento global</h2>
         <label>Pasta padrão global de download no servidor
             <input type="text" name="default_download_dir" value="<?= h($settings['default_download_dir']) ?>">
+            <small>Uso automatico temporariamente desativado. Os XMLs completos permanecem gravados no banco.</small>
+        </label>
+        <label>Pasta NF-e
+            <input type="text" name="xml_download_dir_nfe" value="<?= h((string)($settings['xml_download_dir_nfe'] ?? '')) ?>" placeholder="Ex.: D:/XML/NFe">
+        </label>
+        <label>Pasta NFS-e
+            <input type="text" name="xml_download_dir_nfse" value="<?= h((string)($settings['xml_download_dir_nfse'] ?? '')) ?>" placeholder="Ex.: D:/XML/NFSe">
+        </label>
+        <label>Pasta CT-e
+            <input type="text" name="xml_download_dir_cte" value="<?= h((string)($settings['xml_download_dir_cte'] ?? '')) ?>" placeholder="Ex.: D:/XML/CTe">
         </label>
         <label>Estrutura de pastas
             <select name="storage_path_mode">
@@ -228,11 +238,12 @@ $autoNfseAll = ($settings['auto_nfse_all_companies'] ?? '0') === '1' || ($active
 
     <div class="card">
         <h2>Exemplos de armazenamento</h2>
-        <p><strong>Tudo na mesma pasta</strong><br><code><?= h($settings['default_download_dir']) ?></code></p>
-        <p><strong>Estrutura padrão</strong><br><code><?= h($settings['default_download_dir']) ?>/12345678000199/NFE/2026/05</code></p>
+        <p><strong>Salvamento automatico</strong><br>Temporariamente desativado. A importacao e os robos mantem o XML completo no banco para consulta, espelho e exportacao.</p>
+        <p><strong>Pastas separadas</strong><br><code>NF-e: <?= h((string)($settings['xml_download_dir_nfe'] ?? '')) ?></code><br><code>NFS-e: <?= h((string)($settings['xml_download_dir_nfse'] ?? '')) ?></code><br><code>CT-e: <?= h((string)($settings['xml_download_dir_cte'] ?? '')) ?></code></p>
+        <p><strong>Estrutura padrão futura</strong><br><code><?= h($settings['default_download_dir']) ?>/12345678000199/NFE/2026/05</code></p>
         <p><strong>Template</strong><br><code>{base}/{year}/{month}/{doc_type}</code></p>
         <p>O upload de certificado continua na tela <strong>Empresas</strong>, um certificado por CNPJ.</p>
-        <p><strong>Automação CT-e</strong><br>O worker do Docker executa o robô em segundo plano quando a opção estiver ativa. Os XMLs completos são salvos na estrutura configurada acima.</p>
+        <p><strong>Automação CT-e</strong><br>O worker executa em segundo plano quando a opção estiver ativa. Nesta versão ele não grava arquivos automaticamente nas pastas.</p>
     </div>
     <div class="card">
         <h2>Historico das automacoes</h2>

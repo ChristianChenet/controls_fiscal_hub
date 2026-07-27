@@ -83,14 +83,7 @@ final class NFSeNationalConnector extends AbstractFiscalCollector
                 $parsed = $this->parser->parse($xml);
                 $parsed['source'] = 'nfse_nacional_api';
                 $parsed['schema_name'] = 'nfse_api';
-                $saved = $this->storage->saveXml(
-                    $parsed['doc_type'],
-                    (string) ($parsed['issue_date'] ?? ''),
-                    $xml,
-                    null,
-                    (string)$company['cnpj'],
-                    (string)($company['default_download_dir'] ?? '')
-                );
+                $saved = ['xml_path' => null, 'storage_dir' => null];
                 $existing = !empty($parsed['access_key'])
                     ? $this->repo->findDocumentByAccessKey($parsed['doc_type'], (string) $parsed['access_key'], (int)$company['id'])
                     : null;
