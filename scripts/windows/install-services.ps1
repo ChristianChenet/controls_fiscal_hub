@@ -129,7 +129,7 @@ Install-ControlSService `
     -Name "${ServicePrefix}Portal" `
     -Description "Portal web do Control S Fiscal Hub." `
     -Application $CmdExe `
-    -Arguments @("/d", "/s", "/c", "`"$portalWrapper`"") `
+    -Arguments @("/d", "/c", "`"`"$portalWrapper`"`"") `
     -AppDirectory $AppRoot `
     -LogName "service_portal.log" `
     -Nssm $Nssm
@@ -150,7 +150,7 @@ foreach ($worker in $workers.GetEnumerator()) {
         -Name "${ServicePrefix}$($worker.Key)" `
         -Description "Robo automatico $($worker.Key) do Control S Fiscal Hub." `
         -Application $CmdExe `
-        -Arguments @("/d", "/s", "/c", "`"$workerWrapper`"") `
+        -Arguments @("/d", "/c", "`"`"$workerWrapper`"`"") `
         -AppDirectory $AppRoot `
         -LogName ("service_" + $worker.Key + ".log") `
         -Nssm $Nssm
