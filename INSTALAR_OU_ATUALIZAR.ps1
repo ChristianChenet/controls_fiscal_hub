@@ -188,6 +188,27 @@ function Configurar-PHP($PhpPath) {
     }
 }
 
+function Preparar-PHP-Para-Servico($Destino, $PhpPath) {
+    Titulo "Preparando PHP para servicos"
+    $phpDir = Split-Path -Parent $PhpPath
+    $destPhpDir = Join-Path $Destino "tools\php"
+    $destPhp = Join-Path $destPhpDir "php.exe"
+
+    if ($phpDir -ieq $destPhpDir) {
+        Write-Host "PHP de servico ja esta em: $destPhp"
+        return $destPhp
+    }
+
+    New-Item -ItemType Directory -Force -Path $destPhpDir | Out-Null
+    Write-Host "Copiando runtime do PHP para: $destPhpDir"
+    Copy-Item -Path (Join-Path $phpDir "*") -Destination $destPhpDir -Recurse -Force
+    if (!(Test-Path $destPhp)) {
+        Falhar "Nao foi possivel preparar o PHP de servico em $destPhp."
+    }
+    Configurar-PHP $destPhp
+    return $destPhp
+}
+
 function Atualizar-Launchers($Destino, $PhpPath) {
     Titulo "Atualizando atalhos tecnicos de inicializacao"
     $scriptsDir = Join-Path $Destino "scripts\windows"
@@ -573,16 +594,17 @@ Parar-Instancia-Atual $InstallDir
 Copiar-Aplicacao $Origem $InstallDir
 Garantir-Pastas $InstallDir
 Criar-Env $InstallDir $senhaBanco
-Atualizar-Launchers $InstallDir $php
+$phpServico = Preparar-PHP-Para-Servico $InstallDir $php
+Atualizar-Launchers $InstallDir $phpServico
 Criar-Banco-Se-Necessario $pgBin $senhaBanco
 Restaurar-Backup $InstallDir $pgBin $senhaBanco
-Rodar-Migracoes $InstallDir $php
+Rodar-Migracoes $InstallDir $phpServico
 Liberar-Firewall
 Criar-Atalho $InstallDir
-Criar-Servicos $InstallDir $php
+Criar-Servicos $InstallDir $phpServico
 Criar-Tarefas $InstallDir $php
 Criar-Inicializacao-Usuario $InstallDir
-Iniciar-Portal-Manual $InstallDir $php
+Iniciar-Portal-Manual $InstallDir $phpServico
 
 Titulo "Instalacao/atualizacao concluida"
 Write-Host "Para iniciar agora:"
