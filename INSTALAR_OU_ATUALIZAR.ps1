@@ -232,7 +232,10 @@ function Parar-Instancia-Atual($Destino) {
         "ControlSFiscalHubPortal",
         "ControlSFiscalHubWorkercte",
         "ControlSFiscalHubWorkernfe",
-        "ControlSFiscalHubWorkernfse"
+        "ControlSFiscalHubWorkernfse",
+        "ControlSFiscalHubRoboCTe",
+        "ControlSFiscalHubRoboNFe",
+        "ControlSFiscalHubRoboNFSe"
     )) {
         try {
             Stop-Service -Name $service -Force -ErrorAction SilentlyContinue

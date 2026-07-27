@@ -5,8 +5,8 @@ param(
 
 $ErrorActionPreference = "Stop"
 $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
-$PowerShell = "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe"
 $ServicePrefix = "ControlSFiscalHub"
+$AppRoot = Join-Path $ProjectRoot "app"
 $LogDir = Join-Path $ProjectRoot "app\storage\logs"
 
 function Assert-Admin {
@@ -61,21 +61,21 @@ function Stop-And-Remove-Service {
 function Install-ControlSService {
     param(
         [string]$Name,
-        [string]$DisplayName,
         [string]$Description,
-        [string]$Script,
-        [string[]]$ExtraArgs,
+        [string]$Application,
+        [string[]]$Arguments,
+        [string]$AppDirectory,
         [string]$LogName,
         [string]$Nssm
     )
 
     Stop-And-Remove-Service -Name $Name -Nssm $Nssm
 
-    $args = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$Script`"", "-PhpPath", "`"$PhpPath`"") + $ExtraArgs
-    & $Nssm install $Name $PowerShell ($args -join " ") | Out-Null
-    & $Nssm set $Name DisplayName $DisplayName | Out-Null
+    & $Nssm install $Name $Application | Out-Null
+    & $Nssm set $Name AppParameters ($Arguments -join " ") | Out-Null
+    & $Nssm set $Name DisplayName $Name | Out-Null
     & $Nssm set $Name Description $Description | Out-Null
-    & $Nssm set $Name AppDirectory $ProjectRoot | Out-Null
+    & $Nssm set $Name AppDirectory $AppDirectory | Out-Null
     & $Nssm set $Name Start SERVICE_AUTO_START | Out-Null
     & $Nssm set $Name AppStdout (Join-Path $LogDir $LogName) | Out-Null
     & $Nssm set $Name AppStderr (Join-Path $LogDir $LogName) | Out-Null
@@ -89,35 +89,53 @@ Assert-Admin
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 $Nssm = Find-Nssm
 
-$portalScript = Join-Path $ProjectRoot "scripts\windows\run-portal.ps1"
-$workerScript = Join-Path $ProjectRoot "scripts\windows\run-worker.ps1"
+foreach ($legacyName in @(
+    "${ServicePrefix}Workercte",
+    "${ServicePrefix}Workernfe",
+    "${ServicePrefix}Workernfse"
+)) {
+    Stop-And-Remove-Service -Name $legacyName -Nssm $Nssm
+}
 
 Install-ControlSService `
     -Name "${ServicePrefix}Portal" `
-    -DisplayName "Control S Fiscal Hub - Portal" `
     -Description "Portal web do Control S Fiscal Hub." `
-    -Script $portalScript `
-    -ExtraArgs @("-Port", "$PortalPort") `
+    -Application $PhpPath `
+    -Arguments @("-S", "0.0.0.0:$PortalPort", "-t", "`"$(Join-Path $AppRoot "public")`"") `
+    -AppDirectory $AppRoot `
     -LogName "service_portal.log" `
     -Nssm $Nssm
 
-foreach ($worker in @("cte", "nfe", "nfse")) {
+$workers = @{
+    "RoboCTe" = "auto_cte_worker.php"
+    "RoboNFe" = "auto_nfe_worker.php"
+    "RoboNFSe" = "auto_nfse_worker.php"
+}
+
+foreach ($worker in $workers.GetEnumerator()) {
+    $script = Join-Path $AppRoot ("scripts\" + $worker.Value)
     Install-ControlSService `
-        -Name "${ServicePrefix}Worker$worker" `
-        -DisplayName "Control S Fiscal Hub - Robo $worker" `
-        -Description "Robo automatico $worker do Control S Fiscal Hub." `
-        -Script $workerScript `
-        -ExtraArgs @("-Worker", $worker) `
-        -LogName "service_worker_$worker.log" `
+        -Name "${ServicePrefix}$($worker.Key)" `
+        -Description "Robo automatico $($worker.Key) do Control S Fiscal Hub." `
+        -Application $PhpPath `
+        -Arguments @("`"$script`"") `
+        -AppDirectory $AppRoot `
+        -LogName ("service_" + $worker.Key + ".log") `
         -Nssm $Nssm
 }
 
-foreach ($serviceName in @("${ServicePrefix}Portal", "${ServicePrefix}Workercte", "${ServicePrefix}Workernfe", "${ServicePrefix}Workernfse")) {
-    & $Nssm start $serviceName | Out-Null
+foreach ($serviceName in @("${ServicePrefix}Portal", "${ServicePrefix}RoboCTe", "${ServicePrefix}RoboNFe", "${ServicePrefix}RoboNFSe")) {
+    $startOutput = & $Nssm start $serviceName 2>&1
+    Start-Sleep -Seconds 1
+    $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+    if (!$service -or $service.Status -ne "Running") {
+        Write-Host "Aviso: $serviceName nao ficou em execucao. Retorno: $startOutput" -ForegroundColor Yellow
+        Write-Host "Verifique o log: $(Join-Path $LogDir ('service_' + $serviceName.Replace($ServicePrefix, '') + '.log'))" -ForegroundColor Yellow
+    }
 }
 
 Write-Host "Servicos instalados e iniciados no Windows:"
-Write-Host "Control S Fiscal Hub - Portal"
-Write-Host "Control S Fiscal Hub - Robo cte"
-Write-Host "Control S Fiscal Hub - Robo nfe"
-Write-Host "Control S Fiscal Hub - Robo nfse"
+Write-Host "${ServicePrefix}Portal"
+Write-Host "${ServicePrefix}RoboCTe"
+Write-Host "${ServicePrefix}RoboNFe"
+Write-Host "${ServicePrefix}RoboNFSe"
