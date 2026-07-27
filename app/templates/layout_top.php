@@ -6,7 +6,7 @@
     <title><?= h($title) ?></title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="icon" href="<?= h(base_url('assets/logo-s-novo.jpg')) ?>">
-    <link rel="stylesheet" href="<?= h(base_url('assets/app.css?v=20260727-cte-envelope-ui')) ?>">
+    <link rel="stylesheet" href="<?= h(base_url('assets/app.css?v=20260727-services-queue-ui')) ?>">
 </head>
 <body>
 <div class="shell">
@@ -35,9 +35,6 @@
             <a class="<?= $page === 'nfe_rescan' ? 'active' : '' ?>" href="<?= h(base_url('?page=nfe_rescan')) ?>" title="Revarrer NF-e"><span class="nav-icon">&#8634;</span><span class="nav-label">Revarrer NF-e</span></a>
             <a class="<?= $page === 'users' ? 'active' : '' ?>" href="<?= h(base_url('?page=users')) ?>" title="Usuarios"><span class="nav-icon">&#9673;</span><span class="nav-label">Usuarios</span></a>
             <a class="<?= $page === 'settings' ? 'active' : '' ?>" href="<?= h(base_url('?page=settings')) ?>" title="Configuracoes"><span class="nav-icon">&#9881;</span><span class="nav-label">Configuracoes</span></a>
-            <?php endif; ?>
-            <?php if ($config['auth_enabled']): ?>
-                <a href="<?= h(base_url('?page=logout')) ?>" title="Sair"><span class="nav-icon">&#8594;</span><span class="nav-label">Sair</span></a>
             <?php endif; ?>
         </nav>
 
@@ -86,6 +83,9 @@
                         <strong><?= h($clientName) ?></strong>
                     </div>
                 </div>
+                <?php if ($config['auth_enabled']): ?>
+                    <a class="topbar-logout" href="<?= h(base_url('?page=logout')) ?>" title="Sair">Sair</a>
+                <?php endif; ?>
             </div>
         </header>
 

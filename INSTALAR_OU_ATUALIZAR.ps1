@@ -8,6 +8,7 @@ param(
     [switch]$NaoInstalarDependencias,
     [switch]$NaoCriarBanco,
     [switch]$NaoCriarTarefas,
+    [switch]$NaoCriarServicos,
     [switch]$NaoCriarAtalho,
     [switch]$RestaurarBackupMaisRecente,
     [string]$DumpFile = ""
@@ -223,6 +224,18 @@ function Parar-Instancia-Atual($Destino) {
     )) {
         try {
             Stop-ScheduledTask -TaskName $task -ErrorAction SilentlyContinue
+        } catch {
+        }
+    }
+
+    foreach ($service in @(
+        "ControlSFiscalHubPortal",
+        "ControlSFiscalHubWorkercte",
+        "ControlSFiscalHubWorkernfe",
+        "ControlSFiscalHubWorkernfse"
+    )) {
+        try {
+            Stop-Service -Name $service -Force -ErrorAction SilentlyContinue
         } catch {
         }
     }
@@ -468,7 +481,7 @@ function Criar-Atalho($Destino) {
 }
 
 function Criar-Tarefas($Destino, $PhpPath) {
-    if ($NaoCriarTarefas) { return }
+    if ($NaoCriarTarefas -or !$NaoCriarServicos) { return }
     Titulo "Criando tarefas automaticas"
     if (!(Esta-Administrador)) {
         Write-Host "Sem permissao de administrador. Tarefas nao foram criadas." -ForegroundColor Yellow
@@ -492,7 +505,19 @@ function Criar-Tarefas($Destino, $PhpPath) {
     }
 }
 
+function Criar-Servicos($Destino, $PhpPath) {
+    if ($NaoCriarServicos) { return }
+    Titulo "Criando servicos do Windows"
+    if (!(Esta-Administrador)) {
+        Write-Host "Sem permissao de administrador. Servicos nao foram criados." -ForegroundColor Yellow
+        return
+    }
+    $script = Join-Path $Destino "scripts\windows\install-services.ps1"
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $script -PhpPath $PhpPath -PortalPort $PortalPort
+}
+
 function Criar-Inicializacao-Usuario($Destino) {
+    if (!$NaoCriarServicos) { return }
     Titulo "Configurando inicializacao automatica do usuario"
     $script = Join-Path $Destino "scripts\windows\install-startup-shortcuts.ps1"
     if (Test-Path $script) {
@@ -501,6 +526,7 @@ function Criar-Inicializacao-Usuario($Destino) {
 }
 
 function Iniciar-Portal-Manual($Destino, $PhpPath) {
+    if (!$NaoCriarServicos) { return }
     Titulo "Iniciando portal agora"
     $jaOuvindo = netstat -ano | Select-String ":$PortalPort"
     if ($jaOuvindo) {
@@ -551,6 +577,7 @@ Restaurar-Backup $InstallDir $pgBin $senhaBanco
 Rodar-Migracoes $InstallDir $php
 Liberar-Firewall
 Criar-Atalho $InstallDir
+Criar-Servicos $InstallDir $php
 Criar-Tarefas $InstallDir $php
 Criar-Inicializacao-Usuario $InstallDir
 Iniciar-Portal-Manual $InstallDir $php

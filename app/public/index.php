@@ -444,10 +444,11 @@ function documents_danfe_html(array $doc, bool $autoPrint = false): string
         $fieldsHtml = '<tr><td colspan="2">XML nao disponivel ou sem campos detalhados para exibir.</td></tr>';
     }
     $obs = implode(' | ', array_values(array_unique(array_filter($summary['Observacoes']))));
+    $printButton = $autoPrint ? '<button class="no-print" onclick="window.print()">Imprimir</button>' : '';
     $printScript = $autoPrint ? '<script>window.addEventListener("load", function(){ window.print(); });</script>' : '';
     return '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>' . h($title) . '</title><style>
         *{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:8px;background:#fff;font-size:10px}.sheet{max-width:1120px;margin:auto;border:2px solid #222;padding:10px;position:relative}.receipt{display:grid;grid-template-columns:1fr 1fr 1fr 160px;border:1px solid #222;margin-bottom:6px}.receipt div{border-right:1px solid #222;min-height:42px;padding:4px}.receipt div:last-child{border-right:0}.center{text-align:center}.doc-head{display:grid;grid-template-columns:1.4fr 220px 1.2fr;gap:0;border:1px solid #222}.doc-head>div{border-right:1px solid #222;padding:6px}.doc-head>div:last-child{border-right:0}.doc-title h1{font-size:24px;margin:0}.doc-title strong{display:block;font-size:12px}.barcode{font-family:monospace;font-size:13px;letter-spacing:1px;border:1px solid #222;padding:6px;text-align:center;margin:6px 0;word-break:break-all}.barcode-bars{height:44px;margin:4px 0;border:1px solid #222;background:repeating-linear-gradient(90deg,#111 0 2px,#fff 2px 4px,#111 4px 5px,#fff 5px 8px,#111 8px 11px,#fff 11px 14px)}.access{font-size:12px;text-align:center;font-weight:bold}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0}.box{border:1px solid #222;border-top:0;padding:6px;min-height:58px}.box h2{font-size:10px;text-transform:uppercase;text-align:center;background:#f1f1f1;border:1px solid #222;margin:0 0 5px;padding:3px}.section-title{font-size:10px;text-transform:uppercase;text-align:center;background:#f1f1f1;border:1px solid #222;margin:8px 0 0;padding:4px}.party{display:grid;gap:2px}.doc-table,.items,.xml-fields{width:100%;border-collapse:collapse;margin:0}.doc-table th,.doc-table td,.items th,.items td,.xml-fields th,.xml-fields td{border:1px solid #222;padding:4px;text-align:left;vertical-align:top;word-break:break-word}.doc-table th{width:180px;background:#f7f7f7}.totals{display:grid;grid-template-columns:repeat(4,1fr);border-left:1px solid #222}.totals div{border-right:1px solid #222;border-bottom:1px solid #222;padding:5px;min-height:42px}.totals span{display:block;text-transform:uppercase;font-size:9px}.totals strong{font-size:12px}.items th,.xml-fields th{background:#f1f1f1;text-transform:uppercase;font-size:8px}.items td,.xml-fields td{font-size:8px}.xml-fields td:first-child{width:34%;font-family:Consolas,monospace}.watermark{font-size:74px;color:#999;opacity:.45;text-align:center;font-weight:800;letter-spacing:2px;margin:22px 0}.obs{min-height:58px}.xml-section{page-break-before:always;break-before:page;margin-top:18px}.no-print{position:fixed;right:18px;top:14px;padding:8px 12px}@media print{body{margin:0}.sheet{border:1px solid #222;max-width:none}.no-print{display:none}.watermark{font-size:66px}.xml-fields{page-break-before:auto}}
-    </style></head><body><button class="no-print" onclick="window.print()">Imprimir</button><div class="sheet"><div class="receipt"><div><strong>Recebimento</strong><br>Declaro que recebi os produtos/servicos constantes neste documento.</div><div>Data / hora</div><div>Identificacao e assinatura</div><div class="center"><strong>' . h($title) . '</strong><br>N. ' . h((string)($doc['number'] ?? '')) . '</div></div><div class="doc-head"><div><h2>Identificacao do emitente</h2><strong>' . h($emit['nome']) . '</strong><br>CNPJ/CPF: ' . h($emit['documento']) . '<br>IE: ' . h($emit['ie']) . '<br>' . h($emit['endereco']) . '</div><div class="doc-title center"><h1>' . h($title) . '</h1><strong>' . h($subtitle) . '</strong><p>Espelho operacional</p></div><div><strong>Chave de acesso</strong><div class="barcode-bars" aria-label="Codigo de barras da chave"></div><div class="barcode">' . h((string)($doc['access_key'] ?? '')) . '</div><div class="access">' . h((string)($doc['access_key'] ?? '')) . '</div></div></div><table class="doc-table">' . $docRows . '</table><div class="grid2">' . $party('Destinatario / Tomador', $dest) . $party('Emitente', $emit) . '</div><div class="section-title">Totais</div><div class="totals">' . $totalHtml . '</div><div class="section-title">Dados do produto / servico</div><table class="items"><thead><tr><th>Codigo</th><th>Descricao</th><th>NCM</th><th>CFOP</th><th>Qtd</th><th>Un</th><th>Unitario</th><th>Total</th><th>ICMS</th><th>PIS</th><th>COFINS</th><th>IPI</th><th>ST</th><th>ISS</th></tr></thead><tbody>' . $itemsHtml . '</tbody></table><div class="watermark">SEM VALOR FISCAL</div><div class="box obs"><h2>Observacoes</h2>' . h($obs) . '</div><section class="xml-section"><div class="section-title">Todos os campos do XML</div><table class="xml-fields"><thead><tr><th>Campo XML</th><th>Valor</th></tr></thead><tbody>' . $fieldsHtml . '</tbody></table></section></div>' . $printScript . '</body></html>';
+    </style></head><body>' . $printButton . '<div class="sheet"><div class="receipt"><div><strong>Recebimento</strong><br>Declaro que recebi os produtos/servicos constantes neste documento.</div><div>Data / hora</div><div>Identificacao e assinatura</div><div class="center"><strong>' . h($title) . '</strong><br>N. ' . h((string)($doc['number'] ?? '')) . '</div></div><div class="doc-head"><div><h2>Identificacao do emitente</h2><strong>' . h($emit['nome']) . '</strong><br>CNPJ/CPF: ' . h($emit['documento']) . '<br>IE: ' . h($emit['ie']) . '<br>' . h($emit['endereco']) . '</div><div class="doc-title center"><h1>' . h($title) . '</h1><strong>' . h($subtitle) . '</strong><p>Espelho operacional</p></div><div><strong>Chave de acesso</strong><div class="barcode-bars" aria-label="Codigo de barras da chave"></div><div class="barcode">' . h((string)($doc['access_key'] ?? '')) . '</div><div class="access">' . h((string)($doc['access_key'] ?? '')) . '</div></div></div><table class="doc-table">' . $docRows . '</table><div class="grid2">' . $party('Destinatario / Tomador', $dest) . $party('Emitente', $emit) . '</div><div class="section-title">Totais</div><div class="totals">' . $totalHtml . '</div><div class="section-title">Dados do produto / servico</div><table class="items"><thead><tr><th>Codigo</th><th>Descricao</th><th>NCM</th><th>CFOP</th><th>Qtd</th><th>Un</th><th>Unitario</th><th>Total</th><th>ICMS</th><th>PIS</th><th>COFINS</th><th>IPI</th><th>ST</th><th>ISS</th></tr></thead><tbody>' . $itemsHtml . '</tbody></table><div class="watermark">SEM VALOR FISCAL</div><div class="box obs"><h2>Observacoes</h2>' . h($obs) . '</div><section class="xml-section"><div class="section-title">Todos os campos do XML</div><table class="xml-fields"><thead><tr><th>Campo XML</th><th>Valor</th></tr></thead><tbody>' . $fieldsHtml . '</tbody></table></section></div>' . $printScript . '</body></html>';
 }
 
 
@@ -525,10 +526,70 @@ if ($page !== 'login') {
     if ($page === 'dashboard' && !$auth->canAccess('dashboard')) {
         redirect_to(page_url(first_allowed_page_for_user($auth)));
     }
-    if (!$auth->canAccess($page)) {
+    $permissionPage = $page === 'documents_check_cancel' ? 'documents' : $page;
+    if (!$auth->canAccess($permissionPage)) {
         flash_set('danger', 'Seu perfil tem acesso somente a Faturamento e Entradas.');
         redirect_to(page_url(first_allowed_page_for_user($auth)));
     }
+}
+
+if ($page === 'documents_check_cancel') {
+    header('Content-Type: application/json; charset=utf-8');
+    try {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+            throw new RuntimeException('Metodo invalido.');
+        }
+        if (!$auth->canAccess('documents')) {
+            throw new RuntimeException('Sem permissao para consultar entradas.');
+        }
+        if (!csrf_validate($_POST['_csrf'] ?? null)) {
+            throw new RuntimeException('Token CSRF invalido.');
+        }
+        $doc = $repo->findDocument((int)($_POST['id'] ?? 0));
+        if (!$doc) {
+            throw new RuntimeException('Documento nao encontrado.');
+        }
+        $type = strtoupper((string)($doc['doc_type'] ?? ''));
+        $key = preg_replace('/\D+/', '', (string)($doc['access_key'] ?? ''));
+        if (!in_array($type, ['NFE', 'NFCE', 'CTE'], true) || strlen($key) !== 44) {
+            throw new RuntimeException('Documento sem chave valida para consulta.');
+        }
+        $company = $repo->findCompany((int)($doc['company_id'] ?? 0));
+        if (!$company) {
+            throw new RuntimeException('Empresa do documento nao encontrada.');
+        }
+        $collectorKey = $type === 'CTE' ? 'cte' : 'nfe';
+        $connector = $collectors[$collectorKey];
+        $connector->setCompanyContext($company);
+        $beforeStatus = (string)($doc['status'] ?? '');
+        $statusResult = method_exists($connector, 'queryProtocolStatus') ? $connector->queryProtocolStatus($key) : $connector->collectByAccessKey($key);
+        $statusCode = preg_replace('/\D+/', '', (string)($statusResult['cStat'] ?? '')) ?: '';
+        if ($collectorKey === 'nfe' && in_array($statusCode, ['100', '150'], true)) {
+            $distributionResult = $connector->collectByAccessKey($key);
+            $eventUpdated = $repo->repairCancelledDocumentsFromEvents();
+            $statusResult['updated'] = (int)($statusResult['updated'] ?? 0) + (int)($distributionResult['updated'] ?? 0) + $eventUpdated;
+            $statusResult['message'] = trim((string)($statusResult['message'] ?? 'consulta de protocolo concluida') . ' | Distribuicao por chave: ' . (string)($distributionResult['message'] ?? 'sem retorno'));
+        }
+        $after = $repo->findDocumentByAccessKey($type, $key, (int)$company['id']);
+        if (!$after && $type === 'NFE') {
+            $after = $repo->findDocumentByAccessKey('NFCE', $key, (int)$company['id']);
+        }
+        $isCancelled = $after && (string)($after['status'] ?? '') === 'cancelado';
+        $repo->logAction('document_cancel_check_one', $type . ' chave ' . $key . ': ' . (string)($statusResult['message'] ?? 'consulta concluida'));
+        echo json_encode([
+            'ok' => true,
+            'id' => (int)$doc['id'],
+            'type' => $type,
+            'key' => $key,
+            'cancelled' => $isCancelled,
+            'changed' => $beforeStatus !== 'cancelado' && $isCancelled,
+            'message' => $type . ' ' . (string)($doc['number'] ?? $key) . ': ' . (string)($statusResult['message'] ?? 'consulta concluida'),
+        ], JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $e) {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'message' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -1603,10 +1664,23 @@ switch ($page) {
         include __DIR__ . '/../templates/import.php';
         break;
     case 'documents':
+        if (!empty($_GET['clear_filters'])) {
+            unset($_SESSION['documents_last_query']);
+            redirect_to(base_url('?page=documents'));
+        }
+        $documentQueryKeys = array_diff(array_keys($_GET), ['page']);
+        if (!$documentQueryKeys && !empty($_SESSION['documents_last_query']) && is_array($_SESSION['documents_last_query'])) {
+            $savedQuery = array_filter($_SESSION['documents_last_query'], static fn($value) => $value !== '' && $value !== null && $value !== []);
+            $savedQuery['page'] = 'documents';
+            redirect_to(base_url('?' . http_build_query($savedQuery)));
+        }
         $documentFilters = document_filters_from_request($_GET);
         $documentPage = max(1, (int)($_GET['p'] ?? 1));
         $documentPerPage = 200;
-        $documentShouldQuery = count(array_diff(array_keys($_GET), ['page'])) > 0;
+        $documentShouldQuery = count($documentQueryKeys) > 0;
+        if ($documentShouldQuery) {
+            $_SESSION['documents_last_query'] = array_diff_key($_GET, ['page' => true]);
+        }
         $viewData['documentFilters'] = $documentFilters;
         $viewData['documentPage'] = $documentPage;
         $viewData['documentPerPage'] = $documentPerPage;

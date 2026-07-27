@@ -49,9 +49,9 @@ $documentFilterKeys = [
         </label>
         <label class="cfop-ignore-field">Ignorados
             <input type="hidden" name="ignore_cfops" value="0">
-            <span class="cfop-ignore-line">
+            <span class="cfop-ignore-line" title="Quando marcado, a tela oculta documentos com CFOPs ou notas cadastrados como ignorados, pois nao devem entrar na rotina operacional de escrituracao. Clique no texto para gerenciar a lista.">
                 <input type="checkbox" name="ignore_cfops" value="1" <?= ((string)($filters['ignore_cfops'] ?? '1') !== '0') ? 'checked' : '' ?>>
-                <button class="cfop-ignore-link" type="button" data-open-ignored-cfops>Ignorar CFOPs/notas cadastrados</button>
+                <button class="cfop-ignore-link" type="button" data-open-ignored-cfops>Ignorar CFOPs / Notas</button>
             </span>
         </label>
         <?= compact_multi_picker('Empresa', 'company_id', $companyOptions, $filters['company_id'] ?? []) ?>
@@ -124,7 +124,7 @@ $documentFilterKeys = [
         <button class="button-link button-compact" type="button" data-collapse-target="#documents-filter-fields" data-collapse-key="controls.documents.filters.collapsed" data-hide-label="Recolher filtros" data-show-label="Mostrar filtros">Recolher filtros</button>
         <button class="button-link button-compact" type="button" data-collapse-target="#columns-panel" data-collapse-key="controls.documents.columns.collapsed" data-hide-label="Esconder colunas" data-show-label="Mostrar colunas">Esconder colunas</button>
         <button class="button-link button-compact" type="button" data-collapse-target="#documents-export-panel" data-collapse-key="controls.documents.export.collapsed" data-hide-label="Recolher exportação" data-show-label="Exportar XML/DANFE">Exportar XML/DANFE</button>
-        <a class="button-link button-compact" href="<?= h(base_url('?page=documents')) ?>">Limpar</a>
+        <a class="button-link button-compact" href="<?= h(base_url('?page=documents&clear_filters=1')) ?>">Limpar</a>
         <button class="primary">Filtrar entradas</button>
     </div>
     <div id="columns-panel" class="columns-panel">
@@ -170,9 +170,17 @@ $documentFilterKeys = [
         </div>
         <div class="documents-action-bar">
             <button class="primary button-compact" type="button" data-open-action-modal="manifest">Manifestar selecionados</button>
-            <button class="button-compact" name="bulk_check_cancelled" value="1" title="Consulta a situacao na SEFAZ das NF-e/NFC-e/CT-e selecionadas, independente de lancamento no ERP.">Verificar cancelamentos</button>
-            <button class="button-compact" type="button" data-open-action-modal="ignore">Ignorar notas</button>
+            <button class="button-compact" type="button" data-check-cancel-queue title="Consulta a situacao na SEFAZ em fila, um documento por vez, e marca como cancelado quando houver retorno oficial de cancelamento.">Verificar cancelamentos</button>
+            <button class="button-compact" type="button" data-open-action-modal="ignore" title="Adiciona as notas selecionadas a lista de ignoradas com justificativa e historico de usuario, data e hora.">Ignorar notas</button>
         </div>
+    </div>
+    <div class="queue-progress is-hidden" id="cancel-check-progress" aria-live="polite">
+        <div class="queue-progress-header">
+            <strong>Verificando cancelamentos</strong>
+            <span id="cancel-check-progress-text">0 de 0</span>
+        </div>
+        <div class="queue-progress-bar"><span id="cancel-check-progress-bar"></span></div>
+        <small id="cancel-check-progress-detail">Aguardando seleção.</small>
     </div>
     <div class="export-panel is-collapsed compact-export-panel" id="documents-export-panel">
         <div class="export-panel-heading">
@@ -498,6 +506,60 @@ $documentFilterKeys = [
     <input type="hidden" name="sort_by" value="<?= h((string)($filters['sort_by'] ?? 'issue_date')) ?>">
     <input type="hidden" name="sort_dir" value="<?= h((string)($filters['sort_dir'] ?? 'desc')) ?>">
 </form>
+
+<script>
+(function () {
+    var button = document.querySelector('[data-check-cancel-queue]');
+    var panel = document.getElementById('cancel-check-progress');
+    var text = document.getElementById('cancel-check-progress-text');
+    var bar = document.getElementById('cancel-check-progress-bar');
+    var detail = document.getElementById('cancel-check-progress-detail');
+    var csrf = document.querySelector('form.documents-card input[name="_csrf"]');
+    if (!button || !panel || !text || !bar || !detail || !csrf) return;
+    function selectedIds() {
+        return Array.from(document.querySelectorAll('[data-doc-checkbox]:checked')).map(function (input) { return input.value; }).filter(Boolean);
+    }
+    function setProgress(done, total, message) {
+        var pct = total > 0 ? Math.round((done / total) * 100) : 0;
+        text.textContent = done + ' de ' + total;
+        bar.style.width = pct + '%';
+        detail.textContent = message || '';
+    }
+    button.addEventListener('click', async function () {
+        var ids = selectedIds();
+        if (!ids.length) {
+            alert('Selecione ao menos uma entrada.');
+            return;
+        }
+        button.disabled = true;
+        panel.classList.remove('is-hidden');
+        setProgress(0, ids.length, 'Iniciando fila de consulta...');
+        var cancelled = 0;
+        var errors = 0;
+        for (var i = 0; i < ids.length; i++) {
+            var body = new URLSearchParams();
+            body.set('_csrf', csrf.value);
+            body.set('id', ids[i]);
+            try {
+                var response = await fetch('?page=documents_check_cancel', {
+                    method: 'POST',
+                    headers: {'Accept': 'application/json', 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8'},
+                    body: body.toString()
+                });
+                var data = await response.json();
+                if (!response.ok || !data.ok) throw new Error((data && data.message) || 'Falha ao consultar documento.');
+                if (data.cancelled) cancelled++;
+                setProgress(i + 1, ids.length, data.message || 'Consulta concluida.');
+            } catch (error) {
+                errors++;
+                setProgress(i + 1, ids.length, error.message || 'Erro ao consultar documento.');
+            }
+        }
+        detail.textContent = 'Fila concluida: ' + ids.length + ' consultado(s), ' + cancelled + ' cancelado(s), ' + errors + ' erro(s). Atualizando a tela...';
+        setTimeout(function () { window.location.reload(); }, 900);
+    });
+})();
+</script>
 
 <script>
 (function () {
