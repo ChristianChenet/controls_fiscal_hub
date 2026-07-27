@@ -41,6 +41,25 @@ function Stop-Port($Port) {
     }
 }
 
+foreach ($serviceName in @(
+    "ControlSFiscalHubPortal",
+    "ControlSFiscalHubRoboCTe",
+    "ControlSFiscalHubRoboNFe",
+    "ControlSFiscalHubRoboNFSe",
+    "ControlSFiscalHubWorkercte",
+    "ControlSFiscalHubWorkernfe",
+    "ControlSFiscalHubWorkernfse"
+)) {
+    try {
+        $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+        if ($service -and $service.Status -ne "Stopped") {
+            Log "Parando servico $serviceName"
+            Stop-Service -Name $serviceName -Force -ErrorAction SilentlyContinue
+        }
+    } catch {
+    }
+}
+
 Stop-PidFile (Join-Path $Storage "auto_cte_worker.process.lock") "worker CT-e"
 Stop-PidFile (Join-Path $Storage "auto_nfe_worker.process.lock") "worker NF-e"
 Stop-PidFile (Join-Path $Storage "auto_nfse_worker.process.lock") "worker NFS-e"

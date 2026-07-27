@@ -66,8 +66,6 @@ function Texto-Seguro($SecureString) {
 }
 
 function Encontrar-PHP {
-    if (Tem-Comando "php.exe") { return (Get-Command "php.exe").Source }
-
     $candidatos = @()
     $candidatos += Get-ChildItem "C:\tools" -Filter "php.exe" -Recurse -ErrorAction SilentlyContinue
     $candidatos += Get-ChildItem "C:\Program Files" -Filter "php.exe" -Recurse -ErrorAction SilentlyContinue |
@@ -76,6 +74,7 @@ function Encontrar-PHP {
     if ($candidatos.Count -gt 0) {
         return ($candidatos | Sort-Object FullName -Descending | Select-Object -First 1).FullName
     }
+    if (Tem-Comando "php.exe") { return (Get-Command "php.exe").Source }
     return $null
 }
 

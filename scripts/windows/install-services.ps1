@@ -8,6 +8,7 @@ $ProjectRoot = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 $ServicePrefix = "ControlSFiscalHub"
 $AppRoot = Join-Path $ProjectRoot "app"
 $LogDir = Join-Path $ProjectRoot "app\storage\logs"
+$CmdExe = "$env:SystemRoot\System32\cmd.exe"
 
 function Assert-Admin {
     $identity = [Security.Principal.WindowsIdentity]::GetCurrent()
@@ -52,10 +53,30 @@ function Stop-And-Remove-Service {
     if (!$service) { return }
     if ($service.Status -ne "Stopped") {
         & $Nssm stop $Name | Out-Null
+        sc.exe stop $Name | Out-Null
         Start-Sleep -Seconds 2
     }
     & $Nssm remove $Name confirm | Out-Null
+    sc.exe delete $Name | Out-Null
     Start-Sleep -Seconds 1
+}
+
+function Write-ServiceWrapper {
+    param(
+        [string]$Path,
+        [string]$Command
+    )
+
+    $content = @"
+@echo off
+setlocal
+cd /d "$AppRoot"
+echo [%date% %time%] Iniciando %~nx0
+$Command
+echo [%date% %time%] Encerrado %~nx0 com codigo %ERRORLEVEL%
+exit /b %ERRORLEVEL%
+"@
+    Set-Content -Path $Path -Value $content -Encoding ASCII
 }
 
 function Install-ControlSService {
@@ -88,6 +109,8 @@ function Install-ControlSService {
 Assert-Admin
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 $Nssm = Find-Nssm
+$serviceScriptDir = Join-Path $ProjectRoot "scripts\windows\services"
+New-Item -ItemType Directory -Force -Path $serviceScriptDir | Out-Null
 
 foreach ($legacyName in @(
     "${ServicePrefix}Workercte",
@@ -97,11 +120,16 @@ foreach ($legacyName in @(
     Stop-And-Remove-Service -Name $legacyName -Nssm $Nssm
 }
 
+$portalWrapper = Join-Path $serviceScriptDir "ControlSFiscalHubPortal.cmd"
+Write-ServiceWrapper `
+    -Path $portalWrapper `
+    -Command "`"$PhpPath`" -S 0.0.0.0:$PortalPort -t `"$AppRoot\public`""
+
 Install-ControlSService `
     -Name "${ServicePrefix}Portal" `
     -Description "Portal web do Control S Fiscal Hub." `
-    -Application $PhpPath `
-    -Arguments @("-S", "0.0.0.0:$PortalPort", "-t", "`"$(Join-Path $AppRoot "public")`"") `
+    -Application $CmdExe `
+    -Arguments @("/d", "/s", "/c", "`"$portalWrapper`"") `
     -AppDirectory $AppRoot `
     -LogName "service_portal.log" `
     -Nssm $Nssm
@@ -114,18 +142,25 @@ $workers = @{
 
 foreach ($worker in $workers.GetEnumerator()) {
     $script = Join-Path $AppRoot ("scripts\" + $worker.Value)
+    $workerWrapper = Join-Path $serviceScriptDir ("ControlSFiscalHub" + $worker.Key + ".cmd")
+    Write-ServiceWrapper `
+        -Path $workerWrapper `
+        -Command "`"$PhpPath`" `"$script`""
     Install-ControlSService `
         -Name "${ServicePrefix}$($worker.Key)" `
         -Description "Robo automatico $($worker.Key) do Control S Fiscal Hub." `
-        -Application $PhpPath `
-        -Arguments @("`"$script`"") `
+        -Application $CmdExe `
+        -Arguments @("/d", "/s", "/c", "`"$workerWrapper`"") `
         -AppDirectory $AppRoot `
         -LogName ("service_" + $worker.Key + ".log") `
         -Nssm $Nssm
 }
 
 foreach ($serviceName in @("${ServicePrefix}Portal", "${ServicePrefix}RoboCTe", "${ServicePrefix}RoboNFe", "${ServicePrefix}RoboNFSe")) {
-    $startOutput = & $Nssm start $serviceName 2>&1
+    $previousErrorAction = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    $startOutput = (& $Nssm start $serviceName 2>&1 | Out-String).Trim()
+    $ErrorActionPreference = $previousErrorAction
     Start-Sleep -Seconds 1
     $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
     if (!$service -or $service.Status -ne "Running") {
