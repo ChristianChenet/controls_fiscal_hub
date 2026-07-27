@@ -21,7 +21,7 @@ final class CTeConnector extends AbstractFiscalCollector
             (string)($this->config['cte_consulta_protocolo_action'] ?? 'http://www.portalfiscal.inf.br/cte/wsdl/CTeConsultaV4/cteConsultaCT'),
             $requestXml,
             'http://www.portalfiscal.inf.br/cte/wsdl/CTeConsultaV4',
-            'cteConsultaCT',
+            '',
             'cteDadosMsg',
             (int)$company['id']
         );

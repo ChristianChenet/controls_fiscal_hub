@@ -1519,25 +1519,23 @@ textarea{
 
 .module-lockup{display:flex;align-items:center;gap:14px}
 .module-mark{
-  width:58px;
-  height:58px;
-  border-radius:50%;
-  display:grid;
-  place-items:center;
-  color:#0b2140;
-  font-weight:950;
-  letter-spacing:0;
-  background:linear-gradient(180deg,#eef7ff,#dceeff);
-  border:2px solid #2f72ff;
-  box-shadow:0 8px 20px rgba(47,114,255,.16);
+  width:74px;
+  height:74px;
+  object-fit:contain;
+  flex:0 0 74px;
+  filter:drop-shadow(0 8px 14px rgba(47,114,255,.14));
 }
 .client-brand{
-  background:rgba(255,255,255,.62);
-  min-height:126px;
+  min-width:260px;
+  min-height:130px;
+  padding:0;
+  background:transparent;
+  border:0;
+  box-shadow:none;
 }
 .client-brand-logo{
-  width:116px;
-  height:116px;
+  width:130px;
+  height:130px;
   border:0;
   background:transparent;
 }
@@ -1547,16 +1545,17 @@ textarea{
 }
 .documents-action-bar{
   display:flex;
-  flex-wrap:wrap;
+  flex-wrap:nowrap;
   justify-content:flex-end;
   gap:8px;
   margin-left:auto;
 }
 .documents-action-bar .button-compact{
-  min-width:160px;
+  width:178px;
+  min-width:178px;
 }
 .export-panel.compact-export-panel{
-  grid-template-columns:1fr auto;
+  grid-template-columns:auto 1fr;
   align-items:center;
   padding:12px;
   margin:0 0 14px;
@@ -1572,7 +1571,14 @@ textarea{
   display:flex;
   justify-content:flex-end;
   gap:8px;
-  flex-wrap:wrap;
+  flex-wrap:nowrap;
+}
+.export-panel-actions .button-compact,
+.export-panel-actions .button-link{
+  width:150px;
+  min-width:150px;
+  text-align:center;
+  justify-content:center;
 }
 .action-modal-panel{
   width:min(560px,94vw);
