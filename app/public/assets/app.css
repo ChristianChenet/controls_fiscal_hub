@@ -378,6 +378,43 @@ button.primary{
   border-color:var(--green);
   box-shadow:0 12px 28px rgba(10,167,102,.18);
 }
+.settings-tabs{
+  display:flex;
+  flex-wrap:wrap;
+  gap:8px;
+  margin:0 0 14px;
+}
+.settings-tab-button{
+  min-height:38px;
+  border:1px solid var(--line);
+  border-radius:8px;
+  background:#fff;
+  color:#233832;
+  font-weight:850;
+  padding:8px 12px;
+  cursor:pointer;
+}
+.settings-tab-button.active{
+  background:var(--green);
+  color:#fff;
+  border-color:var(--green);
+  box-shadow:0 12px 28px rgba(10,167,102,.18);
+}
+.settings-tab-panel{display:none}
+.settings-tab-panel.active{
+  display:grid;
+  gap:14px;
+}
+.settings-save-actions{
+  position:sticky;
+  bottom:12px;
+  background:rgba(255,255,255,.92);
+  border:1px solid var(--line);
+  border-radius:8px;
+  padding:10px;
+  backdrop-filter:blur(8px);
+  z-index:3;
+}
 .revenue-filter{margin-bottom:14px}
 .filter-heading,.grid-toolbar{
   display:flex;

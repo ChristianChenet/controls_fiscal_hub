@@ -1735,15 +1735,14 @@ switch ($page) {
             redirect_to(base_url('?page=documents'));
         }
         $documentQueryKeys = array_diff(array_keys($_GET), ['page']);
+        $documentRequest = $_GET;
         if (!$documentQueryKeys && !empty($_SESSION['documents_last_query']) && is_array($_SESSION['documents_last_query'])) {
-            $savedQuery = array_filter($_SESSION['documents_last_query'], static fn($value) => $value !== '' && $value !== null && $value !== []);
-            $savedQuery['page'] = 'documents';
-            redirect_to(base_url('?' . http_build_query($savedQuery)));
+            $documentRequest = $_SESSION['documents_last_query'];
         }
-        $documentFilters = document_filters_from_request($_GET);
+        $documentFilters = document_filters_from_request($documentRequest);
         $documentPage = max(1, (int)($_GET['p'] ?? 1));
         $documentPerPage = 200;
-        $documentShouldQuery = count($documentQueryKeys) > 0;
+        $documentShouldQuery = !empty($_GET['load_documents']) || isset($_GET['p']);
         if ($documentShouldQuery) {
             $_SESSION['documents_last_query'] = array_diff_key($_GET, ['page' => true]);
         }
@@ -1771,8 +1770,10 @@ switch ($page) {
         break;
     case 'jobs':
         $viewData['selectedJobCompanyId'] = (string)($_GET['company_id'] ?? '0');
-        $viewData['selectedJobType'] = (string)($_GET['job_type'] ?? 'collect_all');
+        $viewData['selectedJobType'] = (string)($_GET['job_type'] ?? 'cte_xml_folder_export');
         $viewData['jobs'] = $repo->jobs(20);
+        $viewData['moduleTitle'] = 'Execução manual de Robôs';
+        $viewData['moduleSubtitle'] = 'Acione rotinas operacionais sob demanda e acompanhe o histórico de execução.';
         include __DIR__ . '/../templates/jobs.php';
         break;
     case 'nfe_keys':

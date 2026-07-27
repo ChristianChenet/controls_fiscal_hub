@@ -6,7 +6,7 @@
     <title><?= h($title) ?></title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="icon" href="<?= h(base_url('assets/logo-s-novo.jpg')) ?>">
-    <link rel="stylesheet" href="<?= h(base_url('assets/app.css?v=20260727-services-queue-ui')) ?>">
+    <link rel="stylesheet" href="<?= h(base_url('assets/app.css?v=20260727-robots-settings-tabs')) ?>">
 </head>
 <body>
 <div class="shell">
@@ -30,7 +30,7 @@
             <?php endif; ?>
             <a class="<?= $page === 'documents' ? 'active' : '' ?>" href="<?= h(base_url('?page=documents')) ?>" title="Entradas"><span class="nav-icon">&#9776;</span><span class="nav-label">Entradas</span></a>
             <?php if (!empty($isAdmin)): ?>
-            <a class="<?= $page === 'jobs' ? 'active' : '' ?>" href="<?= h(base_url('?page=jobs')) ?>" title="Radar de XML"><span class="nav-icon">&#8635;</span><span class="nav-label">Radar de XML</span></a>
+            <a class="<?= $page === 'jobs' ? 'active' : '' ?>" href="<?= h(base_url('?page=jobs')) ?>" title="Execução manual de Robôs"><span class="nav-icon">&#9889;</span><span class="nav-label">Robôs manuais</span></a>
             <a class="<?= $page === 'nfe_keys' ? 'active' : '' ?>" href="<?= h(base_url('?page=nfe_keys')) ?>" title="Busca por Chave"><span class="nav-icon">#</span><span class="nav-label">Busca por Chave</span></a>
             <a class="<?= $page === 'nfe_rescan' ? 'active' : '' ?>" href="<?= h(base_url('?page=nfe_rescan')) ?>" title="Revarrer NF-e"><span class="nav-icon">&#8634;</span><span class="nav-label">Revarrer NF-e</span></a>
             <a class="<?= $page === 'users' ? 'active' : '' ?>" href="<?= h(base_url('?page=users')) ?>" title="Usuarios"><span class="nav-icon">&#9673;</span><span class="nav-label">Usuarios</span></a>

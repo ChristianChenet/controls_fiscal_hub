@@ -49,7 +49,9 @@ final class CteXmlFolderRobot
         try {
             $directory = $this->prepareTargetDirectory($targetDir);
             $deleted = $this->clearDirectory($directory);
-            $documents = array_slice($this->repo->documents($filters), 0, $limit);
+            $total = $this->repo->documentsTotals($filters);
+            $allDocuments = $this->repo->documents($filters);
+            $documents = array_slice($allDocuments, 0, $limit);
             $usedNames = [];
 
             foreach ($documents as $doc) {
@@ -70,7 +72,10 @@ final class CteXmlFolderRobot
             }
 
             $message = 'Origem: ' . $origin
-                . ' | Filtro: CT-e, não lançado no ERP, exceto cancelados, somente tomador, ignorando CFOPs/notas, até ' . $endDate
+                . ' | Filtro: CT-e, não lançado no ERP, exceto cancelados, somente tomador, ignorando CFOPs/notas'
+                . ' | Data final aplicada: ' . $endDate
+                . ' | Total do filtro: ' . (int)($total['total'] ?? count($allDocuments))
+                . ' | Limite: ' . $limit
                 . ' | Pasta limpa: ' . $directory
                 . ' | Removidos: ' . $deleted
                 . ' | Documentos avaliados: ' . count($documents)

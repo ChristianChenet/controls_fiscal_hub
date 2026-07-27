@@ -8,6 +8,9 @@ $perPage = (int)($documentPerPage ?? 200);
 $totalPages = max(1, (int)ceil(($totals['total'] ?? 0) / max(1, $perPage)));
 $baseQuery = array_filter($filters, static fn($value) => $value !== '' && $value !== null);
 $baseQuery['page'] = 'documents';
+if (!$documentsDeferred) {
+    $baseQuery['load_documents'] = '1';
+}
 $exportQuery = $baseQuery;
 $exportQuery['page'] = 'documents_export';
 $companyOptions = array_map(static fn(array $co): array => [
@@ -34,6 +37,7 @@ $documentFilterKeys = [
 
 <form method="get" class="card card-compact documents-filter">
     <input type="hidden" name="page" value="documents">
+    <input type="hidden" name="load_documents" value="1">
     <div class="form-row documents-filter-row" id="documents-filter-fields">
         <label>Pesquisa geral
             <input type="text" name="q" placeholder="Fornecedor, CNPJ, chave ou numero" value="<?= h((string)($filters['q'] ?? '')) ?>">

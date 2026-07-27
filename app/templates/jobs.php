@@ -1,11 +1,17 @@
 <?php include __DIR__ . '/layout_top.php'; ?>
 <?php
 $selectedCompanyId = (string)($selectedJobCompanyId ?? ($_GET['company_id'] ?? '0'));
-$selectedJobType = (string)($selectedJobType ?? ($_GET['job_type'] ?? 'collect_all'));
+$selectedJobType = (string)($selectedJobType ?? ($_GET['job_type'] ?? 'cte_xml_folder_export'));
+$routineLabels = [
+    'nfe_until_max' => 'Robo NF-e / NFC-e ate ultimo NSU',
+    'cte_until_max' => 'Robo CT-e ate ultimo NSU',
+    'cte_xml_folder_export' => 'Gerar pasta XML CT-e para ERP',
+    'certificate_check' => 'Validar certificado e pasta',
+];
 ?>
 <div class="page-header">
-    <h1>Radar de XML</h1>
-    <p>Execute buscas pontuais por empresa, tipo de documento ou validação operacional.</p>
+    <h1>Execucao manual de Robos</h1>
+    <p>Execute rotinas operacionais sob demanda e acompanhe o historico.</p>
 </div>
 
 <form method="post" class="card form-grid routine-form">
@@ -19,39 +25,33 @@ $selectedJobType = (string)($selectedJobType ?? ($_GET['job_type'] ?? 'collect_a
                 <?php endforeach; ?>
             </select>
         </label>
-        <label>Rotina
+        <label>Execucao manual de robos
             <select name="job_type">
-                <option value="collect_all" <?= $selectedJobType === 'collect_all' ? 'selected' : '' ?>>Coletar documentos disponíveis</option>
-                <option value="collect_missing" <?= $selectedJobType === 'collect_missing' ? 'selected' : '' ?>>Reprocessar faltantes e pendentes</option>
-                <option value="nfe" <?= $selectedJobType === 'nfe' ? 'selected' : '' ?>>Coletar NF-e / NFC-e</option>
-                <option value="nfe_until_max" <?= $selectedJobType === 'nfe_until_max' ? 'selected' : '' ?>>Robô NF-e / NFC-e até último NSU</option>
-                <option value="nfe_until_max_science" <?= $selectedJobType === 'nfe_until_max_science' ? 'selected' : '' ?>>Robô NF-e + ciência da operação</option>
-                <option value="cte" <?= $selectedJobType === 'cte' ? 'selected' : '' ?>>Coletar CT-e</option>
-                <option value="cte_until_max" <?= $selectedJobType === 'cte_until_max' ? 'selected' : '' ?>>Robô CT-e até último NSU</option>
-                <option value="cte_xml_folder_export" <?= $selectedJobType === 'cte_xml_folder_export' ? 'selected' : '' ?>>Gerar pasta XML CT-e para ERP</option>
-                <option value="nfse" <?= $selectedJobType === 'nfse' ? 'selected' : '' ?>>Coletar NFS-e Nacional</option>
-                <option value="certificate_check" <?= $selectedJobType === 'certificate_check' ? 'selected' : '' ?>>Validar certificado e pasta</option>
+                <?php foreach ($routineLabels as $value => $label): ?>
+                    <option value="<?= h($value) ?>" <?= $selectedJobType === $value ? 'selected' : '' ?>><?= h($label) ?></option>
+                <?php endforeach; ?>
             </select>
         </label>
     </div>
     <div class="notice subtle">
-        Use acoes pontuais com cuidado. Em NF-e, ao selecionar uma matriz ou filial, o portal executa todos os CNPJs ativos da mesma raiz, um por vez, mantendo o NSU individual de cada CNPJ.
+        Use execucoes manuais quando precisar antecipar uma rotina ou conferir o ambiente. Em NF-e, ao selecionar uma matriz ou filial, o portal executa todos os CNPJs ativos da mesma raiz, um por vez.
     </div>
     <div class="form-actions">
-        <button class="primary" name="run_job" value="1">Executar rotina</button>
+        <button class="primary" name="run_job" value="1">Executar robo</button>
     </div>
 </form>
 
 <section class="card card-compact">
-    <h2>Histórico</h2>
+    <h2>Historico</h2>
     <div class="table-wrap">
         <table class="table">
-            <thead><tr><th>Empresa</th><th>Rotina</th><th>Status</th><th>Criados</th><th>Atualizados</th><th>Erros</th><th>Início</th><th>Fim</th><th>Log</th></tr></thead>
+            <thead><tr><th>Empresa</th><th>Rotina</th><th>Status</th><th>Criados</th><th>Atualizados</th><th>Erros</th><th>Inicio</th><th>Fim</th><th>Log</th></tr></thead>
             <tbody>
             <?php foreach ($jobs as $job): ?>
+                <?php $jobType = (string)($job['job_type'] ?? ''); ?>
                 <tr>
                     <td><?= h($job['company_name'] ?: 'Todas') ?></td>
-                    <td><?= h($job['job_type']) ?></td>
+                    <td><?= h($routineLabels[$jobType] ?? $jobType) ?></td>
                     <td><?= h($job['status']) ?></td>
                     <td><?= h((string) $job['created_count']) ?></td>
                     <td><?= h((string) $job['updated_count']) ?></td>

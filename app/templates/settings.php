@@ -18,8 +18,9 @@ $autoNfseAll = ($settings['auto_nfse_all_companies'] ?? '0') === '1' || ($active
 </div>
 
 <div class="grid two">
-    <form method="post" enctype="multipart/form-data" class="card form-grid">
+    <form method="post" enctype="multipart/form-data" class="card form-grid settings-form" data-settings-tabs>
         <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
+        <nav class="settings-tabs" aria-label="Temas das configuracoes"></nav>
         <h2>Identidade do cliente</h2>
         <label>Nome exibido no topo
             <input type="text" name="client_display_name" value="<?= h((string)($settings['client_display_name'] ?? 'Cliente integrado')) ?>">
@@ -326,6 +327,45 @@ document.querySelectorAll('[data-select-all-target]').forEach((checkbox) => {
         });
     };
     checkbox.addEventListener('change', syncSelection);
+});
+
+document.querySelectorAll('[data-settings-tabs]').forEach((form) => {
+    const nav = form.querySelector('.settings-tabs');
+    if (!nav) return;
+    const saveButton = form.querySelector('button[name="save_settings"]');
+    const sections = [];
+    let current = null;
+    Array.from(form.children).forEach((child) => {
+        if (child === nav || child.name === '_csrf') return;
+        if (child.tagName === 'H2') {
+            current = document.createElement('section');
+            current.className = 'settings-tab-panel';
+            current.dataset.settingsPanel = child.textContent.trim().toLowerCase().replace(/\W+/g, '-');
+            form.insertBefore(current, child);
+            sections.push({id: current.dataset.settingsPanel, title: child.textContent.trim(), panel: current});
+        }
+        if (current && child !== current && child !== saveButton) {
+            current.appendChild(child);
+        }
+    });
+    if (saveButton) {
+        const actions = document.createElement('div');
+        actions.className = 'form-actions settings-save-actions';
+        actions.appendChild(saveButton);
+        form.appendChild(actions);
+    }
+    sections.forEach((section, index) => {
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'settings-tab-button' + (index === 0 ? ' active' : '');
+        button.textContent = section.title;
+        button.addEventListener('click', () => {
+            sections.forEach((item) => item.panel.classList.toggle('active', item === section));
+            nav.querySelectorAll('button').forEach((item) => item.classList.toggle('active', item === button));
+        });
+        nav.appendChild(button);
+        section.panel.classList.toggle('active', index === 0);
+    });
 });
 </script>
 <?php include __DIR__ . '/layout_bottom.php'; ?>
