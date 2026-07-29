@@ -303,6 +303,7 @@ final class Repository
         }
 
         $row = $this->normalizeDocumentRow($data);
+        $this->applyCteTakerCompanyToDocumentRow($row);
         if ($existing) {
             $row['id'] = $existing['id'];
             $stmt = $this->pdo->prepare("UPDATE documents SET
@@ -574,6 +575,36 @@ final class Repository
         return $this->attachEventSummaries($this->cleanReferencedDocumentRows($stmt->fetchAll()));
     }
 
+    private function applyCteTakerCompanyToDocumentRow(array &$row): void
+    {
+        if (strtoupper((string)($row['doc_type'] ?? '')) !== 'CTE') {
+            return;
+        }
+
+        $xml = (string)($row['raw_xml'] ?? '');
+        $path = (string)($row['xml_path'] ?? '');
+        if (trim($xml) === '' && $path !== '' && is_file($path)) {
+            $xml = (string)file_get_contents($path);
+        }
+        if (trim($xml) === '') {
+            return;
+        }
+
+        $takerCnpj = $this->parseCteTakerCnpjFromXml($xml);
+        if ($takerCnpj === '') {
+            return;
+        }
+
+        $company = $this->findCompanyByCnpj($takerCnpj);
+        if (!$company) {
+            return;
+        }
+
+        $row['company_id'] = (int)$company['id'];
+        $row['company_name'] = (string)$company['company_name'];
+        $row['company_cnpj'] = (string)$company['cnpj'];
+    }
+
     public function documentIds(array $filters = [], int $limit = 5000): array
     {
         $this->ensureReferencedDocumentNumbers();
@@ -684,7 +715,21 @@ final class Repository
         if (!empty($filters['without_referenced_nfe'])) { $where[] = "(doc_type = 'CTE' AND COALESCE(referenced_nfe_keys, '') = '')"; }
         if (!empty($filters['cte_taker_only'])) {
             $companyDigits = $this->digitsOnlySql('documents.company_cnpj');
-            $where[] = "(doc_type <> 'CTE' OR EXISTS (SELECT 1 FROM document_cte_takers dct WHERE dct.document_id = documents.id AND COALESCE(dct.taker_cnpj, '') <> '' AND dct.taker_cnpj = {$companyDigits}))";
+            $registeredCompanyDigits = $this->digitsOnlySql('cte_company.cnpj');
+            $where[] = "(doc_type <> 'CTE' OR EXISTS (
+                SELECT 1
+                FROM document_cte_takers dct
+                WHERE dct.document_id = documents.id
+                  AND COALESCE(dct.taker_cnpj, '') <> ''
+                  AND (
+                      dct.taker_cnpj = {$companyDigits}
+                      OR EXISTS (
+                          SELECT 1
+                          FROM companies cte_company
+                          WHERE {$registeredCompanyDigits} = dct.taker_cnpj
+                      )
+                  )
+            ))";
         }
 
         $dateStart = $this->normalizeFilterDate((string)($filters['date_start'] ?? ''));
@@ -796,17 +841,34 @@ final class Repository
             $stmt->execute();
             $deleteTaker = $this->pdo->prepare('DELETE FROM document_cte_takers WHERE document_id = :document_id');
             $insertTaker = $this->pdo->prepare('INSERT INTO document_cte_takers(document_id, taker_cnpj, created_at) VALUES(:document_id, :taker_cnpj, :created_at)');
+            $updateCompany = $this->pdo->prepare('UPDATE documents
+                SET company_id = :company_id,
+                    company_name = :company_name,
+                    company_cnpj = :company_cnpj,
+                    updated_at = :updated_at
+                WHERE id = :id');
             foreach ($stmt->fetchAll() as $doc) {
                 $xml = $this->documentXmlFromRow($doc);
                 if (trim($xml) === '') {
                     continue;
                 }
+                $takerCnpj = $this->parseCteTakerCnpjFromXml($xml);
                 $deleteTaker->execute(['document_id' => (int)$doc['id']]);
                 $insertTaker->execute([
                     'document_id' => (int)$doc['id'],
-                    'taker_cnpj' => $this->parseCteTakerCnpjFromXml($xml),
+                    'taker_cnpj' => $takerCnpj,
                     'created_at' => date('c'),
                 ]);
+                $company = $takerCnpj !== '' ? $this->findCompanyByCnpj($takerCnpj) : null;
+                if ($company) {
+                    $updateCompany->execute([
+                        'id' => (int)$doc['id'],
+                        'company_id' => (int)$company['id'],
+                        'company_name' => (string)$company['company_name'],
+                        'company_cnpj' => (string)$company['cnpj'],
+                        'updated_at' => date('c'),
+                    ]);
+                }
             }
         } catch (\Throwable $e) {
             error_log('Falha ao atualizar tomadores CT-e filtrados: ' . $e->getMessage());
@@ -819,7 +881,10 @@ final class Repository
             return;
         }
         $updateDoc = $this->pdo->prepare('UPDATE documents
-            SET recipient_cnpj = :recipient_cnpj,
+            SET company_id = COALESCE(:company_id, company_id),
+                company_name = COALESCE(:company_name, company_name),
+                company_cnpj = COALESCE(:company_cnpj, company_cnpj),
+                recipient_cnpj = :recipient_cnpj,
                 recipient_name = :recipient_name,
                 updated_at = :updated_at
             WHERE id = :id');
@@ -833,14 +898,27 @@ final class Repository
                     continue;
                 }
                 $recipient = $this->parseCteRecipientFromXml($xml);
+                $company = null;
+                $takerCnpj = $this->parseCteTakerCnpjFromXml($xml);
+                if ($takerCnpj !== '') {
+                    $company = $this->findCompanyByCnpj($takerCnpj);
+                }
                 if ($recipient['cnpj'] !== '' || $recipient['name'] !== '') {
-                    if ((string)($row['recipient_cnpj'] ?? '') !== $recipient['cnpj'] || (string)($row['recipient_name'] ?? '') !== $recipient['name']) {
+                    if ((string)($row['recipient_cnpj'] ?? '') !== $recipient['cnpj'] || (string)($row['recipient_name'] ?? '') !== $recipient['name'] || ($company && (int)($row['company_id'] ?? 0) !== (int)$company['id'])) {
                         $updateDoc->execute([
                             'id' => (int)$row['id'],
+                            'company_id' => $company['id'] ?? null,
+                            'company_name' => $company['company_name'] ?? null,
+                            'company_cnpj' => $company['cnpj'] ?? null,
                             'recipient_cnpj' => $recipient['cnpj'],
                             'recipient_name' => $recipient['name'],
                             'updated_at' => date('c'),
                         ]);
+                    }
+                    if ($company) {
+                        $row['company_id'] = (int)$company['id'];
+                        $row['company_name'] = (string)$company['company_name'];
+                        $row['company_cnpj'] = (string)$company['cnpj'];
                     }
                     $row['recipient_cnpj'] = $recipient['cnpj'];
                     $row['recipient_name'] = $recipient['name'];
@@ -1050,7 +1128,10 @@ final class Repository
             LIMIT 50000");
         $stmt->execute();
         $updateDoc = $this->pdo->prepare('UPDATE documents
-            SET recipient_cnpj = :recipient_cnpj,
+            SET company_id = COALESCE(:company_id, company_id),
+                company_name = COALESCE(:company_name, company_name),
+                company_cnpj = COALESCE(:company_cnpj, company_cnpj),
+                recipient_cnpj = :recipient_cnpj,
                 recipient_name = :recipient_name,
                 updated_at = :updated_at
             WHERE id = :id');
@@ -1071,9 +1152,14 @@ final class Repository
             }
             $processed++;
             $recipient = $this->parseCteRecipientFromXml($xml);
+            $takerCnpj = $this->parseCteTakerCnpjFromXml($xml);
+            $company = $takerCnpj !== '' ? $this->findCompanyByCnpj($takerCnpj) : null;
             if ($recipient['cnpj'] !== '' || $recipient['name'] !== '') {
                 $updateDoc->execute([
                     'id' => (int)$doc['id'],
+                    'company_id' => $company['id'] ?? null,
+                    'company_name' => $company['company_name'] ?? null,
+                    'company_cnpj' => $company['cnpj'] ?? null,
                     'recipient_cnpj' => $recipient['cnpj'],
                     'recipient_name' => $recipient['name'],
                     'updated_at' => date('c'),
@@ -1084,7 +1170,7 @@ final class Repository
             $deleteTaker->execute(['document_id' => (int)$doc['id']]);
             $insertTaker->execute([
                 'document_id' => (int)$doc['id'],
-                'taker_cnpj' => $this->parseCteTakerCnpjFromXml($xml),
+                'taker_cnpj' => $takerCnpj,
                 'created_at' => date('c'),
             ]);
             $takers++;
