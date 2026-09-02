@@ -6,7 +6,7 @@
     <title><?= h($title) ?></title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="icon" href="<?= h(base_url('assets/logo-s-novo.jpg')) ?>">
-    <link rel="stylesheet" href="<?= h(base_url('assets/app.css?v=20260727-robots-settings-tabs-v2')) ?>">
+    <link rel="stylesheet" href="<?= h(base_url('assets/app.css?v=20260902-accounting-grid-v1')) ?>">
 </head>
 <body>
 <div class="shell">
@@ -23,7 +23,9 @@
             <?php if (!empty($isAdmin)): ?>
             <a class="<?= $page === 'dashboard' ? 'active' : '' ?>" href="<?= h(base_url()) ?>" title="Resumo XMLs"><span class="nav-icon">&#9638;</span><span class="nav-label">Resumo XMLs</span></a>
             <?php endif; ?>
+            <?php if (!empty($isAdmin) || !empty($canViewRevenue)): ?>
             <a class="<?= $page === 'revenue' ? 'active' : '' ?>" href="<?= h(base_url('?page=revenue')) ?>" title="Faturamento"><span class="nav-icon">&#9635;</span><span class="nav-label">Faturamento</span></a>
+            <?php endif; ?>
             <?php if (!empty($isAdmin)): ?>
             <a class="<?= $page === 'companies' ? 'active' : '' ?>" href="<?= h(base_url('?page=companies')) ?>" title="Empresas"><span class="nav-icon">&#9636;</span><span class="nav-label">Empresas</span></a>
             <a class="<?= $page === 'import' ? 'active' : '' ?>" href="<?= h(base_url('?page=import')) ?>" title="Importar XML"><span class="nav-icon">&#8679;</span><span class="nav-label">Importar XML</span></a>
@@ -83,7 +85,12 @@
                         <strong><?= h($clientName) ?></strong>
                     </div>
                 </div>
-                <?php if ($config['auth_enabled']): ?>
+                <?php if (!empty($cancellationTrackingActiveCount)): ?>
+                    <a class="button-compact topbar-reschedule-button" href="<?= h(base_url('?page=cancellation_tracking')) ?>" title="Acompanhar cancelamentos reagendados">
+                        <span>Acompanhar cancelamentos</span>
+                        <strong><?= h((string)$cancellationTrackingActiveCount) ?></strong>
+                    </a>
+                <?php endif; ?>                <?php if ($config['auth_enabled']): ?>
                     <a class="topbar-logout" href="<?= h(base_url('?page=logout')) ?>" title="Sair">Sair</a>
                 <?php endif; ?>
             </div>

@@ -59,7 +59,7 @@ function revenue_filters_from_request(array $source): array
 function document_filters_from_request(array $source): array
 {
     $docType = strtoupper((string)($source['doc_type'] ?? ''));
-    if (!in_array($docType, ['NFE', 'CTE'], true)) {
+    if (!in_array($docType, ['NFE', 'CTE', 'NFSE'], true)) {
         $docType = '';
     }
     return [
@@ -68,6 +68,7 @@ function document_filters_from_request(array $source): array
         'status' => $source['status'] ?? '',
         'manifestation_status' => $source['manifestation_status'] ?? '',
         'posted_to_erp' => $source['posted_to_erp'] ?? '',
+        'accounting_posted' => $source['accounting_posted'] ?? '',
         'without_referenced_nfe' => $source['without_referenced_nfe'] ?? '',
         'entry_only' => '1',
         'date_start' => $source['date_start'] ?? '',
@@ -104,6 +105,35 @@ function documents_download_filename(array $doc, string $extension): string
 {
     $base = strtoupper((string)($doc['doc_type'] ?? 'DOC')) . '_' . ((string)($doc['access_key'] ?? '') ?: ((string)($doc['number'] ?? '') ?: (string)($doc['id'] ?? uniqid())));
     return preg_replace('/[^a-zA-Z0-9._-]/', '_', $base) . '.' . $extension;
+}
+
+function start_background_job(string $jobType, int $companyId): void
+{
+    if (!in_array($jobType, ['nfse_until_max'], true)) {
+        throw new RuntimeException('Rotina sem suporte para execucao em segundo plano.');
+    }
+
+    $script = realpath(__DIR__ . '/../scripts/run_job_once.php');
+    if (!$script) {
+        throw new RuntimeException('Script de execucao em segundo plano nao encontrado.');
+    }
+
+    $logDir = realpath(__DIR__ . '/../storage/logs') ?: (__DIR__ . '/../storage/logs');
+    if (!is_dir($logDir)) {
+        mkdir($logDir, 0775, true);
+    }
+    $logFile = rtrim($logDir, DIRECTORY_SEPARATOR) . DIRECTORY_SEPARATOR . 'manual_jobs.log';
+
+    // Robos longos, como NFS-e em todos os CNPJs, nao devem deixar o navegador aguardando ate o fim.
+    // O processo em segundo plano grava o resultado no historico de jobs e evita HTTP 500 por timeout.
+    if (PHP_OS_FAMILY === 'Windows') {
+        $command = 'start "" /B ' . escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($script) . ' ' . escapeshellarg($jobType) . ' ' . escapeshellarg((string)$companyId) . ' >> ' . escapeshellarg($logFile) . ' 2>&1';
+        pclose(popen($command, 'r'));
+        return;
+    }
+
+    $command = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg($script) . ' ' . escapeshellarg($jobType) . ' ' . escapeshellarg((string)$companyId) . ' >> ' . escapeshellarg($logFile) . ' 2>&1 &';
+    exec($command);
 }
 
 function documents_event_download_filename(array $event): string
@@ -180,22 +210,148 @@ function documents_money(?string $value): string
     return format_money($number);
 }
 
+function documents_uf_from_ibge_code(string $code): string
+{
+    $prefix = substr(preg_replace('/\D+/', '', $code), 0, 2);
+    $map = [
+        '11' => 'RO', '12' => 'AC', '13' => 'AM', '14' => 'RR', '15' => 'PA', '16' => 'AP', '17' => 'TO',
+        '21' => 'MA', '22' => 'PI', '23' => 'CE', '24' => 'RN', '25' => 'PB', '26' => 'PE', '27' => 'AL', '28' => 'SE', '29' => 'BA',
+        '31' => 'MG', '32' => 'ES', '33' => 'RJ', '35' => 'SP',
+        '41' => 'PR', '42' => 'SC', '43' => 'RS',
+        '50' => 'MS', '51' => 'MT', '52' => 'GO', '53' => 'DF',
+    ];
+    return $map[$prefix] ?? '';
+}
+
+function document_items_location(array $doc): array
+{
+    $xml = (string)($doc['raw_xml'] ?? '');
+    if ($xml === '' && is_file((string)($doc['xml_path'] ?? ''))) {
+        $xml = (string)file_get_contents((string)$doc['xml_path']);
+    }
+    if (trim($xml) === '') {
+        return ['city' => '', 'uf' => ''];
+    }
+
+    $dom = new DOMDocument();
+    if (!$dom->loadXML($xml, LIBXML_NOCDATA | LIBXML_NOBLANKS)) {
+        return ['city' => '', 'uf' => ''];
+    }
+
+    $xp = new DOMXPath($dom);
+    $type = strtoupper((string)($doc['doc_type'] ?? ''));
+    if ($type === 'NFSE') {
+        $city = xml_first($xp, [
+            '//*[local-name()="MunicipioPrestacaoServico"]',
+            '//*[local-name()="MunicipioPrestacao"]',
+            '//*[local-name()="xMunPrestacao"]',
+            '//*[local-name()="xLocPrestacao"]',
+            '//*[local-name()="Tomador" or local-name()="tomador" or local-name()="toma"]//*[local-name()="Endereco" or local-name()="end"]//*[local-name()="Municipio" or local-name()="xMun" or local-name()="Cidade"]',
+            '//*[local-name()="Tomador" or local-name()="tomador" or local-name()="toma"]//*[local-name()="Municipio" or local-name()="xMun" or local-name()="Cidade"]',
+        ]);
+        $uf = xml_first($xp, [
+            '//*[local-name()="UFPrestacaoServico"]',
+            '//*[local-name()="UFPrestacao"]',
+            '//*[local-name()="ufLocPrestacao"]',
+            '//*[local-name()="Tomador" or local-name()="tomador" or local-name()="toma"]//*[local-name()="Endereco" or local-name()="end"]//*[local-name()="UF" or local-name()="Uf"]',
+            '//*[local-name()="Tomador" or local-name()="tomador" or local-name()="toma"]//*[local-name()="UF" or local-name()="Uf"]',
+        ]);
+        if ($uf === '') {
+            $uf = documents_uf_from_ibge_code(xml_first($xp, [
+                '//*[local-name()="cLocPrestacao"]',
+                '//*[local-name()="cLocIncid"]',
+                '//*[local-name()="cLocEmi"]',
+                '//*[local-name()="prest" or local-name()="Prestador" or local-name()="emit"]//*[local-name()="cMun"]',
+            ]));
+        }
+        return ['city' => $city, 'uf' => $uf];
+    }
+
+    return [
+        'city' => xml_first($xp, [
+            '//*[local-name()="dest"]//*[local-name()="enderDest"]/*[local-name()="xMun"]',
+            '//*[local-name()="dest"]//*[local-name()="xMun"]',
+            '//*[local-name()="ide"]/*[local-name()="xMunFim"]',
+        ]),
+        'uf' => xml_first($xp, [
+            '//*[local-name()="dest"]//*[local-name()="enderDest"]/*[local-name()="UF"]',
+            '//*[local-name()="dest"]//*[local-name()="UF"]',
+            '//*[local-name()="ide"]/*[local-name()="UFFim"]',
+        ]),
+    ];
+}
+
 function documents_party(DOMXPath $xp, string $tag): array
 {
     $base = '//*[local-name()="' . $tag . '"]';
     return [
-        'nome' => xml_first($xp, [$base . '/*[local-name()="xNome"]']),
-        'documento' => xml_first($xp, [$base . '/*[local-name()="CNPJ"]', $base . '/*[local-name()="CPF"]']),
-        'ie' => xml_first($xp, [$base . '/*[local-name()="IE"]']),
+        'nome' => xml_first($xp, [
+            $base . '//*[local-name()="xNome"]',
+            $base . '//*[local-name()="RazaoSocial"]',
+            $base . '//*[local-name()="Nome"]',
+            $base . '//*[local-name()="nome"]',
+        ]),
+        'documento' => xml_first($xp, [
+            $base . '//*[local-name()="CNPJ"]',
+            $base . '//*[local-name()="Cnpj"]',
+            $base . '//*[local-name()="cnpj"]',
+            $base . '//*[local-name()="CPF"]',
+            $base . '//*[local-name()="Cpf"]',
+            $base . '//*[local-name()="cpf"]',
+        ]),
+        'ie' => xml_first($xp, [
+            $base . '//*[local-name()="IE"]',
+            $base . '//*[local-name()="InscricaoEstadual"]',
+            $base . '//*[local-name()="InscricaoMunicipal"]',
+            $base . '//*[local-name()="IM"]',
+        ]),
         'endereco' => trim(implode(', ', array_filter([
             xml_first($xp, [$base . '//*[local-name()="xLgr"]']),
             xml_first($xp, [$base . '//*[local-name()="nro"]']),
+            xml_first($xp, [$base . '//*[local-name()="Endereco"]']),
+            xml_first($xp, [$base . '//*[local-name()="Numero"]']),
             xml_first($xp, [$base . '//*[local-name()="xBairro"]']),
+            xml_first($xp, [$base . '//*[local-name()="Bairro"]']),
             xml_first($xp, [$base . '//*[local-name()="xMun"]']),
+            xml_first($xp, [$base . '//*[local-name()="Municipio"]']),
             xml_first($xp, [$base . '//*[local-name()="UF"]']),
             xml_first($xp, [$base . '//*[local-name()="CEP"]']),
         ]))),
     ];
+}
+
+function documents_party_any(DOMXPath $xp, array $tags, array $fallback = []): array
+{
+    foreach ($tags as $tag) {
+        $party = documents_party($xp, (string)$tag);
+        if (($party['nome'] ?? '') !== '' || ($party['documento'] ?? '') !== '') {
+            return $party;
+        }
+    }
+    return $fallback ?: ['nome' => '', 'documento' => '', 'ie' => '', 'endereco' => ''];
+}
+
+function documents_xml_values(DOMXPath $xp, array $exprs, int $limit = 12): array
+{
+    $values = [];
+    foreach ($exprs as $expr) {
+        $nodes = $xp->query($expr);
+        foreach ($nodes ?: [] as $node) {
+            $value = trim((string)$node->textContent);
+            if ($value !== '') {
+                $values[$value] = true;
+            }
+            if (count($values) >= $limit) {
+                break 2;
+            }
+        }
+    }
+    return array_keys($values);
+}
+
+function documents_xml_summary_line(DOMXPath $xp, array $exprs, int $limit = 12): string
+{
+    return implode(' | ', documents_xml_values($xp, $exprs, $limit));
 }
 
 function documents_danfe_details(array $doc, ?\ControlS\Portal\Repository $repo = null): array
@@ -211,6 +367,73 @@ function documents_danfe_details(array $doc, ?\ControlS\Portal\Repository $repo 
         return $details;
     }
     $xp = new DOMXPath($dom);
+    if ($type === 'NFSE') {
+        $serviceDescription = xml_first($xp, [
+            '//*[local-name()="serv"]//*[local-name()="xDescServ"]',
+            '//*[local-name()="Servico"]//*[local-name()="Discriminacao"]',
+            '//*[local-name()="Discriminacao"]',
+            '//*[local-name()="DescricaoServico"]',
+        ]);
+        $serviceCode = xml_first($xp, [
+            '//*[local-name()="serv"]//*[local-name()="cServ"]',
+            '//*[local-name()="CodigoServico"]',
+            '//*[local-name()="ItemListaServico"]',
+        ]);
+        $serviceValue = xml_first($xp, [
+            '//*[local-name()="vServPrest"]/*[local-name()="vServ"]',
+            '//*[local-name()="ValoresNfse"]/*[local-name()="BaseCalculo"]',
+            '//*[local-name()="Valores"]/*[local-name()="ValorServicos"]',
+            '//*[local-name()="vServ"]',
+        ]);
+        $issValue = xml_first($xp, [
+            '//*[local-name()="vServPrest"]//*[local-name()="vISSQN"]',
+            '//*[local-name()="ValoresNfse"]/*[local-name()="ValorIss"]',
+            '//*[local-name()="Valores"]/*[local-name()="ValorIss"]',
+            '//*[local-name()="vISSQN"]',
+        ]);
+        $details['items'][] = [
+            'codigo' => $serviceCode,
+            'descricao' => $serviceDescription !== '' ? $serviceDescription : 'Serviço da NFS-e',
+            'ncm' => '',
+            'cfop' => '',
+            'quantidade' => '1',
+            'unidade' => 'UN',
+            'unitario' => documents_money($serviceValue !== '' ? $serviceValue : (string)($doc['total_value'] ?? '0')),
+            'total' => documents_money($serviceValue !== '' ? $serviceValue : (string)($doc['total_value'] ?? '0')),
+            'icms' => '',
+            'pis' => documents_money(xml_first($xp, ['//*[local-name()="vPIS"]', '//*[local-name()="ValorPis"]'])),
+            'cofins' => documents_money(xml_first($xp, ['//*[local-name()="vCOFINS"]', '//*[local-name()="ValorCofins"]'])),
+            'ipi' => '',
+            'st' => '',
+            'iss' => documents_money($issValue),
+        ];
+        $details['extra'] = [
+            'Serie' => xml_first($xp, ['//*[local-name()="serie"]', '//*[local-name()="Serie"]']),
+            'DPS' => xml_first($xp, ['//*[local-name()="nDPS"]', '//*[local-name()="NumeroDps"]']),
+            'Serie DPS' => xml_first($xp, ['//*[local-name()="serieDPS"]', '//*[local-name()="SerieDps"]']),
+            'Codigo verificador' => xml_first($xp, ['//*[local-name()="cVerif"]', '//*[local-name()="CodigoVerificacao"]']),
+            'Municipio prestacao' => xml_first($xp, ['//*[local-name()="cLocPrestacao"]', '//*[local-name()="MunicipioPrestacaoServico"]']),
+            'Municipio incidencia' => xml_first($xp, ['//*[local-name()="cLocIncid"]', '//*[local-name()="MunicipioIncidencia"]']),
+            'Exigibilidade ISS' => xml_first($xp, ['//*[local-name()="exigSusp"]', '//*[local-name()="ExigibilidadeISS"]']),
+            'Natureza da operacao' => xml_first($xp, ['//*[local-name()="natOp"]', '//*[local-name()="NaturezaOperacao"]']),
+            'Regime especial' => xml_first($xp, ['//*[local-name()="regEspTrib"]', '//*[local-name()="RegimeEspecialTributacao"]']),
+            'Aliquota ISS' => xml_first($xp, ['//*[local-name()="pAliq"]', '//*[local-name()="Aliquota"]']),
+            'ISS retido' => xml_first($xp, ['//*[local-name()="tpRetISSQN"]', '//*[local-name()="IssRetido"]']),
+            'Tributado no municipio' => xml_first($xp, ['//*[local-name()="tribMun"]', '//*[local-name()="TributacaoMunicipio"]']),
+            'Servico' => $serviceDescription,
+        ];
+        $details['totals'] = [
+            'Valor servicos' => documents_money($serviceValue),
+            'Deducoes' => documents_money(xml_first($xp, ['//*[local-name()="vDed"]', '//*[local-name()="ValorDeducoes"]'])),
+            'Desconto' => documents_money(xml_first($xp, ['//*[local-name()="vDescIncond"]', '//*[local-name()="vDescCond"]', '//*[local-name()="DescontoIncondicionado"]', '//*[local-name()="DescontoCondicionado"]'])),
+            'Base ISS' => documents_money(xml_first($xp, ['//*[local-name()="vBC"]', '//*[local-name()="BaseCalculo"]'])),
+            'Valor ISS' => documents_money($issValue),
+            'PIS' => documents_money(xml_first($xp, ['//*[local-name()="vPIS"]', '//*[local-name()="ValorPis"]'])),
+            'COFINS' => documents_money(xml_first($xp, ['//*[local-name()="vCOFINS"]', '//*[local-name()="ValorCofins"]'])),
+            'Valor liquido' => documents_money(xml_first($xp, ['//*[local-name()="vLiq"]', '//*[local-name()="ValorLiquidoNfse"]', '//*[local-name()="ValorLiquido"]'])),
+        ];
+        return $details;
+    }
     if ($type === 'CTE') {
         $indexedItems = $repo ? $repo->documentItems((int)($doc['id'] ?? 0)) : [];
         foreach ($indexedItems as $item) {
@@ -238,9 +461,13 @@ function documents_danfe_details(array $doc, ?\ControlS\Portal\Repository $repo 
             'Serie' => xml_first($xp, ['//*[local-name()="ide"]/*[local-name()="serie"]']),
             'Tipo de CT-e' => xml_first($xp, ['//*[local-name()="ide"]/*[local-name()="tpCTe"]']),
             'Modal' => xml_first($xp, ['//*[local-name()="ide"]/*[local-name()="modal"]']),
+            'Municipio inicio' => xml_first($xp, ['//*[local-name()="ide"]/*[local-name()="xMunIni"]']),
+            'Municipio fim' => xml_first($xp, ['//*[local-name()="ide"]/*[local-name()="xMunFim"]']),
             'UF inicio' => xml_first($xp, ['//*[local-name()="ide"]/*[local-name()="UFIni"]']),
             'UF fim' => xml_first($xp, ['//*[local-name()="ide"]/*[local-name()="UFFim"]']),
             'Valor a receber' => documents_money(xml_first($xp, ['//*[local-name()="vPrest"]/*[local-name()="vRec"]'])),
+            'Produto predominante' => xml_first($xp, ['//*[local-name()="infCarga"]/*[local-name()="proPred"]']),
+            'Documentos originarios' => documents_xml_summary_line($xp, ['//*[local-name()="infDoc"]//*[local-name()="chave"]', '//*[local-name()="infDoc"]//*[local-name()="nDoc"]', '//*[local-name()="infNFe"]/*[local-name()="chave"]']),
             'Protocolo autorizacao' => xml_first($xp, ['//*[local-name()="protCTe"]//*[local-name()="nProt"]']),
             'Data autorizacao' => format_date(xml_first($xp, ['//*[local-name()="protCTe"]//*[local-name()="dhRecbto"]'])),
             'Evento' => xml_first($xp, ['//*[local-name()="procEventoCTe"]//*[local-name()="xEvento"]']),
@@ -281,6 +508,11 @@ function documents_danfe_details(array $doc, ?\ControlS\Portal\Repository $repo 
         'Natureza da operacao' => xml_first($xp, ['//*[local-name()="ide"]/*[local-name()="natOp"]']),
         'Serie' => xml_first($xp, ['//*[local-name()="ide"]/*[local-name()="serie"]']),
         'Modelo' => xml_first($xp, ['//*[local-name()="ide"]/*[local-name()="mod"]']),
+        'Finalidade' => xml_first($xp, ['//*[local-name()="ide"]/*[local-name()="finNFe"]']),
+        'Pedido(s) xPed' => documents_xml_summary_line($xp, ['//*[local-name()="det"]/*[local-name()="prod"]/*[local-name()="xPed"]']),
+        'Pagamento' => documents_xml_summary_line($xp, ['//*[local-name()="detPag"]/*[local-name()="tPag"]', '//*[local-name()="detPag"]/*[local-name()="vPag"]']),
+        'Transportadora' => documents_xml_summary_line($xp, ['//*[local-name()="transporta"]/*[local-name()="xNome"]', '//*[local-name()="transporta"]/*[local-name()="CNPJ"]']),
+        'Volumes' => documents_xml_summary_line($xp, ['//*[local-name()="vol"]/*[local-name()="qVol"]', '//*[local-name()="vol"]/*[local-name()="esp"]', '//*[local-name()="vol"]/*[local-name()="pesoB"]', '//*[local-name()="vol"]/*[local-name()="pesoL"]']),
         'Protocolo' => xml_first($xp, ['//*[local-name()="protNFe"]//*[local-name()="nProt"]']),
         'Data autorizacao' => format_date(xml_first($xp, ['//*[local-name()="protNFe"]//*[local-name()="dhRecbto"]'])),
     ];
@@ -407,28 +639,50 @@ function documents_zip_response(array $files, string $downloadName, string $empt
 function documents_danfe_html(array $doc, bool $autoPrint = false): string
 {
     $type = strtoupper((string)($doc['doc_type'] ?? ''));
-    $title = $type === 'CTE' ? 'DACTE' : 'DANFE';
-    $subtitle = $type === 'CTE' ? 'Documento Auxiliar do Conhecimento de Transporte Eletronico' : 'Documento Auxiliar da Nota Fiscal Eletronica';
+    $title = $type === 'CTE' ? 'DACTE' : ($type === 'NFSE' ? 'DANFSE' : 'DANFE');
+    $subtitle = $type === 'CTE' ? 'Documento Auxiliar do Conhecimento de Transporte Eletronico' : ($type === 'NFSE' ? 'Documento Auxiliar da Nota Fiscal de Servico Eletronica' : 'Documento Auxiliar da Nota Fiscal Eletronica');
     $details = documents_danfe_details($doc, $GLOBALS['repo'] ?? null);
     $xml = documents_xml_content($doc);
     $allFields = documents_xml_flat_fields($xml);
     $emit = ['nome' => (string)($doc['issuer_name'] ?? ''), 'documento' => (string)($doc['issuer_cnpj'] ?? ''), 'ie' => '', 'endereco' => ''];
     $dest = ['nome' => (string)($doc['recipient_name'] ?? ''), 'documento' => (string)($doc['recipient_cnpj'] ?? ''), 'ie' => '', 'endereco' => ''];
     $summary = ['Pedidos (xPed)' => [], 'Observacoes' => []];
+    $extraParties = [];
     if (trim($xml) !== '') {
         $dom = new DOMDocument();
         if ($dom->loadXML($xml, LIBXML_NOCDATA | LIBXML_NOBLANKS)) {
             $xp = new DOMXPath($dom);
-            $emit = documents_party($xp, 'emit');
-            $dest = documents_party($xp, 'dest');
-            if ($type === 'CTE' && $dest['nome'] === '') {
-                $dest = documents_party($xp, 'rem');
+            $emit = documents_party_any($xp, ['emit'], $emit);
+            $dest = documents_party_any($xp, ['dest'], $dest);
+            if ($type === 'CTE') {
+                $rem = documents_party_any($xp, ['rem']);
+                $destCte = documents_party_any($xp, ['dest']);
+                $toma = documents_party_any($xp, ['toma']);
+                $exped = documents_party_any($xp, ['exped']);
+                $receb = documents_party_any($xp, ['receb']);
+                $emit = documents_party_any($xp, ['emit'], $emit);
+                $dest = $toma['nome'] !== '' || $toma['documento'] !== '' ? $toma : ($destCte['nome'] !== '' ? $destCte : $rem);
+                foreach ([
+                    'Remetente' => $rem,
+                    'Destinatário' => $destCte,
+                    'Tomador do serviço' => $toma,
+                    'Expedidor' => $exped,
+                    'Recebedor' => $receb,
+                ] as $label => $partyData) {
+                    if (($partyData['nome'] ?? '') !== '' || ($partyData['documento'] ?? '') !== '') {
+                        $extraParties[$label] = $partyData;
+                    }
+                }
+            }
+            if ($type === 'NFSE') {
+                $emit = documents_party_any($xp, ['prest', 'PrestadorServico', 'Prestador', 'emit'], $emit);
+                $dest = documents_party_any($xp, ['toma', 'TomadorServico', 'Tomador', 'dest'], $dest);
             }
             foreach ($xp->query('//*[local-name()="xPed"]') ?: [] as $node) {
                 $value = trim((string)$node->textContent);
                 if ($value !== '') { $summary['Pedidos (xPed)'][] = $value; }
             }
-            foreach (['infCpl','infAdFisco','xObs','xTexto','infAdic','obsCont','obsFisco'] as $tag) {
+            foreach (['infCpl','infAdFisco','xObs','xTexto','infAdic','obsCont','obsFisco','OutrasInformacoes','InformacoesComplementares','Discriminacao'] as $tag) {
                 foreach ($xp->query('//*[local-name()="' . $tag . '"]') ?: [] as $node) {
                     $value = trim((string)$node->textContent);
                     if ($value !== '') { $summary['Observacoes'][] = $value; }
@@ -460,6 +714,29 @@ function documents_danfe_html(array $doc, bool $autoPrint = false): string
     $party = static function (string $title, array $data): string {
         return '<section class="box party"><h2>' . h($title) . '</h2><strong>' . h($data['nome']) . '</strong><span>CNPJ/CPF: ' . h($data['documento']) . '</span><span>IE: ' . h($data['ie']) . '</span><small>' . h($data['endereco']) . '</small></section>';
     };
+    $mainPartyLeft = $type === 'NFSE' ? 'Tomador do serviço' : ($type === 'CTE' ? 'Tomador / Destinatário' : 'Destinatário');
+    $mainPartyRight = $type === 'NFSE' ? 'Prestador do serviço' : ($type === 'CTE' ? 'Emitente do CT-e' : 'Emitente');
+    $itemsSectionTitle = $type === 'NFSE' ? 'Dados do serviço' : ($type === 'CTE' ? 'Componentes do frete / carga' : 'Dados dos produtos');
+    $extraPartiesHtml = '';
+    foreach ($extraParties as $label => $partyData) {
+        $extraPartiesHtml .= $party($label, $partyData);
+    }
+    if ($extraPartiesHtml !== '') {
+        $extraPartiesHtml = '<div class="section-title">Partes do transporte</div><div class="grid2 extra-parties">' . $extraPartiesHtml . '</div>';
+    }
+    $launchFields = [
+        'Tipo' => $type,
+        'Numero' => (string)($doc['number'] ?? ''),
+        'Emissao' => format_date($doc['issue_date'] ?? null),
+        'Valor' => format_money((float)($doc['total_value'] ?? 0)),
+        'Emitente' => trim($emit['nome'] . ' ' . $emit['documento']),
+        'Destinatario/Tomador' => trim($dest['nome'] . ' ' . $dest['documento']),
+        'Status' => document_status_label((string)($doc['status'] ?? '')),
+    ];
+    $launchHtml = '';
+    foreach ($launchFields as $label => $value) {
+        $launchHtml .= '<div><span>' . h($label) . '</span><strong>' . h((string)$value) . '</strong></div>';
+    }
     $totalHtml = '';
     foreach ($details['totals'] as $label => $value) {
         $totalHtml .= '<div><span>' . h((string)$label) . '</span><strong>' . h((string)$value) . '</strong></div>';
@@ -482,8 +759,8 @@ function documents_danfe_html(array $doc, bool $autoPrint = false): string
     $printButton = $autoPrint ? '<button class="no-print" onclick="window.print()">Imprimir</button>' : '';
     $printScript = $autoPrint ? '<script>window.addEventListener("load", function(){ window.print(); });</script>' : '';
     return '<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><title>' . h($title) . '</title><style>
-        *{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:8px;background:#fff;font-size:10px}.sheet{max-width:1120px;margin:auto;border:2px solid #222;padding:10px;position:relative}.receipt{display:grid;grid-template-columns:1fr 1fr 1fr 160px;border:1px solid #222;margin-bottom:6px}.receipt div{border-right:1px solid #222;min-height:42px;padding:4px}.receipt div:last-child{border-right:0}.center{text-align:center}.doc-head{display:grid;grid-template-columns:1.4fr 220px 1.2fr;gap:0;border:1px solid #222}.doc-head>div{border-right:1px solid #222;padding:6px}.doc-head>div:last-child{border-right:0}.doc-title h1{font-size:24px;margin:0}.doc-title strong{display:block;font-size:12px}.barcode{font-family:monospace;font-size:13px;letter-spacing:1px;border:1px solid #222;padding:6px;text-align:center;margin:6px 0;word-break:break-all}.barcode-bars{height:44px;margin:4px 0;border:1px solid #222;background:repeating-linear-gradient(90deg,#111 0 2px,#fff 2px 4px,#111 4px 5px,#fff 5px 8px,#111 8px 11px,#fff 11px 14px)}.access{font-size:12px;text-align:center;font-weight:bold}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0}.box{border:1px solid #222;border-top:0;padding:6px;min-height:58px}.box h2{font-size:10px;text-transform:uppercase;text-align:center;background:#f1f1f1;border:1px solid #222;margin:0 0 5px;padding:3px}.section-title{font-size:10px;text-transform:uppercase;text-align:center;background:#f1f1f1;border:1px solid #222;margin:8px 0 0;padding:4px}.party{display:grid;gap:2px}.doc-table,.items,.xml-fields{width:100%;border-collapse:collapse;margin:0}.doc-table th,.doc-table td,.items th,.items td,.xml-fields th,.xml-fields td{border:1px solid #222;padding:4px;text-align:left;vertical-align:top;word-break:break-word}.doc-table th{width:180px;background:#f7f7f7}.totals{display:grid;grid-template-columns:repeat(4,1fr);border-left:1px solid #222}.totals div{border-right:1px solid #222;border-bottom:1px solid #222;padding:5px;min-height:42px}.totals span{display:block;text-transform:uppercase;font-size:9px}.totals strong{font-size:12px}.items th,.xml-fields th{background:#f1f1f1;text-transform:uppercase;font-size:8px}.items td,.xml-fields td{font-size:8px}.xml-fields td:first-child{width:34%;font-family:Consolas,monospace}.watermark{font-size:74px;color:#999;opacity:.45;text-align:center;font-weight:800;letter-spacing:2px;margin:22px 0}.obs{min-height:58px}.xml-section{page-break-before:always;break-before:page;margin-top:18px}.no-print{position:fixed;right:18px;top:14px;padding:8px 12px}@media print{body{margin:0}.sheet{border:1px solid #222;max-width:none}.no-print{display:none}.watermark{font-size:66px}.xml-fields{page-break-before:auto}}
-    </style></head><body>' . $printButton . '<div class="sheet"><div class="receipt"><div><strong>Recebimento</strong><br>Declaro que recebi os produtos/servicos constantes neste documento.</div><div>Data / hora</div><div>Identificacao e assinatura</div><div class="center"><strong>' . h($title) . '</strong><br>N. ' . h((string)($doc['number'] ?? '')) . '</div></div><div class="doc-head"><div><h2>Identificacao do emitente</h2><strong>' . h($emit['nome']) . '</strong><br>CNPJ/CPF: ' . h($emit['documento']) . '<br>IE: ' . h($emit['ie']) . '<br>' . h($emit['endereco']) . '</div><div class="doc-title center"><h1>' . h($title) . '</h1><strong>' . h($subtitle) . '</strong><p>Espelho operacional</p></div><div><strong>Chave de acesso</strong><div class="barcode-bars" aria-label="Codigo de barras da chave"></div><div class="barcode">' . h((string)($doc['access_key'] ?? '')) . '</div><div class="access">' . h((string)($doc['access_key'] ?? '')) . '</div></div></div><table class="doc-table">' . $docRows . '</table><div class="grid2">' . $party('Destinatario / Tomador', $dest) . $party('Emitente', $emit) . '</div><div class="section-title">Totais</div><div class="totals">' . $totalHtml . '</div><div class="section-title">Dados do produto / servico</div><table class="items"><thead><tr><th>Codigo</th><th>Descricao</th><th>NCM</th><th>CFOP</th><th>Qtd</th><th>Un</th><th>Unitario</th><th>Total</th><th>ICMS</th><th>PIS</th><th>COFINS</th><th>IPI</th><th>ST</th><th>ISS</th></tr></thead><tbody>' . $itemsHtml . '</tbody></table><div class="watermark">SEM VALOR FISCAL</div><div class="box obs"><h2>Observacoes</h2>' . h($obs) . '</div><section class="xml-section"><div class="section-title">Todos os campos do XML</div><table class="xml-fields"><thead><tr><th>Campo XML</th><th>Valor</th></tr></thead><tbody>' . $fieldsHtml . '</tbody></table></section></div>' . $printScript . '</body></html>';
+        *{box-sizing:border-box}body{font-family:Arial,Helvetica,sans-serif;color:#111;margin:8px;background:#fff;font-size:10px}.sheet{max-width:1120px;margin:auto;border:2px solid #222;padding:10px;position:relative}.receipt{display:grid;grid-template-columns:1fr 1fr 1fr 160px;border:1px solid #222;margin-bottom:6px}.receipt div{border-right:1px solid #222;min-height:42px;padding:4px}.receipt div:last-child{border-right:0}.center{text-align:center}.doc-head{display:grid;grid-template-columns:1.4fr 220px 1.2fr;gap:0;border:1px solid #222}.doc-head>div{border-right:1px solid #222;padding:6px}.doc-head>div:last-child{border-right:0}.doc-title h1{font-size:24px;margin:0}.doc-title strong{display:block;font-size:12px}.barcode{font-family:monospace;font-size:13px;letter-spacing:1px;border:1px solid #222;padding:6px;text-align:center;margin:6px 0;word-break:break-all}.barcode-bars{height:44px;margin:4px 0;border:1px solid #222;background:repeating-linear-gradient(90deg,#111 0 2px,#fff 2px 4px,#111 4px 5px,#fff 5px 8px,#111 8px 11px,#fff 11px 14px)}.access{font-size:12px;text-align:center;font-weight:bold}.grid2{display:grid;grid-template-columns:1fr 1fr;gap:0}.extra-parties{grid-template-columns:repeat(2,1fr)}.box{border:1px solid #222;border-top:0;padding:6px;min-height:58px}.box h2{font-size:10px;text-transform:uppercase;text-align:center;background:#f1f1f1;border:1px solid #222;margin:0 0 5px;padding:3px}.section-title{font-size:10px;text-transform:uppercase;text-align:center;background:#f1f1f1;border:1px solid #222;margin:8px 0 0;padding:4px}.launch-grid{display:grid;grid-template-columns:repeat(4,1fr);border-left:1px solid #222;margin-top:8px}.launch-grid div{border-right:1px solid #222;border-bottom:1px solid #222;padding:6px;min-height:42px;background:#fbfbfb}.launch-grid span{display:block;text-transform:uppercase;font-size:8px;color:#555}.launch-grid strong{display:block;font-size:11px;line-height:1.25}.party{display:grid;gap:2px}.doc-table,.items,.xml-fields{width:100%;border-collapse:collapse;margin:0}.doc-table th,.doc-table td,.items th,.items td,.xml-fields th,.xml-fields td{border:1px solid #222;padding:4px;text-align:left;vertical-align:top;word-break:break-word}.doc-table th{width:180px;background:#f7f7f7}.totals{display:grid;grid-template-columns:repeat(4,1fr);border-left:1px solid #222}.totals div{border-right:1px solid #222;border-bottom:1px solid #222;padding:5px;min-height:42px}.totals span{display:block;text-transform:uppercase;font-size:9px}.totals strong{font-size:12px}.items th,.xml-fields th{background:#f1f1f1;text-transform:uppercase;font-size:8px}.items td,.xml-fields td{font-size:8px}.xml-fields td:first-child{width:34%;font-family:Consolas,monospace}.watermark{font-size:74px;color:#999;opacity:.45;text-align:center;font-weight:800;letter-spacing:2px;margin:22px 0}.obs{min-height:58px}.xml-section{page-break-before:always;break-before:page;margin-top:18px}.no-print{position:fixed;right:18px;top:14px;padding:8px 12px}@media print{body{margin:0}.sheet{border:1px solid #222;max-width:none}.no-print{display:none}.watermark{font-size:66px}.xml-fields{page-break-before:auto}}
+    </style></head><body>' . $printButton . '<div class="sheet"><div class="receipt"><div><strong>Recebimento</strong><br>Declaro que recebi os produtos/servicos constantes neste documento.</div><div>Data / hora</div><div>Identificacao e assinatura</div><div class="center"><strong>' . h($title) . '</strong><br>N. ' . h((string)($doc['number'] ?? '')) . '</div></div><div class="doc-head"><div><h2>Identificacao do emitente</h2><strong>' . h($emit['nome']) . '</strong><br>CNPJ/CPF: ' . h($emit['documento']) . '<br>IE/IM: ' . h($emit['ie']) . '<br>' . h($emit['endereco']) . '</div><div class="doc-title center"><h1>' . h($title) . '</h1><strong>' . h($subtitle) . '</strong><p>Espelho operacional para lancamento</p></div><div><strong>Chave de acesso</strong><div class="barcode-bars" aria-label="Codigo de barras da chave"></div><div class="barcode">' . h((string)($doc['access_key'] ?? '')) . '</div><div class="access">' . h((string)($doc['access_key'] ?? '')) . '</div></div></div><div class="section-title">Resumo para lancamento</div><div class="launch-grid">' . $launchHtml . '</div><table class="doc-table">' . $docRows . '</table><div class="grid2">' . $party($mainPartyLeft, $dest) . $party($mainPartyRight, $emit) . '</div>' . $extraPartiesHtml . '<div class="section-title">Totais</div><div class="totals">' . $totalHtml . '</div><div class="section-title">' . h($itemsSectionTitle) . '</div><table class="items"><thead><tr><th>Codigo</th><th>Descricao</th><th>NCM</th><th>CFOP</th><th>Qtd</th><th>Un</th><th>Unitario</th><th>Total</th><th>ICMS</th><th>PIS</th><th>COFINS</th><th>IPI</th><th>ST</th><th>ISS</th></tr></thead><tbody>' . $itemsHtml . '</tbody></table><div class="watermark">SEM VALOR FISCAL</div><div class="box obs"><h2>Observacoes</h2>' . h($obs) . '</div><section class="xml-section"><div class="section-title">Todos os campos do XML</div><table class="xml-fields"><thead><tr><th>Campo XML</th><th>Valor</th></tr></thead><tbody>' . $fieldsHtml . '</tbody></table></section></div>' . $printScript . '</body></html>';
 }
 
 
@@ -543,6 +820,22 @@ function page_url(string $page): string
     return base_url('?page=' . $page);
 }
 
+function safe_return_url(string $target, \ControlS\Portal\Auth $auth): ?string
+{
+    $target = trim($target);
+    if ($target === '' || preg_match('#^[a-z][a-z0-9+.-]*://#i', $target) || str_starts_with($target, '//')) {
+        return null;
+    }
+    $parts = parse_url($target);
+    if ($parts === false) {
+        return null;
+    }
+    $query = [];
+    parse_str((string)($parts['query'] ?? ''), $query);
+    $targetPage = (string)($query['page'] ?? 'dashboard');
+    return $auth->canAccess($targetPage) ? $target : null;
+}
+
 if ($page === 'login' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_validate($_POST['_csrf'] ?? null)) {
         flash_set('danger', 'Token CSRF inválido.');
@@ -550,6 +843,10 @@ if ($page === 'login' && $_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     if ($auth->login(trim($_POST['user'] ?? ''), trim($_POST['pass'] ?? ''))) {
         flash_set('success', 'Acesso liberado.');
+        $target = safe_return_url((string)($_POST['return'] ?? ''), $auth);
+        if ($target !== null) {
+            redirect_to($target);
+        }
         redirect_to(page_url(first_allowed_page_for_user($auth)));
     }
     flash_set('danger', 'Usuário ou senha inválidos.');
@@ -561,9 +858,9 @@ if ($page !== 'login') {
     if ($page === 'dashboard' && !$auth->canAccess('dashboard')) {
         redirect_to(page_url(first_allowed_page_for_user($auth)));
     }
-    $permissionPage = in_array($page, ['documents_check_cancel', 'documents_filter_ids'], true) ? 'documents' : $page;
+    $permissionPage = in_array($page, ['documents_check_cancel', 'documents_filter_ids', 'documents_accounting_check_file', 'documents_accounting_import', 'documents_accounting_entries', 'documents_accounting_missing', 'documents_accounting_missing_export', 'documents_accounting_launch', 'robot_logs'], true) ? 'documents' : $page;
     if (!$auth->canAccess($permissionPage)) {
-        flash_set('danger', 'Seu perfil tem acesso somente a Faturamento e Entradas.');
+        flash_set('danger', 'Seu perfil nao tem permissao para acessar este modulo.');
         redirect_to(page_url(first_allowed_page_for_user($auth)));
     }
 }
@@ -592,61 +889,13 @@ if ($page === 'documents_filter_ids') {
     exit;
 }
 
-if ($page === 'documents_check_cancel') {
+if ($page === 'documents_accounting_check_file') {
     header('Content-Type: application/json; charset=utf-8');
     try {
-        if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-            throw new RuntimeException('Metodo invalido.');
-        }
-        if (!$auth->canAccess('documents')) {
-            throw new RuntimeException('Sem permissao para consultar entradas.');
-        }
-        if (!csrf_validate($_POST['_csrf'] ?? null)) {
-            throw new RuntimeException('Token CSRF invalido.');
-        }
-        $doc = $repo->findDocument((int)($_POST['id'] ?? 0));
-        if (!$doc) {
-            throw new RuntimeException('Documento nao encontrado.');
-        }
-        $type = strtoupper((string)($doc['doc_type'] ?? ''));
-        $key = preg_replace('/\D+/', '', (string)($doc['access_key'] ?? ''));
-        if (!in_array($type, ['NFE', 'NFCE', 'CTE'], true) || strlen($key) !== 44) {
-            throw new RuntimeException('Documento sem chave valida para consulta.');
-        }
-        $company = $repo->findCompany((int)($doc['company_id'] ?? 0));
-        if (!$company) {
-            throw new RuntimeException('Empresa do documento nao encontrada.');
-        }
-        $collectorKey = $type === 'CTE' ? 'cte' : 'nfe';
-        $connector = $collectors[$collectorKey];
-        $connector->setCompanyContext($company);
-        $beforeStatus = (string)($doc['status'] ?? '');
-        $statusResult = method_exists($connector, 'queryProtocolStatus') ? $connector->queryProtocolStatus($key) : $connector->collectByAccessKey($key);
-        $statusCode = preg_replace('/\D+/', '', (string)($statusResult['cStat'] ?? '')) ?: '';
-        if ($collectorKey === 'nfe' && in_array($statusCode, ['100', '150'], true)) {
-            $distributionResult = $connector->collectByAccessKey($key);
-            $eventUpdated = $repo->repairCancelledDocumentsFromEvents();
-            $statusResult['updated'] = (int)($statusResult['updated'] ?? 0) + (int)($distributionResult['updated'] ?? 0) + $eventUpdated;
-            $statusResult['message'] = trim((string)($statusResult['message'] ?? 'consulta de protocolo concluida') . ' | Distribuicao por chave: ' . (string)($distributionResult['message'] ?? 'sem retorno'));
-        } elseif ($collectorKey === 'cte') {
-            $cteRepair = $repo->repairCteCancellationStatuses();
-            $statusResult['updated'] = (int)($statusResult['updated'] ?? 0) + (int)($cteRepair['reopened'] ?? 0) + (int)($cteRepair['cancelled'] ?? 0);
-        }
-        $after = $repo->findDocumentByAccessKey($type, $key, (int)$company['id']);
-        if (!$after && $type === 'NFE') {
-            $after = $repo->findDocumentByAccessKey('NFCE', $key, (int)$company['id']);
-        }
-        $isCancelled = $after && (string)($after['status'] ?? '') === 'cancelado';
-        $repo->logAction('document_cancel_check_one', $type . ' chave ' . $key . ': ' . (string)($statusResult['message'] ?? 'consulta concluida'));
-        echo json_encode([
-            'ok' => true,
-            'id' => (int)$doc['id'],
-            'type' => $type,
-            'key' => $key,
-            'cancelled' => $isCancelled,
-            'changed' => $beforeStatus !== 'cancelado' && $isCancelled,
-            'message' => $type . ' ' . (string)($doc['number'] ?? $key) . ': ' . (string)($statusResult['message'] ?? 'consulta concluida'),
-        ], JSON_UNESCAPED_UNICODE);
+        if (!$auth->canAccess('documents')) { throw new RuntimeException('Sem permissao para consultar contabilidade.'); }
+        $docType = strtoupper((string)($_GET['doc_type'] ?? ''));
+        $fileName = (string)($_GET['file_name'] ?? '');
+        echo json_encode(['ok' => true, 'exists' => $repo->accountingImportExists($docType, $fileName)], JSON_UNESCAPED_UNICODE);
     } catch (Throwable $e) {
         http_response_code(400);
         echo json_encode(['ok' => false, 'message' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
@@ -654,6 +903,235 @@ if ($page === 'documents_check_cancel') {
     exit;
 }
 
+if ($page === 'documents_accounting_import') {
+    header('Content-Type: application/json; charset=utf-8');
+    try {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') { throw new RuntimeException('Metodo invalido.'); }
+        if (!$auth->canAccess('documents')) { throw new RuntimeException('Sem permissao para importar contabilidade.'); }
+        $payload = json_decode((string)file_get_contents('php://input'), true);
+        if (!is_array($payload)) { throw new RuntimeException('Dados da planilha invalidos.'); }
+        if (!csrf_validate($payload['_csrf'] ?? null)) { throw new RuntimeException('Token CSRF invalido.'); }
+        $result = $repo->importAccountingEntries(
+            (string)($payload['doc_type'] ?? ''),
+            (string)($payload['file_name'] ?? ''),
+            is_array($payload['sheets'] ?? null) ? $payload['sheets'] : [],
+            is_array($payload['mapping'] ?? null) ? $payload['mapping'] : [],
+            $auth->user(),
+            !empty($payload['replace_existing']),
+            !empty($payload['append_existing'])
+        );
+        $repo->logAction('accounting_import', 'Importacao contabilidade ' . (string)($payload['doc_type'] ?? '') . ': ' . $result['row_count'] . ' linha(s), ' . $result['matched_count'] . ' documento(s) localizado(s), ' . $result['missing_count'] . ' sem vinculo.');
+        echo json_encode(['ok' => true] + $result, JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $e) {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'message' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+}
+
+if ($page === 'documents_accounting_entries') {
+    header('Content-Type: application/json; charset=utf-8');
+    try {
+        if (!$auth->canAccess('documents')) { throw new RuntimeException('Sem permissao para consultar contabilidade.'); }
+        $doc = $repo->findDocument((int)($_GET['id'] ?? 0));
+        if (!$doc) { throw new RuntimeException('Documento nao encontrado.'); }
+        $entries = array_map(static function (array $entry): array {
+            $entry['raw'] = json_decode((string)($entry['raw_json'] ?? '{}'), true) ?: [];
+            unset($entry['raw_json']);
+            return $entry;
+        }, $repo->accountingEntriesForDocument((int)$doc['id']));
+        echo json_encode(['ok' => true, 'document' => $doc, 'entries' => $entries], JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $e) {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'message' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+}
+
+if ($page === 'documents_accounting_missing') {
+    header('Content-Type: application/json; charset=utf-8');
+    try {
+        if (!$auth->canAccess('documents')) { throw new RuntimeException('Sem permissao para consultar contabilidade.'); }
+        $entries = array_map(static function (array $entry): array {
+            $entry['raw'] = json_decode((string)($entry['raw_json'] ?? '{}'), true) ?: [];
+            unset($entry['raw_json']);
+            return $entry;
+        }, $repo->accountingMissingEntries((string)($_GET['doc_type'] ?? ''), (int)($_GET['limit'] ?? 500), (string)($_GET['supplier_q'] ?? ''), (string)($_GET['number_q'] ?? '')));
+        echo json_encode(['ok' => true, 'entries' => $entries], JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $e) {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'message' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+}
+
+if ($page === 'documents_accounting_missing_export') {
+    $entries = array_map(static function (array $entry): array {
+        $entry['raw'] = json_decode((string)($entry['raw_json'] ?? '{}'), true) ?: [];
+        unset($entry['raw_json']);
+        return $entry;
+    }, $repo->accountingMissingEntries((string)($_GET['doc_type'] ?? ''), 20000, (string)($_GET['supplier_q'] ?? ''), (string)($_GET['number_q'] ?? '')));
+    $headers = [];
+    foreach ($entries as $entry) {
+        foreach (array_keys($entry['raw'] ?? []) as $header) {
+            if ($header !== '_rowNumber' && !in_array($header, $headers, true)) {
+                $headers[] = $header;
+            }
+        }
+    }
+    $filename = 'contabilidade_sem_portal_' . date('Ymd_His') . '.xls';
+    header('Content-Type: application/vnd.ms-excel; charset=utf-8');
+    header('Content-Disposition: attachment; filename="' . $filename . '"');
+    echo "\xEF\xBB\xBF";
+    echo '<table border="1"><tr><th>Tipo</th><th>Aba</th><th>Linha</th><th>Arquivo</th><th>Chave acesso</th><th>Numero nota</th><th>CPF/CNPJ prestador</th>';
+    foreach ($headers as $header) {
+        echo '<th>' . h((string)$header) . '</th>';
+    }
+    echo '</tr>';
+    foreach ($entries as $entry) {
+        echo '<tr>';
+        foreach ([
+            $entry['doc_type'] ?? '',
+            $entry['sheet_name'] ?? '',
+            $entry['row_number'] ?? '',
+            $entry['file_name'] ?? '',
+            $entry['access_key'] ?? '',
+            $entry['document_number'] ?? '',
+            $entry['party_document'] ?? '',
+        ] as $value) {
+            echo '<td>' . h((string)$value) . '</td>';
+        }
+        foreach ($headers as $header) {
+            echo '<td>' . h((string)(($entry['raw'] ?? [])[$header] ?? '')) . '</td>';
+        }
+        echo '</tr>';
+    }
+    echo '</table>';
+    exit;
+}
+
+if ($page === 'documents_accounting_launch') {
+    header('Content-Type: application/json; charset=utf-8');
+    try {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') { throw new RuntimeException('Metodo invalido.'); }
+        if (!$auth->canAccess('documents')) { throw new RuntimeException('Sem permissao para lancar contabilidade no portal.'); }
+        $payload = json_decode((string)file_get_contents('php://input'), true);
+        if (!is_array($payload)) { throw new RuntimeException('Dados invalidos para lancamento.'); }
+        if (!csrf_validate($payload['_csrf'] ?? null)) { throw new RuntimeException('Token CSRF invalido.'); }
+        $result = $repo->launchAccountingEntriesToPortal(
+            is_array($payload['entry_ids'] ?? null) ? $payload['entry_ids'] : [],
+            is_array($payload['mapping'] ?? null) ? $payload['mapping'] : [],
+            is_array($payload['sheet_companies'] ?? null) ? $payload['sheet_companies'] : [],
+            $auth->user()
+        );
+        $repo->logAction('accounting_launch', 'Lancamento no portal pela contabilidade: ' . $result['created_count'] . ' criado(s), ' . $result['linked_count'] . ' vinculado(s), ' . $result['skipped_count'] . ' ignorado(s).');
+        echo json_encode(['ok' => true] + $result, JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $e) {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'message' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+}
+
+if ($page === 'documents_check_cancel') {
+    header('Content-Type: application/json; charset=utf-8');
+    $cancelJobId = null;
+    try {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') { throw new RuntimeException('Metodo invalido.'); }
+        if (!$auth->canAccess('documents')) { throw new RuntimeException('Sem permissao para consultar entradas.'); }
+        if (!csrf_validate($_POST['_csrf'] ?? null)) { throw new RuntimeException('Token CSRF invalido.'); }
+        $doc = $repo->findDocument((int)($_POST['id'] ?? 0));
+        if (!$doc) { throw new RuntimeException('Documento nao encontrado.'); }
+        $type = strtoupper((string)($doc['doc_type'] ?? ''));
+        $key = preg_replace('/\D+/', '', (string)($doc['access_key'] ?? ''));
+        $validKey = $type === 'NFSE' ? strlen($key) >= 40 : strlen($key) === 44;
+        if (!in_array($type, ['NFE', 'NFCE', 'CTE', 'NFSE'], true) || !$validKey) { throw new RuntimeException('Documento sem chave valida para consulta.'); }
+        $company = $repo->findCompany((int)($doc['company_id'] ?? 0));
+        if (!$company) { throw new RuntimeException('Empresa do documento nao encontrada.'); }
+        $beforeStatus = (string)($doc['status'] ?? '');
+        if ($type === 'NFSE') {
+            $cancelJobId = $repo->createJob('nfse_cancel_check_selected', (int)$company['id'], (string)$company['company_name']);
+            $localSubstitutionUpdated = $repo->markNFSeCancelledBySubstitution($key, (int)$company['id']);
+            if ($localSubstitutionUpdated > 0) {
+                $statusResult = ['updated' => $localSubstitutionUpdated, 'errors' => 0, 'message' => 'Cancelamento NFS-e confirmado por substituicao localizada no XML da nota substituta.'];
+            } else {
+                $connector = $collectors['nfse'];
+                $connector->setCompanyContext($company);
+                try {
+                    $statusResult = method_exists($connector, 'queryCancellationStatus')
+                        ? $connector->queryCancellationStatus($key)
+                        : ['errors' => 1, 'message' => 'Consulta de cancelamento NFS-e nao disponivel.'];
+                } catch (Throwable $e) {
+                    $statusResult = ['errors' => 1, 'message' => 'Erro ao consultar cancelamento NFS-e: ' . $e->getMessage()];
+                }
+            }
+            $after = $repo->findDocumentByAccessKey('NFSE', $key, (int)$company['id']);
+            $isCancelled = $after && (string)($after['status'] ?? '') === 'cancelado';
+            $message = (string)($statusResult['message'] ?? 'Consulta de cancelamento NFS-e concluida.');
+            $repo->finishJob($cancelJobId, (int)($statusResult['errors'] ?? 0) > 0 ? 'warning' : 'success', 1, $isCancelled ? 1 : 0, (int)($statusResult['errors'] ?? 0), $message);
+            $repo->logAction('document_cancel_check_one', 'NFSE ' . (string)($doc['number'] ?? $key) . ': ' . $message, (int)$company['id']);
+            echo json_encode(['ok' => true, 'id' => (int)$doc['id'], 'type' => $type, 'key' => $key, 'cancelled' => $isCancelled, 'changed' => $beforeStatus !== 'cancelado' && $isCancelled, 'queue_status' => null, 'next_attempt_at' => null, 'message' => 'NFSE ' . (string)($doc['number'] ?? $key) . ': ' . $message], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        if ($type === 'NFE') {
+            $cancelJobId = $repo->createJob('nfe_cancel_check_selected', (int)$company['id'], (string)$company['company_name']);
+            $connector = $collectors['nfe'];
+            $connector->setCompanyContext($company);
+            $statusResult = method_exists($connector, 'queryProtocolStatus')
+                ? $connector->queryProtocolStatus($key)
+                : ['errors' => 1, 'message' => 'Consulta de protocolo nao disponivel.'];
+            $statusCode = preg_replace('/\D+/', '', (string)($statusResult['cStat'] ?? '')) ?: '';
+            $message = trim((string)($statusResult['message'] ?? 'Consulta de protocolo concluida.'));
+            $localEvent = $repo->nfeCancellationEventForDocument((int)$doc['id'], $key, (int)$company['id']);
+            $localUpdated = $localEvent ? $repo->markNfeCancelledFromLocalEvent((int)$doc['id'], $key, (int)$company['id']) : 0;
+            $after = $repo->findDocumentByAccessKey('NFE', $key, (int)$company['id']);
+            $isCancelled = in_array($statusCode, ['101', '151', '155'], true) || $localEvent !== null || ($after && (string)($after['status'] ?? '') === 'cancelado');
+            $temporary = $statusCode === '656' || (bool)preg_match('/consumo\s+indevido/iu', $message);
+            if ($temporary) {
+                $queueId = $repo->enqueueNfeCancellationCheck((int)$doc['id'], (int)$company['id'], $key, null);
+                require_once __DIR__ . '/../scripts/nfe_cancellation_queue_worker.php';
+                $nextAttemptAt = nfe_queue_next_check_at($message);
+                $queueRow = $repo->nfeCancellationQueueForDocument((int)$doc['id']);
+                $attempts = max(1, (int)($queueRow['attempts'] ?? 0));
+                $repo->finishNfeCancellationCheck($queueId, 'retry', $attempts, $nextAttemptAt, $statusCode, $message, 'temporary');
+                $queueRow = $repo->nfeCancellationQueueForDocument((int)$doc['id']);
+                $queueLog = 'Consulta manual sem distribuicao por chave; reagendada para ' . $nextAttemptAt . '. ' . $message;
+                $repo->finishJob($cancelJobId, 'warning', 1, 0, 1, $queueLog);
+                $repo->logAction('document_cancel_check_one', 'NFE ' . (string)($doc['number'] ?? $key) . ': ' . $queueLog, (int)$company['id']);
+                echo json_encode(['ok' => true, 'id' => (int)$doc['id'], 'type' => $type, 'key' => $key, 'cancelled' => false, 'changed' => false, 'queue_id' => $queueId, 'queue_status' => 'retry', 'next_attempt_at' => $queueRow['next_attempt_at'] ?? $nextAttemptAt, 'attempts' => (int)($queueRow['attempts'] ?? $attempts), 'error_kind' => 'temporary', 'message' => 'NFE ' . (string)($doc['number'] ?? $key) . ': ' . $queueLog], JSON_UNESCAPED_UNICODE);
+                exit;
+            }
+            if ($isCancelled) {
+                $message = 'Cancelamento confirmado por cStat=' . $statusCode . ($localEvent ? ' ou evento local 110111.' : '.');
+            } elseif (in_array($statusCode, ['100', '150'], true)) {
+                $message = 'NF-e autorizada; nenhum evento de cancelamento 110111 foi localizado no banco local. Nenhuma distribuicao por chave foi executada.';
+            }
+            $repo->finishJob($cancelJobId, 'success', 1, $isCancelled ? 1 : 0, 0, $message);
+            $repo->logAction('document_cancel_check_one', 'NFE ' . (string)($doc['number'] ?? $key) . ': ' . $message, (int)$company['id']);
+            echo json_encode(['ok' => true, 'id' => (int)$doc['id'], 'type' => $type, 'key' => $key, 'cancelled' => $isCancelled, 'changed' => $beforeStatus !== 'cancelado' && $isCancelled, 'queue_id' => null, 'queue_status' => null, 'next_attempt_at' => null, 'attempts' => 0, 'error_kind' => null, 'message' => 'NFE ' . (string)($doc['number'] ?? $key) . ': ' . $message], JSON_UNESCAPED_UNICODE);
+            exit;
+        }
+        $collectorKey = $type === 'CTE' ? 'cte' : 'nfe';
+        $connector = $collectors[$collectorKey];
+        $connector->setCompanyContext($company);
+        $statusResult = method_exists($connector, 'queryProtocolStatus') ? $connector->queryProtocolStatus($key) : $connector->collectByAccessKey($key);
+        $statusCode = preg_replace('/\D+/', '', (string)($statusResult['cStat'] ?? '')) ?: '';
+        if ($collectorKey === 'cte') {
+            $cteRepair = $repo->repairCteCancellationStatuses((int)$company['id']);
+            $statusResult['updated'] = (int)($statusResult['updated'] ?? 0) + (int)($cteRepair['reopened'] ?? 0) + (int)($cteRepair['cancelled'] ?? 0);
+        }
+        $after = $repo->findDocumentByAccessKey($type, $key, (int)$company['id']);
+        if (!$after && $type === 'NFE') { $after = $repo->findDocumentByAccessKey('NFCE', $key, (int)$company['id']); }
+        $isCancelled = $after && (string)($after['status'] ?? '') === 'cancelado';
+        $repo->logAction('document_cancel_check_one', $type . ' chave ' . $key . ': ' . (string)($statusResult['message'] ?? 'consulta concluida'), (int)$company['id']);
+        echo json_encode(['ok' => true, 'id' => (int)$doc['id'], 'type' => $type, 'key' => $key, 'cancelled' => $isCancelled, 'changed' => $beforeStatus !== 'cancelado' && $isCancelled, 'queue_status' => null, 'next_attempt_at' => null, 'message' => $type . ' ' . (string)($doc['number'] ?? $key) . ': ' . (string)($statusResult['message'] ?? 'consulta concluida')], JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $e) {
+        if ($cancelJobId) { try { $repo->finishJob($cancelJobId, 'error', 0, 0, 1, $e->getMessage()); } catch (Throwable $ignored) {} }
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'message' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+}
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (!csrf_validate($_POST['_csrf'] ?? null)) {
         flash_set('danger', 'Token CSRF inválido.');
@@ -676,6 +1154,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'email' => trim((string)($_POST['email'] ?? '')),
                         'password' => (string)($_POST['password'] ?? ''),
                         'role' => (string)($_POST['role'] ?? 'user'),
+                        'can_view_revenue' => !empty($_POST['can_view_revenue']),
                         'can_view_cost' => !empty($_POST['can_view_cost']),
                         'is_active' => !empty($_POST['is_active']),
                     ]);
@@ -683,7 +1162,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 break;
 
-            case 'settings':
+    case 'settings':
                 if (isset($_POST['save_settings'])) {
                     foreach ([
                         'default_download_dir',
@@ -707,6 +1186,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'cte_cancelled_erp_alert_emails',
                         'nfse_base_url',
                         'nfse_distribution_path',
+                        'nfse_event_base_url',
+                        'nfse_event_path',
                         'nfse_auth_type',
                         'nfse_token',
                         'nfse_page_size',
@@ -718,6 +1199,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'cte_xml_folder_robot_time',
                         'cte_xml_folder_robot_delay_days',
                         'cte_xml_folder_robot_limit',
+                        'nfe_xml_folder_robot_time',
+                        'nfe_xml_folder_robot_delay_days',
+                        'nfe_xml_folder_robot_limit',
+                        'cte_cancellation_robot_enabled',
+                        'cte_cancellation_robot_time',
+                        'nfe_cancellation_robot_enabled',
+                        'nfe_cancellation_robot_time',
                         'auto_nfe_company_id',
                         'auto_nfe_rewind_nsu_once',
                         'auto_nfe_interval_minutes',
@@ -725,8 +1213,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'nfe_robot_time_limit_seconds',
                         'nfe_science_limit_per_run',
                         'auto_nfse_company_id',
+                        'auto_nfse_rewind_nsu_once',
                         'auto_nfse_interval_minutes',
                         'auto_nfse_nsu_limit',
+                        'nfse_robot_max_cycles',
+                        'nfse_robot_time_limit_seconds',
+                        'nfse_cancellation_robot_time',
+                        'nfse_cancel_check_limit_per_run',
+                        'nfse_xml_folder_robot_time',
+                        'nfse_xml_folder_robot_delay_days',
+                        'nfse_xml_folder_robot_limit',
                     ] as $settingKey) {
                         if (array_key_exists($settingKey, $_POST)) {
                             $repo->setSetting($settingKey, trim((string)$_POST[$settingKey]));
@@ -750,9 +1246,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $repo->setSetting('auto_nfse_company_id', (string)($autoNfseCompanyIds[0] ?? 0));
                     $repo->setSetting('auto_cte_enabled', !empty($_POST['auto_cte_enabled']) ? '1' : '0');
                     $repo->setSetting('cte_xml_folder_robot_enabled', !empty($_POST['cte_xml_folder_robot_enabled']) ? '1' : '0');
+                    $repo->setSetting('nfe_xml_folder_robot_enabled', !empty($_POST['nfe_xml_folder_robot_enabled']) ? '1' : '0');
                     $repo->setSetting('auto_nfe_enabled', !empty($_POST['auto_nfe_enabled']) ? '1' : '0');
                     $repo->setSetting('auto_nfe_manifest_science', !empty($_POST['auto_nfe_manifest_science']) ? '1' : '0');
                     $repo->setSetting('auto_nfse_enabled', !empty($_POST['auto_nfse_enabled']) ? '1' : '0');
+                    $repo->setSetting('nfse_cancellation_robot_enabled', !empty($_POST['nfse_cancellation_robot_enabled']) ? '1' : '0');
+                    $repo->setSetting('nfse_xml_folder_robot_enabled', !empty($_POST['nfse_xml_folder_robot_enabled']) ? '1' : '0');
                     $repo->setSetting('auto_cte_all_companies', !empty($_POST['auto_cte_all_companies']) ? '1' : '0');
                     $repo->setSetting('auto_nfe_all_companies', !empty($_POST['auto_nfe_all_companies']) ? '1' : '0');
                     $repo->setSetting('auto_nfse_all_companies', !empty($_POST['auto_nfse_all_companies']) ? '1' : '0');
@@ -764,6 +1263,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $repo->setSetting(
                             'auto_nfe_rewind_nsu_once_company_' . $companyIdForRewind,
                             (string)max(0, min(50000, (int)($_POST['auto_nfe_rewind_company'][$companyIdForRewind] ?? 0)))
+                        );
+                        $repo->setSetting(
+                            'auto_nfse_rewind_nsu_once_company_' . $companyIdForRewind,
+                            (string)max(0, min(50000, (int)($_POST['auto_nfse_rewind_company'][$companyIdForRewind] ?? 0)))
                         );
                     }
                     if (!empty($_FILES['client_logo']['name']) && ($_FILES['client_logo']['error'] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_OK) {
@@ -888,6 +1391,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'status',
                     'manifestation_status',
                     'posted_to_erp',
+                    'accounting_posted',
                     'without_referenced_nfe',
                     'date_start',
                     'date_end',
@@ -945,7 +1449,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     flash_set('success', $count . ' documento(s) manifestado(s).');
                 } elseif (isset($_POST['bulk_check_cancelled'])) {
                     if (!$ids) {
-                        flash_set('warning', 'Selecione ao menos uma NF-e/NFC-e/CT-e para verificar cancelamento.');
+                        flash_set('warning', 'Selecione ao menos uma NF-e/NFC-e/CT-e/NFS-e para verificar cancelamento.');
                         redirect_to(base_url('?' . http_build_query($returnQuery)));
                     }
                     $docs = array_values(array_filter(array_map(fn(int $id) => $repo->findDocument($id), $ids), static function (?array $doc): bool {
@@ -954,13 +1458,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         }
                         $type = strtoupper((string)($doc['doc_type'] ?? ''));
                         $key = preg_replace('/\D+/', '', (string)($doc['access_key'] ?? ''));
-                        return in_array($type, ['NFE', 'NFCE', 'CTE'], true) && strlen($key) === 44;
+                        $validKey = $type === 'NFSE' ? strlen($key) >= 40 : strlen($key) === 44;
+                        return in_array($type, ['NFE', 'NFCE', 'CTE', 'NFSE'], true) && $validKey;
                     }));
                     $limit = 200;
                     $candidateCount = count($docs);
                     $docs = array_slice($docs, 0, $limit);
                     if (!$docs) {
-                        flash_set('warning', 'Nenhuma NF-e/NFC-e/CT-e valida foi encontrada entre os documentos selecionados.');
+                        flash_set('warning', 'Nenhuma NF-e/NFC-e/CT-e/NFS-e valida foi encontrada entre os documentos selecionados.');
                         redirect_to(base_url('?' . http_build_query($returnQuery)));
                     }
 
@@ -987,11 +1492,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $key = preg_replace('/\D+/', '', (string)$doc['access_key']);
                             try {
                                 $type = strtoupper((string)($doc['doc_type'] ?? ''));
-                                $collectorKey = $type === 'CTE' ? 'cte' : 'nfe';
+                                $collectorKey = $type === 'CTE' ? 'cte' : ($type === 'NFSE' ? 'nfse' : 'nfe');
                                 $connector = $collectors[$collectorKey];
                                 $connector->setCompanyContext($company);
                                 $beforeStatus = (string)($doc['status'] ?? '');
-                                $statusResult = method_exists($connector, 'queryProtocolStatus') ? $connector->queryProtocolStatus($key) : $connector->collectByAccessKey($key);
+                                if ($collectorKey === 'nfse') {
+                                    $statusResult = method_exists($connector, 'queryCancellationStatus') ? $connector->queryCancellationStatus($key) : ['updated' => 0, 'message' => 'Consulta de cancelamento NFS-e indisponivel.'];
+                                } else {
+                                    $statusResult = method_exists($connector, 'queryProtocolStatus') ? $connector->queryProtocolStatus($key) : $connector->collectByAccessKey($key);
+                                }
                                 $statusCode = preg_replace('/\D+/', '', (string)($statusResult['cStat'] ?? '')) ?: '';
                                 if ($collectorKey === 'nfe' && in_array($statusCode, ['100', '150'], true)) {
                                     $distributionResult = $connector->collectByAccessKey($key);
@@ -1117,10 +1626,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 break;
 
-            case 'jobs':
+            case 'robot_logs':
+        $dateStart = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)($_GET['date_start'] ?? '')) ? (string)$_GET['date_start'] : date('Y-m-d', strtotime('-7 days'));
+        $dateEnd = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)($_GET['date_end'] ?? '')) ? (string)$_GET['date_end'] : date('Y-m-d');
+        $jobType = trim((string)($_GET['job_type'] ?? ''));
+        $viewData['robotLogs'] = $repo->robotLogs($dateStart, $dateEnd, $jobType, 300);
+        $viewData['robotLogDateStart'] = $dateStart;
+        $viewData['robotLogDateEnd'] = $dateEnd;
+        $viewData['robotLogJobType'] = $jobType;
+        $viewData['moduleTitle'] = 'Logs dos Robos';
+        $viewData['moduleSubtitle'] = 'Consulte execucoes automaticas e manuais sem acesso a tela de execucao.';
+        include __DIR__ . '/../templates/robot_logs.php';
+        break;    case 'jobs':
                 if (isset($_POST['run_job'])) {
                     $jobType = (string)($_POST['job_type'] ?? 'collect_all');
                     $companyId = (int)($_POST['company_id'] ?? 0);
+                    if ($jobType === 'nfse_until_max') {
+                        start_background_job($jobType, $companyId);
+                        flash_set('success', 'Robô NFS-e Nacional iniciado em segundo plano. Acompanhe o andamento no histórico e nos logs dos robôs.');
+                        redirect_to(base_url('?page=jobs&company_id=' . $companyId . '&job_type=' . urlencode($jobType)));
+                    }
                     $result = $jobRunner->run($jobType, $companyId);
                     flash_set('success', 'Job executado: ' . implode(' | ', $result['logs']));
                     redirect_to(base_url('?page=jobs&company_id=' . $companyId . '&job_type=' . urlencode($jobType)));
@@ -1248,6 +1773,7 @@ if ($page === 'document_items') {
         echo json_encode(['error' => 'Documento nao encontrado.'], JSON_UNESCAPED_UNICODE);
         exit;
     }
+    $itemLocation = document_items_location($doc);
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode([
         'document' => [
@@ -1264,6 +1790,8 @@ if ($page === 'document_items') {
             'product_name' => (string)($item['product_name'] ?? ''),
             'ncm' => (string)($item['ncm'] ?? ''),
             'cfop' => (string)($item['cfop'] ?? ''),
+            'city' => (string)($itemLocation['city'] ?? ''),
+            'uf' => (string)($itemLocation['uf'] ?? ''),
             'quantity' => (float)($item['quantity'] ?? 0),
             'unit' => (string)($item['unit'] ?? ''),
             'unit_amount' => format_money((float)($item['unit_amount'] ?? 0)),
@@ -1334,13 +1862,13 @@ if ($page === 'documents_xml_zip') {
 }
 if ($page === 'documents_danfe') {
     $doc = $repo->findDocument((int)($_GET['id'] ?? 0));
-    if (!$doc || !in_array(strtoupper((string)($doc['doc_type'] ?? '')), ['NFE', 'CTE'], true)) {
+    if (!$doc || !in_array(strtoupper((string)($doc['doc_type'] ?? '')), ['NFE', 'CTE', 'NFSE'], true)) {
         http_response_code(404);
         exit('Documento NF-e/CT-e nao encontrado.');
     }
     if ((string)($doc['status'] ?? '') === 'apenas_resumo') {
         http_response_code(409);
-        exit('Espelho DANFE/DACTE indisponivel para documento apenas resumo. Baixe o XML completo antes de imprimir.');
+        exit('Espelho DANFE/DACTE/DANFSE indisponivel para documento apenas resumo. Baixe o XML completo antes de imprimir.');
     }
     header('Content-Type: text/html; charset=utf-8');
     echo documents_danfe_html($doc, false);
@@ -1420,7 +1948,7 @@ if ($page === 'documents_export') {
     header('Content-Disposition: attachment; filename="' . $filename . '"');
     echo "\xEF\xBB\xBF";
     echo '<table border="1">';
-    echo '<tr><th>Empresa</th><th>CNPJ</th><th>Tipo</th><th>N&uacute;mero</th><th>Pedido</th><th>Emissor</th><th>CNPJ emissor</th><th>Destinat&aacute;rio</th><th>Documento destinat&aacute;rio</th><th>Chave</th><th>NF-e vinculada</th><th>N&uacute;mero doc. referenciado</th><th>Nota lan&ccedil;ada no ERP</th><th>Eventos informativos</th><th>Emiss&atilde;o</th><th>Valor</th><th>Status</th><th>Manifesta&ccedil;&atilde;o</th><th>Origem</th><th>Pasta</th></tr>';
+    echo '<tr><th>Empresa</th><th>CNPJ</th><th>Tipo</th><th>N&uacute;mero</th><th>Pedido</th><th>Emissor</th><th>CNPJ emissor</th><th>Destinat&aacute;rio</th><th>Documento destinat&aacute;rio</th><th>Chave</th><th>NF-e vinculada</th><th>N&uacute;mero doc. referenciado</th><th>Nota lan&ccedil;ada no ERP</th><th>Lan&ccedil;ada contabilidade</th><th>Eventos informativos</th><th>Emiss&atilde;o</th><th>Valor</th><th>Status</th><th>Manifesta&ccedil;&atilde;o</th><th>Origem</th><th>Pasta</th></tr>';
     foreach ($docs as $doc) {
         echo '<tr>';
         foreach ([
@@ -1437,6 +1965,7 @@ if ($page === 'documents_export') {
             $doc['referenced_nfe_keys'] ?? '',
             $doc['referenced_document_numbers'] ?? '',
             !empty($doc['posted_to_erp']) ? 'Sim' : 'Nao',
+            (($doc['accounting_posted'] ?? 'N') === 'S') ? 'Sim' : 'Nao',
             ((int)($doc['informative_events_count'] ?? 0) > 0 ? ((string)$doc['informative_events_count'] . ' - ' . (string)($doc['informative_events_names'] ?? '')) : ''),
             format_date($doc['issue_date'] ?? null),
             number_format((float)($doc['total_value'] ?? 0), 2, ',', '.'),
@@ -1592,15 +2121,20 @@ foreach ($companies as $co) {
     ];
 }
 $automationRewinds = [];
-foreach ($companies as $co) {
+$currentTrackingUser = $auth->user();
+$trackingRequesterId = (!$auth->isAdmin() && !empty($currentTrackingUser['id'])) ? (int)$currentTrackingUser['id'] : null;
+$cancellationTrackingActiveCount = $repo->cancellationTrackingActiveCount($trackingRequesterId);foreach ($companies as $co) {
     $companyIdForRewind = (int)$co['id'];
     $automationRewinds[$companyIdForRewind] = [
         'cte' => $repo->getSetting('auto_cte_rewind_nsu_once_company_' . $companyIdForRewind, '0'),
         'nfe' => $repo->getSetting('auto_nfe_rewind_nsu_once_company_' . $companyIdForRewind, '0'),
+        'nfse' => $repo->getSetting('auto_nfse_rewind_nsu_once_company_' . $companyIdForRewind, '0'),
         'cte_ult_nsu' => $repo->getSetting('cte_' . $companyIdForRewind . '_ult_nsu', '0'),
         'cte_max_nsu' => $repo->getSetting('cte_' . $companyIdForRewind . '_max_nsu', '0'),
         'nfe_ult_nsu' => $repo->getSetting('nfe_' . $companyIdForRewind . '_ult_nsu', '0'),
         'nfe_max_nsu' => $repo->getSetting('nfe_' . $companyIdForRewind . '_max_nsu', '0'),
+        'nfse_ult_nsu' => $repo->getSetting('nfse_' . $companyIdForRewind . '_ult_nsu', '0'),
+        'nfse_cooldown_until' => $repo->getSetting('nfse_' . $companyIdForRewind . '_cooldown_until', ''),
     ];
 }
 $viewData = [
@@ -1614,6 +2148,9 @@ $viewData = [
     'automationRewinds' => $automationRewinds,
     'currentUser' => $auth->user(),
     'isAdmin' => $auth->isAdmin(),
+    'canViewRevenue' => $auth->canViewRevenue(),
+    'cancellationTrackingActiveCount' => $cancellationTrackingActiveCount,
+    'cancellationTrackingRequesterId' => $trackingRequesterId,
     'settings' => [
         'default_download_dir' => $repo->getSetting('default_download_dir', $config['default_download_dir']),
         'xml_download_dir_nfe' => $repo->getSetting('xml_download_dir_nfe', ''),
@@ -1654,6 +2191,11 @@ $viewData = [
         'cte_xml_folder_robot_delay_days' => $repo->getSetting('cte_xml_folder_robot_delay_days', (string)($config['cte_xml_folder_robot_delay_days'] ?? '2')),
         'cte_xml_folder_robot_limit' => $repo->getSetting('cte_xml_folder_robot_limit', (string)($config['cte_xml_folder_robot_limit'] ?? '5000')),
         'cte_xml_folder_robot_last_run_date' => $repo->getSetting('cte_xml_folder_robot_last_run_date', ''),
+        'nfe_xml_folder_robot_enabled' => $repo->getSetting('nfe_xml_folder_robot_enabled', (string)($config['nfe_xml_folder_robot_enabled'] ?? '0')),
+        'nfe_xml_folder_robot_time' => $repo->getSetting('nfe_xml_folder_robot_time', (string)($config['nfe_xml_folder_robot_time'] ?? '02:15')),
+        'nfe_xml_folder_robot_delay_days' => $repo->getSetting('nfe_xml_folder_robot_delay_days', (string)($config['nfe_xml_folder_robot_delay_days'] ?? '2')),
+        'nfe_xml_folder_robot_limit' => $repo->getSetting('nfe_xml_folder_robot_limit', (string)($config['nfe_xml_folder_robot_limit'] ?? '5000')),
+        'nfe_xml_folder_robot_last_run_date' => $repo->getSetting('nfe_xml_folder_robot_last_run_date', ''),
         'auto_nfe_enabled' => $repo->getSetting('auto_nfe_enabled', (string)$config['auto_nfe_enabled']),
         'auto_nfe_all_companies' => $repo->getSetting('auto_nfe_all_companies', '0'),
         'auto_nfe_company_id' => $repo->getSetting('auto_nfe_company_id', (string)$config['auto_nfe_company_id']),
@@ -1667,8 +2209,11 @@ $viewData = [
         'auto_nfse_all_companies' => $repo->getSetting('auto_nfse_all_companies', '0'),
         'auto_nfse_company_id' => $repo->getSetting('auto_nfse_company_id', (string)$config['auto_nfse_company_id']),
         'auto_nfse_company_ids' => $repo->getSetting('auto_nfse_company_ids', (string)($config['auto_nfse_company_ids'] ?? '')),
+        'auto_nfse_rewind_nsu_once' => $repo->getSetting('auto_nfse_rewind_nsu_once', (string)$config['auto_nfse_rewind_nsu_once']),
         'auto_nfse_interval_minutes' => $repo->getSetting('auto_nfse_interval_minutes', (string)$config['auto_nfse_interval_minutes']),
         'auto_nfse_nsu_limit' => $repo->getSetting('auto_nfse_nsu_limit', (string)$config['auto_nfse_nsu_limit']),
+        'nfse_robot_max_cycles' => $repo->getSetting('nfse_robot_max_cycles', (string)$config['nfse_robot_max_cycles']),
+        'nfse_robot_time_limit_seconds' => $repo->getSetting('nfse_robot_time_limit_seconds', (string)$config['nfse_robot_time_limit_seconds']),
     ],
 ];
 
@@ -1694,6 +2239,7 @@ switch ($page) {
         $revenuePerPage = 200;
         $selectedRevenueId = (int)($_GET['id'] ?? 0);
         $viewData['revenueFilters'] = $revenueFilters;
+        $viewData['canViewRevenue'] = $auth->canViewRevenue();
         $viewData['canViewCost'] = $auth->canViewCost();
         $viewData['revenueTab'] = (string)($_GET['tab'] ?? 'dashboard');
         $viewData['revenuePage'] = $revenuePage;
@@ -1709,8 +2255,15 @@ switch ($page) {
         $viewData['moduleSubtitle'] = 'Análise gerencial e fiscal de vendas e devoluções integradas do ERP.';
         include __DIR__ . '/../templates/revenue.php';
         break;
+    case 'cancellation_tracking':
+        $viewData['cancellationTracking'] = $repo->cancellationTracking($trackingRequesterId, 200);
+        $viewData['moduleTitle'] = 'Acompanhamento de cancelamentos';
+        $viewData['moduleSubtitle'] = 'Acompanhe os documentos reagendados ate a nova tentativa e o retorno oficial.';
+        include __DIR__ . '/../templates/cancellation_tracking.php';
+        break;
+
     case 'settings':
-        $viewData['automationJobs'] = $repo->jobsByTypes(['cte_until_max', 'cte_xml_folder_export', 'nfe_until_max', 'nfe_until_max_science', 'nfse'], 30);
+        $viewData['automationJobs'] = $repo->jobsByTypes(['cte_until_max', 'cte_xml_folder_export', 'nfe_xml_folder_export', 'nfse_xml_folder_export', 'nfe_cancellation_check', 'cte_cancellation_check', 'nfse_cancellation_check', 'nfe_cancel_check_selected', 'nfse_cancel_check_selected', 'nfe_until_max', 'nfe_until_max_science', 'nfse', 'nfse_until_max'], 30);
         include __DIR__ . '/../templates/settings.php';
         break;
     case 'companies':
@@ -1770,7 +2323,18 @@ switch ($page) {
     case 'period_closure_docs':
         include __DIR__ . '/../templates/period_closure_docs.php';
         break;
-    case 'jobs':
+    case 'robot_logs':
+        $dateStart = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)($_GET['date_start'] ?? '')) ? (string)$_GET['date_start'] : date('Y-m-d', strtotime('-7 days'));
+        $dateEnd = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)($_GET['date_end'] ?? '')) ? (string)$_GET['date_end'] : date('Y-m-d');
+        $jobType = trim((string)($_GET['job_type'] ?? ''));
+        $viewData['robotLogs'] = $repo->robotLogs($dateStart, $dateEnd, $jobType, 300);
+        $viewData['robotLogDateStart'] = $dateStart;
+        $viewData['robotLogDateEnd'] = $dateEnd;
+        $viewData['robotLogJobType'] = $jobType;
+        $viewData['moduleTitle'] = 'Logs dos Robos';
+        $viewData['moduleSubtitle'] = 'Consulte execucoes automaticas e manuais sem acesso a tela de execucao.';
+        include __DIR__ . '/../templates/robot_logs.php';
+        break;    case 'jobs':
         $viewData['selectedJobCompanyId'] = (string)($_GET['company_id'] ?? '0');
         $viewData['selectedJobType'] = (string)($_GET['job_type'] ?? 'cte_xml_folder_export');
         $viewData['jobs'] = $repo->jobs(20);

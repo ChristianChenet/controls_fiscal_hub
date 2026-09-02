@@ -1264,6 +1264,32 @@ body{
   align-items:center;
   gap:18px;
 }
+.topbar-reschedule-button{
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  min-height:36px;
+  padding:7px 11px;
+  border:1px solid #e7bf67;
+  border-radius:8px;
+  background:#fff8e6;
+  color:#6b4a00;
+  font-weight:850;
+  white-space:nowrap;
+  text-decoration:none;
+}
+.topbar-reschedule-button strong{
+  min-width:22px;
+  height:22px;
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  border-radius:999px;
+  background:#d99a16;
+  color:#fff;
+  font-size:12px;
+}
+.topbar-reschedule-button:hover{background:#fff0c7;color:#513700}
 .topbar-refresh{
   min-width:118px;
   height:46px;
@@ -1695,6 +1721,28 @@ textarea{
 .queue-progress-bar{height:10px;background:#dceee4;border-radius:999px;overflow:hidden}
 .queue-progress-bar span{display:block;height:100%;width:0;background:linear-gradient(90deg,#20c45a,#0b8f3a);transition:width .18s ease}
 .queue-progress small{color:#536579}
+.documents-table th[data-column="contabilidade"],
+.documents-table td[data-column="contabilidade"],
+.documents-table .grid-filters th[data-column="contabilidade"]{
+  text-align:center!important;
+}
+.documents-table td[data-column="contabilidade"]{
+  vertical-align:middle;
+}
+.documents-table [data-column="contabilidade"] select{
+  display:block;
+  margin-left:auto;
+  margin-right:auto;
+}
+.documents-table td[data-column="contabilidade"] .link-button{
+  display:inline-flex;
+  justify-content:center;
+  margin-left:auto;
+  margin-right:auto;
+}
+.accounting-launch-sheets{display:grid;gap:10px;margin-top:8px}
+.accounting-launch-sheets label{display:grid;gap:6px;font-weight:700;color:#19243a}
+.accounting-launch-sheets select{font-weight:400}
 .loading-modal-panel{
   width:min(420px,92vw);
   display:grid;

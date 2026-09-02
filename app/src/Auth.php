@@ -33,6 +33,7 @@ final class Auth
                     'name' => (string)$account['name'],
                     'email' => (string)$account['email'],
                     'role' => (string)$account['role'],
+                    'can_view_revenue' => !empty($account['can_view_revenue']) || (string)$account['role'] === 'admin',
                     'can_view_cost' => !empty($account['can_view_cost']) || (string)$account['role'] === 'admin',
                 ];
                 return true;
@@ -41,7 +42,7 @@ final class Auth
 
         if ($user === $this->config['auth_user'] && $pass === $this->config['auth_pass']) {
             $_SESSION['auth_ok'] = true;
-            $_SESSION['auth_user'] = ['id' => 0, 'name' => 'Administrador', 'email' => $user, 'role' => 'admin'];
+            $_SESSION['auth_user'] = ['id' => 0, 'name' => 'Administrador', 'email' => $user, 'role' => 'admin', 'can_view_revenue' => true, 'can_view_cost' => true];
             return true;
         }
 
@@ -59,10 +60,20 @@ final class Auth
         return !$this->config['auth_enabled'] || (($user['role'] ?? '') === 'admin');
     }
 
+    public function canViewRevenue(): bool
+    {
+        $user = $this->user();
+        if (!$this->config['auth_enabled'] || $this->isAdmin()) {
+            return true;
+        }
+        // Sessoes antigas sem o novo campo continuam com o acesso anterior ate novo login.
+        return !array_key_exists('can_view_revenue', $user ?? []) || !empty($user['can_view_revenue']);
+    }
+
     public function canViewCost(): bool
     {
         $user = $this->user();
-        return !$this->config['auth_enabled'] || $this->isAdmin() || !empty($user['can_view_cost']);
+        return !$this->config['auth_enabled'] || $this->isAdmin() || ($this->canViewRevenue() && !empty($user['can_view_cost']));
     }
 
     public function canAccess(string $page): bool
@@ -70,7 +81,10 @@ final class Auth
         if (!$this->config['auth_enabled'] || $this->isAdmin()) {
             return true;
         }
-        return in_array($page, ['revenue', 'revenue_export', 'revenue_xml', 'documents', 'view_xml', 'document_items', 'documents_export', 'documents_xml_zip', 'documents_danfe', 'documents_danfe_zip', 'logout', 'login'], true);
+        if (in_array($page, ['revenue', 'revenue_export', 'revenue_xml'], true) && !$this->canViewRevenue()) {
+            return false;
+        }
+        return in_array($page, ['revenue', 'revenue_export', 'revenue_xml', 'documents', 'view_xml', 'document_items', 'documents_export', 'documents_xml_zip', 'documents_danfe', 'documents_danfe_zip', 'cancellation_tracking', 'logout', 'login'], true);
     }
 
     public function logout(): void
@@ -82,7 +96,9 @@ final class Auth
     public function require(): void
     {
         if (!$this->check()) {
-            redirect_to(base_url('?page=login'));
+            $target = $_SERVER['REQUEST_URI'] ?? '';
+            $suffix = $target !== '' ? '&return=' . rawurlencode($target) : '';
+            redirect_to(base_url('?page=login' . $suffix));
         }
     }
 }

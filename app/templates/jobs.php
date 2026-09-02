@@ -4,8 +4,14 @@ $selectedCompanyId = (string)($selectedJobCompanyId ?? ($_GET['company_id'] ?? '
 $selectedJobType = (string)($selectedJobType ?? ($_GET['job_type'] ?? 'cte_xml_folder_export'));
 $routineLabels = [
     'nfe_until_max' => 'Robo NF-e / NFC-e ate ultimo NSU',
+    'nfse_until_max' => 'Robo NFS-e Nacional por NSU',
     'cte_until_max' => 'Robo CT-e ate ultimo NSU',
     'cte_xml_folder_export' => 'Robo CT-e XML na Pasta para o ERP',
+    'nfe_xml_folder_export' => 'Robo NF-e XML na Pasta para o ERP',
+    'nfse_xml_folder_export' => 'Robo NFS-e XML na Pasta para o ERP',
+    'nfe_cancellation_check' => 'Robo para Verificar Cancelamento de NF-e',
+    'cte_cancellation_check' => 'Robo para Verificar Cancelamento de CT-e',
+    'nfse_cancellation_check' => 'Robo para Verificar Cancelamento de NFS-e',
     'certificate_check' => 'Validar certificado e pasta',
 ];
 ?>
@@ -34,7 +40,7 @@ $routineLabels = [
         </label>
     </div>
     <div class="notice subtle">
-        Use execucoes manuais quando precisar antecipar uma rotina ou conferir o ambiente. Em NF-e, ao selecionar uma matriz ou filial, o portal executa todos os CNPJs ativos da mesma raiz, um por vez.
+        Use execucoes manuais quando precisar antecipar uma rotina ou conferir o ambiente. Em NF-e, ao selecionar uma matriz ou filial, o portal executa todos os CNPJs ativos da mesma raiz, um por vez. Em NFS-e, selecione "Todos os CNPJs ativos" para recuperar historico ou verificar cancelamentos em lote; o portal processa uma empresa por vez e grava log individual.
     </div>
     <div class="form-actions">
         <button class="primary" name="run_job" value="1">Executar Robô</button>

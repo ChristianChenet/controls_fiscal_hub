@@ -79,6 +79,8 @@ $config = [
     'nfse_environment' => env_value('NFSE_ENVIRONMENT', 'production'),
     'nfse_base_url' => env_value('NFSE_BASE_URL', 'https://adn.nfse.gov.br'),
     'nfse_distribution_path' => env_value('NFSE_DISTRIBUTION_PATH', '/contribuintes/DFe/{nsu}'),
+    'nfse_event_base_url' => env_value('NFSE_EVENT_BASE_URL', 'https://sefin.nfse.gov.br/SefinNacional'),
+    'nfse_event_path' => env_value('NFSE_EVENT_PATH', '/nfse/{ChaveAcesso}/eventos'),
     'nfse_auth_type' => env_value('NFSE_AUTH_TYPE', 'certificate'),
     'nfse_token' => env_value('NFSE_TOKEN', ''),
     'nfse_page_size' => (int) env_value('NFSE_PAGE_SIZE', '10'),
@@ -106,8 +108,18 @@ $config = [
     'auto_nfse_enabled' => env_value('AUTO_NFSE_ENABLED', '0'),
     'auto_nfse_company_id' => env_value('AUTO_NFSE_COMPANY_ID', '0'),
     'auto_nfse_company_ids' => env_value('AUTO_NFSE_COMPANY_IDS', ''),
+    'auto_nfse_rewind_nsu_once' => env_value('AUTO_NFSE_REWIND_NSU_ONCE', '0'),
     'auto_nfse_interval_minutes' => (int) env_value('AUTO_NFSE_INTERVAL_MINUTES', '60'),
-    'auto_nfse_nsu_limit' => (int) env_value('AUTO_NFSE_NSU_LIMIT', '10'),
+    'auto_nfse_nsu_limit' => (int) env_value('AUTO_NFSE_NSU_LIMIT', '50'),
+    'nfse_robot_max_cycles' => (int) env_value('NFSE_ROBOT_MAX_CYCLES', '20'),
+    'nfse_robot_time_limit_seconds' => (int) env_value('NFSE_ROBOT_TIME_LIMIT_SECONDS', '900'),
+    'nfse_cancellation_robot_enabled' => env_value('NFSE_CANCELLATION_ROBOT_ENABLED', '1'),
+    'nfse_cancellation_robot_time' => env_value('NFSE_CANCELLATION_ROBOT_TIME', '01:00'),
+    'nfse_cancel_check_limit_per_run' => (int) env_value('NFSE_CANCEL_CHECK_LIMIT_PER_RUN', '100'),
+    'nfse_xml_folder_robot_enabled' => env_value('NFSE_XML_FOLDER_ROBOT_ENABLED', '0'),
+    'nfse_xml_folder_robot_time' => env_value('NFSE_XML_FOLDER_ROBOT_TIME', '02:30'),
+    'nfse_xml_folder_robot_delay_days' => (int) env_value('NFSE_XML_FOLDER_ROBOT_DELAY_DAYS', '2'),
+    'nfse_xml_folder_robot_limit' => (int) env_value('NFSE_XML_FOLDER_ROBOT_LIMIT', '5000'),
 ];
 
 require_once __DIR__ . '/src/helpers.php';
@@ -154,6 +166,8 @@ $runtimeSettingKeys = [
     'cte_cancelled_erp_alert_emails',
     'nfse_base_url',
     'nfse_distribution_path',
+    'nfse_event_base_url',
+    'nfse_event_path',
     'nfse_auth_type',
     'nfse_token',
     'nfse_page_size',
@@ -165,6 +179,11 @@ $runtimeSettingKeys = [
     'cte_robot_max_cycles',
     'cte_robot_time_limit_seconds',
     'cte_xml_folder_robot_enabled',
+    'nfe_xml_folder_robot_enabled',
+    'nfe_xml_folder_robot_time',
+    'nfe_xml_folder_robot_delay_days',
+    'nfe_xml_folder_robot_limit',
+    'nfe_xml_folder_robot_last_run_date',
     'cte_xml_folder_robot_time',
     'cte_xml_folder_robot_delay_days',
     'cte_xml_folder_robot_limit',
@@ -181,8 +200,19 @@ $runtimeSettingKeys = [
     'auto_nfse_enabled',
     'auto_nfse_company_id',
     'auto_nfse_company_ids',
+    'auto_nfse_rewind_nsu_once',
     'auto_nfse_interval_minutes',
     'auto_nfse_nsu_limit',
+    'nfse_robot_max_cycles',
+    'nfse_robot_time_limit_seconds',
+    'nfse_cancellation_robot_enabled',
+    'nfse_cancellation_robot_time',
+    'nfse_cancel_check_limit_per_run',
+    'nfse_xml_folder_robot_enabled',
+    'nfse_xml_folder_robot_time',
+    'nfse_xml_folder_robot_delay_days',
+    'nfse_xml_folder_robot_limit',
+    'nfse_xml_folder_robot_last_run_date',
 ];
 
 foreach ($runtimeSettingKeys as $settingKey) {
@@ -193,6 +223,17 @@ foreach ($runtimeSettingKeys as $settingKey) {
 }
 
 $officialDownloadDir = env_value('DEFAULT_DOWNLOAD_DIR', __DIR__ . '/storage/xmls');
+$nfeXmlDownloadDir = env_value('NFE_XML_DOWNLOAD_DIR', 'C:\\Monvizo\\XML_NFe');
+$configuredNfeXmlDir = trim((string)$repo->getSetting('xml_download_dir_nfe', ''));
+$configuredNfeRobotEnabled = trim((string)$repo->getSetting('nfe_xml_folder_robot_enabled', ''));
+if ($configuredNfeRobotEnabled === '') { $repo->setSetting('nfe_xml_folder_robot_enabled', '1'); }
+if (trim((string)$repo->getSetting('nfe_xml_folder_robot_time', '')) === '') { $repo->setSetting('nfe_xml_folder_robot_time', '02:15'); }
+if ($configuredNfeXmlDir === '') {
+    $repo->setSetting('xml_download_dir_nfe', $nfeXmlDownloadDir);
+    $config['xml_download_dir_nfe'] = $nfeXmlDownloadDir;
+} else {
+    $config['xml_download_dir_nfe'] = $configuredNfeXmlDir;
+}
 if (str_contains((string)($config['default_download_dir'] ?? ''), 'C:\\Monvizo\\CS_PortalXML')) {
     $repo->setSetting('default_download_dir', $officialDownloadDir);
     $config['default_download_dir'] = $officialDownloadDir;
@@ -228,17 +269,19 @@ $httpClient = new ControlS\Portal\Http\MutualTlsHttpClient($config, $storage, $c
 $parser = new ControlS\Portal\XmlParser();
 $manifestation = new ControlS\Portal\ManifestationService($config, $repo, $storage, $certificates, $httpClient, $parser);
 $cteXmlFolderRobot = new ControlS\Portal\CteXmlFolderRobot($config, $repo, $storage);
+$nfeXmlFolderRobot = new ControlS\Portal\NfeXmlFolderRobot($config, $repo, $storage);
+$nfseXmlFolderRobot = new ControlS\Portal\NfseXmlFolderRobot($config, $repo, $storage);
 $collectors = [
     'nfe' => new ControlS\Portal\Collectors\NFeConnector($config, $repo, $storage, $certificates, $httpClient, $parser),
     'cte' => new ControlS\Portal\Collectors\CTeConnector($config, $repo, $storage, $certificates, $httpClient, $parser),
     'nfse' => new ControlS\Portal\Collectors\NFSeNationalConnector($config, $repo, $storage, $certificates, $httpClient, $parser),
 ];
-$jobRunner = new ControlS\Portal\JobRunner($config, $repo, $collectors, $parser, $storage, $certificates, $manifestation, $cteXmlFolderRobot);
+$jobRunner = new ControlS\Portal\JobRunner($config, $repo, $collectors, $parser, $storage, $certificates, $manifestation, $cteXmlFolderRobot, $nfeXmlFolderRobot, $nfseXmlFolderRobot);
 $periodClosure = new ControlS\Portal\PeriodClosureService($config, $repo, $storage, $collectors, $manifestation);
 $auth = new ControlS\Portal\Auth($config, $repo);
 
 function app_container(): array
 {
-    global $config, $repo, $storage, $certificates, $parser, $manifestation, $collectors, $jobRunner, $periodClosure, $auth, $database, $httpClient, $cteXmlFolderRobot;
-    return compact('config', 'repo', 'storage', 'certificates', 'parser', 'manifestation', 'collectors', 'jobRunner', 'periodClosure', 'auth', 'database', 'httpClient', 'cteXmlFolderRobot');
+    global $config, $repo, $storage, $certificates, $parser, $manifestation, $collectors, $jobRunner, $periodClosure, $auth, $database, $httpClient, $cteXmlFolderRobot, $nfeXmlFolderRobot, $nfseXmlFolderRobot;
+    return compact('config', 'repo', 'storage', 'certificates', 'parser', 'manifestation', 'collectors', 'jobRunner', 'periodClosure', 'auth', 'database', 'httpClient', 'cteXmlFolderRobot', 'nfeXmlFolderRobot', 'nfseXmlFolderRobot');
 }

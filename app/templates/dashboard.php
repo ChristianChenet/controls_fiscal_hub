@@ -56,11 +56,11 @@
     <div class="section-title">
         <div>
             <h2>Ultimo XML por CNPJ</h2>
-            <p>Data da nota ou CT-e mais recente para cada CNPJ no filtro atual.</p>
+            <p>Data do documento mais recente por tipo para cada CNPJ no filtro atual.</p>
         </div>
     </div>
     <div class="table-wrap"><table class="table">
-        <thead><tr><th>Empresa</th><th>CNPJ</th><th>Ultima NF-e/NFC-e</th><th>Ultimo CT-e</th><th>Ultimo documento</th><th>Docs</th></tr></thead>
+        <thead><tr><th>Empresa</th><th>CNPJ</th><th>Ultima NF-e/NFC-e</th><th>Ultimo CT-e</th><th>Ultima NFS-e</th><th>Ultimo documento</th><th>Docs</th></tr></thead>
         <tbody>
         <?php foreach (($dashboard['latestByCompany'] ?? []) as $row): ?>
             <tr>
@@ -68,12 +68,13 @@
                 <td class="nowrap"><?= h((string)$row['company_cnpj']) ?></td>
                 <td><?= h(format_date_short($row['latest_note_date'] ?? null)) ?></td>
                 <td><?= h(format_date_short($row['latest_cte_date'] ?? null)) ?></td>
+                <td><?= h(format_date_short($row['latest_nfse_date'] ?? null)) ?></td>
                 <td><strong><?= h(format_date_short($row['latest_document_date'] ?? null)) ?></strong></td>
                 <td><?= h((string)$row['total_documents']) ?></td>
             </tr>
         <?php endforeach; ?>
         <?php if (empty($dashboard['latestByCompany'])): ?>
-            <tr><td colspan="6">Nenhum CNPJ encontrado no filtro selecionado.</td></tr>
+            <tr><td colspan="7">Nenhum CNPJ encontrado no filtro selecionado.</td></tr>
         <?php endif; ?>
         </tbody>
     </table></div>

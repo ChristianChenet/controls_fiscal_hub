@@ -8,7 +8,7 @@ use RecursiveDirectoryIterator;
 use RecursiveIteratorIterator;
 use RuntimeException;
 
-final class CteXmlFolderRobot
+final class NfeXmlFolderRobot
 {
     public function __construct(
         private array $config,
@@ -19,17 +19,17 @@ final class CteXmlFolderRobot
 
     public function run(string $origin = 'manual', ?int $companyId = null): array
     {
-        $targetDir = trim((string)$this->repo->getSetting('xml_download_dir_cte', ''));
+        $targetDir = trim((string)$this->repo->getSetting('xml_download_dir_nfe', ''));
         if ($targetDir === '') {
-            throw new RuntimeException('Configure a Pasta CT-e antes de executar o robô de geração dos XMLs.');
+            throw new RuntimeException('Configure a Pasta NF-e antes de executar o robô de geração dos XMLs.');
         }
 
-        $delayDays = max(0, min(30, (int)$this->repo->getSetting('cte_xml_folder_robot_delay_days', '2')));
-        $limit = max(1, min(20000, (int)$this->repo->getSetting('cte_xml_folder_robot_limit', '5000')));
+        $delayDays = max(0, min(30, (int)$this->repo->getSetting('nfe_xml_folder_robot_delay_days', '2')));
+        $limit = max(1, min(20000, (int)$this->repo->getSetting('nfe_xml_folder_robot_limit', '5000')));
         $endDate = (new DateTimeImmutable('today'))->modify('-' . $delayDays . ' days')->format('Y-m-d');
         $filters = [
             'entry_only' => '1',
-            'doc_type' => 'CTE',
+            'doc_type' => 'NFE',
             'status' => 'not_cancelled',
             'posted_to_erp' => '0',
             'cte_taker_only' => '1',
@@ -42,7 +42,7 @@ final class CteXmlFolderRobot
             $filters['company_id'] = (string)$companyId;
         }
 
-        $jobId = $this->repo->createJob('cte_xml_folder_export', null, 'Robô CT-e XML na Pasta para o ERP');
+        $jobId = $this->repo->createJob('nfe_xml_folder_export', null, 'Robô NF-e XML na Pasta para o ERP');
         $deleted = 0;
         $copied = 0;
         $skipped = 0;
@@ -75,7 +75,7 @@ final class CteXmlFolderRobot
             }
 
             $message = 'Origem: ' . $origin
-                . ' | Filtro: CT-e, não lançado no ERP, exceto cancelados, somente tomador, ignorando CFOPs/notas'
+                . ' | Filtro: NF-e, não lançado no ERP, exceto cancelados, somente tomador, ignorando CFOPs/notas'
                 . ' | Data final aplicada: ' . $endDate
                 . ' | Total do filtro: ' . (int)($total['total'] ?? count($allDocuments))
                 . ' | Limite: ' . $limit
@@ -90,8 +90,8 @@ final class CteXmlFolderRobot
             }
 
             $this->repo->finishJob($jobId, $errors > 0 ? 'warning' : 'success', $copied, $deleted, $errors, $message);
-            $this->repo->logAction('cte_xml_folder_export', $message);
-            $this->storage->appendLog('cte_xml_folder_robot.log', '[' . date('c') . '] ' . $message);
+            $this->repo->logAction('nfe_xml_folder_export', $message);
+            $this->storage->appendLog('nfe_xml_folder_robot.log', '[' . date('c') . '] ' . $message);
 
             return [
                 'job_id' => $jobId,
@@ -106,23 +106,23 @@ final class CteXmlFolderRobot
             ];
         } catch (\Throwable $e) {
             $errors++;
-            $message = 'Erro no robô de geração dos XMLs CT-e: ' . $e->getMessage();
+            $message = 'Erro no robô de geração dos XMLs NF-e: ' . $e->getMessage();
             $this->repo->finishJob($jobId, 'error', $copied, $deleted, $errors, $message);
-            $this->repo->logAction('cte_xml_folder_export_error', $message);
-            $this->storage->appendLog('cte_xml_folder_robot.log', '[' . date('c') . '] ' . $message);
+            $this->repo->logAction('nfe_xml_folder_export_error', $message);
+            $this->storage->appendLog('nfe_xml_folder_robot.log', '[' . date('c') . '] ' . $message);
             throw $e;
         }
     }
 
     public function runScheduledIfDue(): ?array
     {
-        if ($this->repo->getSetting('cte_xml_folder_robot_enabled', '0') !== '1') {
+        if ($this->repo->getSetting('nfe_xml_folder_robot_enabled', '1') !== '1') {
             return null;
         }
 
-        $time = $this->normalizeTime($this->repo->getSetting('cte_xml_folder_robot_time', '02:00'));
+        $time = $this->normalizeTime($this->repo->getSetting('nfe_xml_folder_robot_time', '02:15'));
         $today = date('Y-m-d');
-        if ($this->repo->getSetting('cte_xml_folder_robot_last_run_date', '') === $today) {
+        if ($this->repo->getSetting('nfe_xml_folder_robot_last_run_date', '') === $today) {
             return null;
         }
         if (date('H:i') < $time) {
@@ -130,7 +130,7 @@ final class CteXmlFolderRobot
         }
 
         $result = $this->run('agendado');
-        $this->repo->setSetting('cte_xml_folder_robot_last_run_date', $today);
+        $this->repo->setSetting('nfe_xml_folder_robot_last_run_date', $today);
         return $result;
     }
 
@@ -139,16 +139,16 @@ final class CteXmlFolderRobot
         $normalized = str_replace('\\', '/', trim($targetDir));
         $normalized = rtrim(preg_replace('#/+#', '/', $normalized) ?: $normalized, '/');
         if ($normalized === '' || preg_match('#^[A-Za-z]:$#', $normalized) || $normalized === '/' || strlen($normalized) < 6) {
-            throw new RuntimeException('Pasta CT-e inválida para limpeza automática: ' . $targetDir);
+            throw new RuntimeException('Pasta NF-e inválida para limpeza automática: ' . $targetDir);
         }
         if (preg_match('#/Windows(/|$)|/Program Files(/|$)|/Users(/|$)#i', $normalized)) {
-            throw new RuntimeException('Pasta CT-e bloqueada por segurança: ' . $targetDir);
+            throw new RuntimeException('Pasta NF-e bloqueada por segurança: ' . $targetDir);
         }
         if (!is_dir($normalized) && !mkdir($normalized, 0775, true)) {
-            throw new RuntimeException('Não foi possível criar a Pasta CT-e: ' . $targetDir);
+            throw new RuntimeException('Não foi possível criar a Pasta NF-e: ' . $targetDir);
         }
         if (!is_writable($normalized)) {
-            throw new RuntimeException('Pasta CT-e sem permissão de gravação: ' . $targetDir);
+            throw new RuntimeException('Pasta NF-e sem permissão de gravação: ' . $targetDir);
         }
         return $normalized;
     }
@@ -187,8 +187,8 @@ final class CteXmlFolderRobot
 
     private function safeFilename(array $doc, array &$usedNames): string
     {
-        $base = 'CTE_' . (string)($doc['access_key'] ?? $doc['id'] ?? uniqid('', true)) . '.xml';
-        $name = preg_replace('/[^a-zA-Z0-9._-]/', '_', $base) ?: ('CTE_' . uniqid('', true) . '.xml');
+        $base = 'NFE_' . (string)($doc['access_key'] ?? $doc['id'] ?? uniqid('', true)) . '.xml';
+        $name = preg_replace('/[^a-zA-Z0-9._-]/', '_', $base) ?: ('NFE_' . uniqid('', true) . '.xml');
         if (isset($usedNames[$name])) {
             $name = preg_replace('/\.xml$/i', '', $name) . '_' . (string)($doc['id'] ?? count($usedNames) + 1) . '.xml';
         }

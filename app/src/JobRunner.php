@@ -16,7 +16,9 @@ final class JobRunner
         private Storage $storage,
         private ?CertificateService $certificates = null,
         private ?ManifestationService $manifestation = null,
-        private ?CteXmlFolderRobot $cteXmlFolderRobot = null
+        private ?CteXmlFolderRobot $cteXmlFolderRobot = null,
+        private ?NfeXmlFolderRobot $nfeXmlFolderRobot = null,
+        private ?NfseXmlFolderRobot $nfseXmlFolderRobot = null
     ) {
     }
 
@@ -26,7 +28,7 @@ final class JobRunner
             if (!$this->cteXmlFolderRobot) {
                 throw new \RuntimeException('Robô de geração da pasta XML CT-e não disponível.');
             }
-            $result = $this->cteXmlFolderRobot->run('manual');
+            $result = $this->cteXmlFolderRobot->run('manual', $companyId > 0 ? $companyId : null);
             return [
                 'created' => (int)$result['copied'],
                 'updated' => (int)$result['deleted'],
@@ -35,6 +37,70 @@ final class JobRunner
             ];
         }
 
+        if ($jobType === 'nfe_xml_folder_export') {
+            if (!$this->nfeXmlFolderRobot) {
+                throw new \RuntimeException('Robo de geracao da pasta XML NF-e nao disponivel.');
+            }
+            $result = $this->nfeXmlFolderRobot->run('manual', $companyId > 0 ? $companyId : null);
+            return [
+                'created' => (int)$result['copied'],
+                'updated' => (int)$result['deleted'],
+                'errors' => (int)$result['errors'],
+                'logs' => (array)$result['logs'],
+            ];
+        }
+        if ($jobType === 'nfse_xml_folder_export') {
+            if (!$this->nfseXmlFolderRobot) {
+                throw new \RuntimeException('Robo de geracao da pasta XML NFS-e nao disponivel.');
+            }
+            $result = $this->nfseXmlFolderRobot->run('manual', $companyId > 0 ? $companyId : null);
+            return [
+                'created' => (int)$result['copied'],
+                'updated' => (int)$result['deleted'],
+                'errors' => (int)$result['errors'],
+                'logs' => (array)$result['logs'],
+            ];
+        }
+        if (in_array($jobType, ['nfe_cancellation_check', 'cte_cancellation_check', 'nfse_cancellation_check'], true)) {
+            $isNfe = $jobType === 'nfe_cancellation_check';
+            $isNfse = $jobType === 'nfse_cancellation_check';
+            $selectedCompany = $companyId > 0 ? $this->repo->findCompany($companyId) : null;
+            $jobId = $this->repo->createJob($jobType, $selectedCompany ? (int)$selectedCompany['id'] : null, $selectedCompany ? (string)$selectedCompany['company_name'] : 'Todas as empresas');
+            try {
+                $created = 0;
+                $updated = 0;
+                $errors = 0;
+                $logs = [];
+                if ($isNfe) {
+                    foreach ($this->companiesForJob('nfe_until_max', $companyId) as $nfeCompany) {
+                        $result = $this->runNfeUntilMax($nfeCompany, false);
+                        $created += (int)$result['created'];
+                        $updated += (int)$result['updated'];
+                        $errors += (int)$result['errors'];
+                        $logs[] = '[' . ($nfeCompany['company_name'] ?? $nfeCompany['id']) . '] sincronizacao oficial por NSU: ' . implode(' | ', (array)$result['logs']);
+                    }
+                } elseif ($isNfse) {
+                    foreach ($this->companiesForJob('nfse_until_max', $companyId) as $nfseCompany) {
+                        $result = $this->checkNfseCancellations($nfseCompany);
+                        $updated += (int)$result['updated'];
+                        $errors += (int)$result['errors'];
+                        $logs[] = '[' . ($nfseCompany['company_name'] ?? $nfseCompany['id']) . '] ' . (string)$result['message'];
+                    }
+                } else {
+                    $repair = $this->repo->repairCteCancellationStatuses($companyId > 0 ? $companyId : null);
+                    $updated = (int)($repair['cancelled'] ?? 0);
+                    $logs[] = 'CT-e cancelados identificados: ' . $updated;
+                    $logs[] = 'Reabertos por ausencia de evento: ' . (int)($repair['reopened'] ?? 0);
+                }
+                $this->repo->finishJob($jobId, $errors > 0 ? 'warning' : 'success', $created, $updated, $errors, implode(PHP_EOL, $logs));
+                $this->repo->logAction('job_run', $jobType . ' => ' . implode(' | ', $logs), $companyId > 0 ? $companyId : null);
+                return compact('created', 'updated', 'errors', 'logs');
+            } catch (\Throwable $e) {
+                $this->repo->finishJob($jobId, 'error', 0, 0, 1, $e->getMessage());
+                $this->repo->logAction('job_error', $jobType . ' => ' . $e->getMessage(), $companyId > 0 ? $companyId : null);
+                throw $e;
+            }
+        }
         $companies = $this->companiesForJob($jobType, $companyId);
         if (!$companies) {
             throw new \RuntimeException('Nenhuma empresa ativa cadastrada.');
@@ -42,6 +108,10 @@ final class JobRunner
 
         $created = 0; $updated = 0; $errors = 0; $logs = [];
         foreach ($companies as $company) {
+            if ($jobType === 'nfse_until_max' && $this->repo->hasRecentRunningJob($jobType, (int)$company['id'])) {
+                $logs[] = '[' . $company['company_name'] . '] Robô NFS-e ignorado porque já existe execução recente em andamento para este CNPJ.';
+                continue;
+            }
             $jobId = $this->repo->createJob($jobType, (int)$company['id'], (string)$company['company_name']);
             $companyCreated = 0; $companyUpdated = 0; $companyErrors = 0; $companyLogs = [];
             try {
@@ -54,6 +124,12 @@ final class JobRunner
                     $companyLogs[] = $health['message'] . ' Pasta gravável: ' . ($okPath ? 'sim' : 'não');
                 } elseif ($jobType === 'cte_until_max') {
                     $result = $this->runCteUntilMax($company);
+                    $companyCreated += (int)$result['created'];
+                    $companyUpdated += (int)$result['updated'];
+                    $companyErrors += (int)$result['errors'];
+                    $companyLogs = array_merge($companyLogs, $result['logs']);
+                } elseif ($jobType === 'nfse_until_max') {
+                    $result = $this->runNfseUntilMax($company);
                     $companyCreated += (int)$result['created'];
                     $companyUpdated += (int)$result['updated'];
                     $companyErrors += (int)$result['errors'];
@@ -220,6 +296,116 @@ final class JobRunner
         return compact('created', 'updated', 'errors', 'logs');
     }
 
+    private function runNfseUntilMax(array $company): array
+    {
+        if (empty($this->collectors['nfse'])) {
+            throw new \RuntimeException('Coletor de NFS-e Nacional não disponível.');
+        }
+
+        $collector = $this->collectors['nfse'];
+        $collector->setCompanyContext($company);
+        $settingPrefix = 'nfse_' . (int)$company['id'] . '_';
+        $currentNsuLimit = (int)$this->repo->getSetting('auto_nfse_nsu_limit', (string)($this->config['auto_nfse_nsu_limit'] ?? 50));
+        if ($currentNsuLimit < 50) {
+            $this->repo->setSetting('auto_nfse_nsu_limit', '50');
+        }
+        $maxCycles = max(20, (int)$this->repo->getSetting('nfse_robot_max_cycles', (string)($this->config['nfse_robot_max_cycles'] ?? 20)));
+        $timeLimit = max(900, (int)$this->repo->getSetting('nfse_robot_time_limit_seconds', (string)($this->config['nfse_robot_time_limit_seconds'] ?? 900)));
+        $startedAt = time();
+        $created = 0;
+        $updated = 0;
+        $errors = 0;
+        $logs = [];
+        // O recuo é aplicado uma única vez por CNPJ para buscar retroativo sem zerar o cursor e sem duplicar XML já importado.
+        $rewindMessage = $this->applyNsuRewindOnce('nfse', $company);
+        if ($rewindMessage) {
+            $logs[] = $rewindMessage;
+        }
+
+        for ($cycle = 1; $cycle <= $maxCycles; $cycle++) {
+            if ((time() - $startedAt) >= $timeLimit) {
+                $logs[] = 'Robô NFS-e pausado por limite de tempo seguro. Execute novamente para continuar.';
+                break;
+            }
+
+            $beforeUlt = str_pad(preg_replace('/\D+/', '', (string)$this->repo->getSetting($settingPrefix . 'ult_nsu', '0')), 15, '0', STR_PAD_LEFT);
+            $result = $collector->collect();
+            $created += (int)$result['created'];
+            $updated += (int)$result['updated'];
+            $errors += (int)$result['errors'];
+
+            $afterUlt = str_pad(preg_replace('/\D+/', '', (string)$this->repo->getSetting($settingPrefix . 'ult_nsu', '0')), 15, '0', STR_PAD_LEFT);
+            $logs[] = 'Ciclo ' . $cycle . ': ' . (string)$result['message'] . ' ultNSU ' . $beforeUlt . ' -> ' . $afterUlt . '.';
+
+            if (str_contains((string)$result['message'], 'bloqueada')) {
+                $logs[] = 'Robô NFS-e pausado por bloqueio local do ADN. Aguarde o horário informado antes de nova tentativa.';
+                break;
+            }
+            if ($afterUlt === $beforeUlt) {
+                $logs[] = 'Robô NFS-e pausado: não houve avanço de NSU nesta execução.';
+                break;
+            }
+            if ((int)$result['errors'] > 0) {
+                $logs[] = 'Robô NFS-e pausado por erro no ciclo.';
+                break;
+            }
+        }
+
+        return compact('created', 'updated', 'errors', 'logs');
+    }
+
+    private function checkNfseCancellations(array $company): array
+    {
+        if (empty($this->collectors['nfse']) || !method_exists($this->collectors['nfse'], 'queryCancellationStatus')) {
+            return ['updated' => 0, 'errors' => 1, 'message' => 'Consulta de cancelamento NFS-e indisponivel.'];
+        }
+
+        $limit = max(1, min(500, (int)$this->repo->getSetting('nfse_cancel_check_limit_per_run', '100')));
+        $docs = $this->repo->nfseCancellationCandidates((int)$company['id'], $limit);
+        if (!$docs) {
+            return ['updated' => 0, 'errors' => 0, 'message' => 'Cancelamento NFS-e: nenhuma nota elegivel para consulta.'];
+        }
+
+        $collector = $this->collectors['nfse'];
+        $collector->setCompanyContext($company);
+        $checked = 0;
+        $cancelled = 0;
+        $updated = 0;
+        $errors = 0;
+
+        foreach ($docs as $doc) {
+            $key = preg_replace('/\D+/', '', (string)($doc['access_key'] ?? ''));
+            if ($key === '') {
+                continue;
+            }
+            try {
+                $beforeStatus = (string)($doc['status'] ?? '');
+                $checked++;
+                $localSubstitutionUpdated = $this->repo->markNFSeCancelledBySubstitution($key, (int)$company['id']);
+                if ($localSubstitutionUpdated > 0) {
+                    $updated += $localSubstitutionUpdated;
+                } else {
+                    $result = $collector->queryCancellationStatus($key);
+                    $updated += (int)($result['updated'] ?? 0);
+                }
+                $after = $this->repo->findDocumentByAccessKey('NFSE', $key, (int)$company['id']);
+                if ($after && $beforeStatus !== 'cancelado' && (string)($after['status'] ?? '') === 'cancelado') {
+                    $cancelled++;
+                }
+                usleep(250000);
+            } catch (\Throwable $e) {
+                $errors++;
+                $this->storage->appendLog('nfse_cancellation_robot.log', '[' . date('c') . '] erro NFSe ' . ($doc['number'] ?? $key) . ': ' . $e->getMessage());
+            }
+        }
+
+        return [
+            'updated' => $updated,
+            'errors' => $errors,
+            'message' => 'Cancelamento NFS-e: ' . $checked . ' chave(s), ' . $cancelled . ' cancelada(s), ' . $errors . ' erro(s).',
+        ];
+    }
+
     private function runNfeUntilMax(array $company, bool $manifestScience): array
     {
         if (empty($this->collectors['nfe'])) {
@@ -292,10 +478,6 @@ final class JobRunner
             }
         }
 
-        $cancelCheck = $this->checkRetroactiveNfeCancellations($company);
-        $updated += (int)$cancelCheck['updated'];
-        $errors += (int)$cancelCheck['errors'];
-        $logs[] = (string)$cancelCheck['message'];
 
         return compact('created', 'updated', 'errors', 'logs');
     }

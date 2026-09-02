@@ -27,6 +27,7 @@
             <?php endforeach; ?>
             <form method="post" class="login-form">
                 <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
+                <input type="hidden" name="return" value="<?= h((string)($_GET['return'] ?? '')) ?>">
                 <label>E-mail
                     <input type="email" name="user" autocomplete="username" required autofocus>
                 </label>

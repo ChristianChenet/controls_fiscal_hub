@@ -107,13 +107,31 @@ final class XmlParser
     {
         $xp = new DOMXPath($dom);
         $rootName = strtolower($dom->documentElement?->localName ?? 'nfse');
-        $issueDate = $this->firstAny($xp, ['//*[contains(local-name(),"DataHoraEmissao")]', '//*[contains(local-name(),"dhEmi")]', '//*[contains(local-name(),"DataEmissao")]']);
-        $number = $this->firstAny($xp, ['//*[contains(local-name(),"numero")]', '//*[contains(local-name(),"nNFSe")]', '//*[contains(local-name(),"Numero")]']);
-        $issuer = $this->firstAny($xp, ['//*[contains(local-name(),"Prestador")]//*[contains(local-name(),"Cnpj")]', '//*[contains(local-name(),"emit")]//*[contains(local-name(),"CNPJ")]']);
-        $issuerName = $this->firstAny($xp, ['//*[contains(local-name(),"Prestador")]//*[contains(local-name(),"Razao")]', '//*[contains(local-name(),"xNome")]']);
-        $recipient = $this->firstAny($xp, ['//*[contains(local-name(),"Tomador")]//*[contains(local-name(),"Cnpj")]', '//*[contains(local-name(),"dest")]//*[contains(local-name(),"CNPJ")]']);
-        $recipientName = $this->firstAny($xp, ['//*[contains(local-name(),"Tomador")]//*[contains(local-name(),"Razao")]', '//*[contains(local-name(),"xNome")]']);
-        $value = $this->firstAny($xp, ['//*[contains(local-name(),"ValorServicos")]', '//*[contains(local-name(),"vNF")]', '//*[contains(local-name(),"ValorLiquido")]']);
+        $issueDate = $this->firstAny($xp, [
+            '//*[local-name()="dhEmi" or local-name()="dhProc" or local-name()="DataHoraEmissao" or local-name()="DataEmissao" or local-name()="dataEmissao"]',
+        ]);
+        $number = $this->firstAny($xp, [
+            '//*[local-name()="nNFSe" or local-name()="NumeroNfse" or local-name()="numero" or local-name()="Numero"]',
+        ]);
+        $issuer = $this->firstAny($xp, [
+            '//*[local-name()="prest" or local-name()="Prestador" or local-name()="prestador" or local-name()="emit"]//*[local-name()="CNPJ" or local-name()="Cnpj" or local-name()="cnpj"]',
+            '//*[local-name()="CNPJPrestador" or local-name()="CnpjPrestador"]',
+        ]);
+        $issuerName = $this->firstAny($xp, [
+            '//*[local-name()="prest" or local-name()="Prestador" or local-name()="prestador" or local-name()="emit"]//*[local-name()="xNome" or local-name()="RazaoSocial" or local-name()="Nome" or local-name()="nome"]',
+            '//*[local-name()="RazaoSocialPrestador"]',
+        ]);
+        $recipient = $this->firstAny($xp, [
+            '//*[local-name()="toma" or local-name()="Tomador" or local-name()="tomador" or local-name()="dest"]//*[local-name()="CNPJ" or local-name()="Cnpj" or local-name()="cnpj" or local-name()="CPF" or local-name()="Cpf" or local-name()="cpf"]',
+            '//*[local-name()="CNPJTomador" or local-name()="CnpjTomador" or local-name()="CpfCnpjTomador"]',
+        ]);
+        $recipientName = $this->firstAny($xp, [
+            '//*[local-name()="toma" or local-name()="Tomador" or local-name()="tomador" or local-name()="dest"]//*[local-name()="xNome" or local-name()="RazaoSocial" or local-name()="Nome" or local-name()="nome"]',
+            '//*[local-name()="RazaoSocialTomador"]',
+        ]);
+        $value = $this->firstAny($xp, [
+            '//*[local-name()="vLiq" or local-name()="vServ" or local-name()="ValorServicos" or local-name()="ValorLiquidoNfse" or local-name()="ValorLiquido" or local-name()="vNF"]',
+        ]);
 
         return [
             'doc_type' => 'NFSE',

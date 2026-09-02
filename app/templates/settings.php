@@ -172,6 +172,14 @@ $autoNfseAll = ($settings['auto_nfse_all_companies'] ?? '0') === '1' || ($active
             <input type="text" name="nfse_distribution_path" value="<?= h($settings['nfse_distribution_path']) ?>">
             <small>Padrao atual do ADN Contribuintes: /contribuintes/DFe/{nsu}. O portal acrescenta o CNPJ de consulta na URL.</small>
         </label>
+        <label>Base URL de eventos
+            <input type="text" name="nfse_event_base_url" value="<?= h((string)($settings['nfse_event_base_url'] ?? 'https://sefin.nfse.gov.br/SefinNacional')) ?>">
+            <small>Usada para verificar cancelamentos de NFS-e por chave de acesso.</small>
+        </label>
+        <label>Path de eventos
+            <input type="text" name="nfse_event_path" value="<?= h((string)($settings['nfse_event_path'] ?? '/nfse/{ChaveAcesso}/eventos')) ?>">
+            <small>Padrao SEFIN Nacional: /nfse/{ChaveAcesso}/eventos.</small>
+        </label>
         <label>Autenticação NFS-e Nacional
             <select name="nfse_auth_type">
                 <option value="certificate" <?= $settings['nfse_auth_type'] === 'certificate' ? 'selected' : '' ?>>Certificado</option>
@@ -184,6 +192,10 @@ $autoNfseAll = ($settings['auto_nfse_all_companies'] ?? '0') === '1' || ($active
         <label>NSUs por execucao NFS-e
             <input type="text" name="auto_nfse_nsu_limit" value="<?= h((string)($settings['auto_nfse_nsu_limit'] ?? '10')) ?>">
             <small>Limite conservador. O ADN pode bloquear excesso de requisicoes com HTTP 429.</small>
+        </label>
+        <label>Recuar NSU NFS-e na próxima execução
+            <input type="text" name="auto_nfse_rewind_nsu_once" value="<?= h((string)($settings['auto_nfse_rewind_nsu_once'] ?? '0')) ?>">
+            <small>Use para busca retroativa controlada. O recuo é aplicado uma única vez, por CNPJ, e XMLs já existentes são deduplicados.</small>
         </label>
         <h2>Automacao NFS-e Nacional</h2>
         <label class="checkbox-inline">
@@ -206,6 +218,54 @@ $autoNfseAll = ($settings['auto_nfse_all_companies'] ?? '0') === '1' || ($active
             <input type="text" name="auto_nfse_interval_minutes" value="<?= h((string)($settings['auto_nfse_interval_minutes'] ?? '60')) ?>">
             <small>Minimo operacional aplicado pelo worker: 60 minutos.</small>
         </label>
+        <label>Ciclos máximos NFS-e por execução
+            <input type="text" name="nfse_robot_max_cycles" value="<?= h((string)($settings['nfse_robot_max_cycles'] ?? '6')) ?>">
+            <small>Cada ciclo consulta um bloco de NSUs e grava log individual da empresa.</small>
+        </label>
+        <label>Tempo máximo NFS-e por execução (segundos)
+            <input type="text" name="nfse_robot_time_limit_seconds" value="<?= h((string)($settings['nfse_robot_time_limit_seconds'] ?? '240')) ?>">
+        </label>
+        <div class="notice subtle">
+            A busca usa o padrão nacional ADN por NSU contra o CNPJ da empresa. Municípios que ainda não disponibilizam NFS-e no padrão nacional exigem conector municipal próprio.
+        </div>
+        <h3>Pasta XML NFS-e para ERP</h3>
+        <label class="checkbox-inline">
+            <input type="checkbox" name="nfse_xml_folder_robot_enabled" value="1" <?= ($settings['nfse_xml_folder_robot_enabled'] ?? '0') === '1' ? 'checked' : '' ?>>
+            Ativar geracao automatica da pasta NFS-e
+        </label>
+        <label>Horario de execucao diaria
+            <input type="time" name="nfse_xml_folder_robot_time" value="<?= h((string)($settings['nfse_xml_folder_robot_time'] ?? '02:30')) ?>">
+            <small>Fica desativado por padrao; ative somente quando quiser gerar a pasta automaticamente.</small>
+        </label>
+        <label>Dias de atraso para data final
+            <input type="number" min="0" max="30" step="1" name="nfse_xml_folder_robot_delay_days" value="<?= h((string)($settings['nfse_xml_folder_robot_delay_days'] ?? '2')) ?>">
+        </label>
+        <label>Limite maximo de XMLs por execucao
+            <input type="number" min="1" max="20000" step="1" name="nfse_xml_folder_robot_limit" value="<?= h((string)($settings['nfse_xml_folder_robot_limit'] ?? '5000')) ?>">
+        </label>
+        <div class="notice subtle">
+            Filtro aplicado: NFS-e, nao lancada no ERP, exceto canceladas, somente entradas. A pasta NFS-e e limpa antes da geracao para manter somente os XMLs elegiveis.
+            <?php if (!empty($settings['nfse_xml_folder_robot_last_run_date'])): ?>
+                Ultima execucao automatica: <?= h((string)$settings['nfse_xml_folder_robot_last_run_date']) ?>.
+            <?php endif; ?>
+        </div>
+        <h3>Recuo NFS-e por CNPJ</h3>
+        <div class="table-wrap compact-table">
+            <table>
+                <thead><tr><th>Empresa</th><th>ultNSU</th><th>Bloqueio local</th><th>Recuo na próxima execução</th></tr></thead>
+                <tbody>
+                <?php foreach (($companies ?? []) as $co): ?>
+                    <?php $rw = $automationRewinds[(int)$co['id']] ?? []; ?>
+                    <tr>
+                        <td><?= h($co['company_name']) ?><br><small><?= h($co['cnpj']) ?></small></td>
+                        <td><?= h((string)($rw['nfse_ult_nsu'] ?? '0')) ?></td>
+                        <td><?= h((string)($rw['nfse_cooldown_until'] ?? '-')) ?></td>
+                        <td><input type="number" min="0" max="50000" step="1" name="auto_nfse_rewind_company[<?= h((string)$co['id']) ?>]" value="<?= h((string)($rw['nfse'] ?? '0')) ?>"></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
         <h2>Automação NF-e / NFC-e</h2>
         <label class="checkbox-inline">
             <input type="checkbox" name="auto_nfe_enabled" value="1" <?= ($settings['auto_nfe_enabled'] ?? '0') === '1' ? 'checked' : '' ?>>
@@ -243,7 +303,28 @@ $autoNfseAll = ($settings['auto_nfse_all_companies'] ?? '0') === '1' || ($active
         <label>Limite de ciência por execução
             <input type="text" name="nfe_science_limit_per_run" value="<?= h((string)($settings['nfe_science_limit_per_run'] ?? '30')) ?>">
         </label>
-        <h3>Recuo NF-e por CNPJ</h3>
+        <h3>Pasta XML NF-e / NFC-e para ERP</h3>
+        <label class="checkbox-inline">
+            <input type="checkbox" name="nfe_xml_folder_robot_enabled" value="1" <?= ($settings['nfe_xml_folder_robot_enabled'] ?? '0') === '1' ? 'checked' : '' ?>>
+            Ativar geracao automatica da pasta NF-e
+        </label>
+        <label>Horario de execucao diaria
+            <input type="time" name="nfe_xml_folder_robot_time" value="<?= h((string)($settings['nfe_xml_folder_robot_time'] ?? '02:15')) ?>">
+            <small>O servico NF-e verifica este horario e executa uma vez por dia.</small>
+        </label>
+        <label>Dias de atraso para data final
+            <input type="number" min="0" max="30" step="1" name="nfe_xml_folder_robot_delay_days" value="<?= h((string)($settings['nfe_xml_folder_robot_delay_days'] ?? '2')) ?>">
+            <small>Use o mesmo criterio operacional do robo CT-e.</small>
+        </label>
+        <label>Limite maximo de XMLs por execucao
+            <input type="number" min="1" max="20000" step="1" name="nfe_xml_folder_robot_limit" value="<?= h((string)($settings['nfe_xml_folder_robot_limit'] ?? '5000')) ?>">
+        </label>
+        <div class="notice subtle">
+            Filtro aplicado: NF-e, nao lancada no ERP, exceto canceladas, somente documentos de entrada e ignorando CFOPs/notas cadastrados. A pasta NF-e e limpa antes da geracao para manter somente os XMLs elegiveis.
+            <?php if (!empty($settings['nfe_xml_folder_robot_last_run_date'])): ?>
+                Ultima execucao automatica: <?= h((string)$settings['nfe_xml_folder_robot_last_run_date']) ?>.
+            <?php endif; ?>
+        </div>        <h3>Recuo NF-e por CNPJ</h3>
         <div class="table-wrap compact-table">
             <table>
                 <thead><tr><th>Empresa</th><th>ultNSU</th><th>maxNSU</th><th>Recuo na próxima execução</th></tr></thead>
@@ -259,8 +340,28 @@ $autoNfseAll = ($settings['auto_nfse_all_companies'] ?? '0') === '1' || ($active
                 <?php endforeach; ?>
                 </tbody>
             </table>
+        </div>        <h2>Cancelamento CT-e</h2>
+        <p class="muted">Verificacao diaria de CT-e pendente de lancamento, com fila e reagendamento automatico.</p>
+        <div class="grid two cancellation-settings-grid">
+            <label class="checkbox-inline"><input type="checkbox" name="cte_cancellation_robot_enabled" value="1" <?= (($settings['cte_cancellation_robot_enabled'] ?? '1') === '1') ? 'checked' : '' ?>> Ativar cancelamento CT-e</label>
+            <label>Horario CT-e<input type="time" name="cte_cancellation_robot_time" value="<?= h((string)($settings['cte_cancellation_robot_time'] ?? '00:30')) ?>"></label>
         </div>
-        <button class="primary" name="save_settings" value="1">Salvar configurações</button>
+        <h2>Cancelamento NF-e</h2>
+        <p class="muted">Verificacao diaria de NF-e pendente de lancamento, com fila e reagendamento automatico.</p>
+        <div class="grid two cancellation-settings-grid">
+            <label class="checkbox-inline"><input type="checkbox" name="nfe_cancellation_robot_enabled" value="1" <?= (($settings['nfe_cancellation_robot_enabled'] ?? '1') === '1') ? 'checked' : '' ?>> Ativar cancelamento NF-e</label>
+            <label>Horario NF-e<input type="time" name="nfe_cancellation_robot_time" value="<?= h((string)($settings['nfe_cancellation_robot_time'] ?? '00:45')) ?>"></label>
+        </div>
+        <h2>Cancelamento NFS-e</h2>
+        <p class="muted">Verificacao diaria de NFS-e por eventos do Portal Nacional, um CNPJ por vez e com log individual.</p>
+        <div class="grid two cancellation-settings-grid">
+            <label class="checkbox-inline"><input type="checkbox" name="nfse_cancellation_robot_enabled" value="1" <?= (($settings['nfse_cancellation_robot_enabled'] ?? '1') === '1') ? 'checked' : '' ?>> Ativar cancelamento NFS-e</label>
+            <label>Horario NFS-e<input type="time" name="nfse_cancellation_robot_time" value="<?= h((string)($settings['nfse_cancellation_robot_time'] ?? '01:00')) ?>"></label>
+        </div>
+        <label>Limite de NFS-e verificadas por CNPJ
+            <input type="number" min="1" max="500" step="1" name="nfse_cancel_check_limit_per_run" value="<?= h((string)($settings['nfse_cancel_check_limit_per_run'] ?? '100')) ?>">
+        </label>
+        <button class="primary" name="save_settings" value="1">Salvar configuracoes</button>
     </form>
 
     <div class="card">
@@ -295,8 +396,16 @@ $autoNfseAll = ($settings['auto_nfse_all_companies'] ?? '0') === '1' || ($active
                             $routineLabel = match ((string)$job['job_type']) {
                                 'cte_until_max' => 'Robo CT-e',
                                 'cte_xml_folder_export' => 'Robo CT-e XML na Pasta para o ERP',
+                                'nfe_xml_folder_export' => 'Robo NF-e XML na Pasta para o ERP',
+                                'nfse_xml_folder_export' => 'Robo NFS-e XML na Pasta para o ERP',
+                                'nfe_cancellation_check' => 'Robo verificar cancelamento NF-e',
+                                'cte_cancellation_check' => 'Robo verificar cancelamento CT-e',
+                                'nfse_cancellation_check' => 'Robo verificar cancelamento NFS-e',
+                                'nfe_cancel_check_selected' => 'Verificar cancelamento NF-e selecionado',
+                                'nfse_cancel_check_selected' => 'Verificar cancelamento NFS-e selecionado',
                                 'nfe_until_max' => 'Robo NF-e',
                                 'nfe_until_max_science' => 'Robo NF-e + ciencia',
+                                'nfse_until_max' => 'Robo NFS-e Nacional por NSU',
                                 'nfse' => 'Robo NFS-e Nacional',
                                 default => (string)$job['job_type'],
                             };

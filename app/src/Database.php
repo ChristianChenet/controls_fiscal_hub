@@ -47,17 +47,23 @@ final class Database
             $pdo->exec($statement);
         }
         $this->ensurePortableColumns($driver);
+        $this->ensureAccountingImportSchema($driver);
     }
 
     private function ensurePortableColumns(string $driver): void
     {
-        if ($driver !== 'sqlite') {
+        if ($driver === 'sqlite') {
+            $this->ensureSqliteColumn('users', 'can_view_revenue', 'INTEGER DEFAULT 1');
+            $this->ensureSqliteColumn('users', 'can_view_cost', 'INTEGER DEFAULT 0');
+            $this->ensureSqliteColumn('documents', 'referenced_document_numbers', 'TEXT NULL');
+            $this->ensureSqliteColumn('documents', 'accounting_posted', "TEXT DEFAULT 'N'");
+            $this->ensureSqliteColumn('revenue_items', 'cost_amount', 'REAL DEFAULT 0');
             return;
         }
 
-        $this->ensureSqliteColumn('users', 'can_view_cost', 'INTEGER DEFAULT 0');
-        $this->ensureSqliteColumn('documents', 'referenced_document_numbers', 'TEXT NULL');
-        $this->ensureSqliteColumn('revenue_items', 'cost_amount', 'REAL DEFAULT 0');
+        $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS accounting_posted CHAR(1) DEFAULT 'N'");
+        $this->pdo()->exec("UPDATE documents SET accounting_posted = 'N' WHERE accounting_posted IS NULL OR accounting_posted = ''");
+        $this->pdo()->exec("CREATE INDEX IF NOT EXISTS idx_documents_accounting_posted ON documents(accounting_posted)");
     }
 
     private function ensureSqliteColumn(string $table, string $column, string $definition): void
@@ -69,6 +75,72 @@ final class Database
             }
         }
         $this->pdo()->exec("ALTER TABLE {$table} ADD COLUMN {$column} {$definition}");
+    }
+
+    private function ensureAccountingImportSchema(string $driver): void
+    {
+        if ($driver === 'sqlite') {
+            $this->pdo()->exec("CREATE TABLE IF NOT EXISTS accounting_imports (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                doc_type TEXT NOT NULL,
+                file_name TEXT NULL,
+                sheets_count INTEGER DEFAULT 0,
+                row_count INTEGER DEFAULT 0,
+                matched_count INTEGER DEFAULT 0,
+                missing_count INTEGER DEFAULT 0,
+                mapping_json TEXT NULL,
+                user_id INTEGER NULL,
+                user_name TEXT NULL,
+                created_at TEXT NOT NULL
+            )");
+            $this->pdo()->exec("CREATE TABLE IF NOT EXISTS accounting_entries (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                import_id INTEGER NOT NULL,
+                doc_type TEXT NOT NULL,
+                sheet_name TEXT NULL,
+                row_number INTEGER DEFAULT 0,
+                access_key TEXT NULL,
+                document_number TEXT NULL,
+                party_document TEXT NULL,
+                matched_document_id INTEGER NULL,
+                raw_json TEXT NULL,
+                created_at TEXT NOT NULL
+            )");
+            $this->pdo()->exec("CREATE INDEX IF NOT EXISTS idx_accounting_entries_import ON accounting_entries(import_id)");
+            $this->pdo()->exec("CREATE INDEX IF NOT EXISTS idx_accounting_entries_match ON accounting_entries(doc_type, access_key, document_number, party_document)");
+            $this->pdo()->exec("CREATE INDEX IF NOT EXISTS idx_accounting_entries_document ON accounting_entries(matched_document_id)");
+            return;
+        }
+
+        $this->pdo()->exec("CREATE TABLE IF NOT EXISTS accounting_imports (
+            id SERIAL PRIMARY KEY,
+            doc_type VARCHAR(30) NOT NULL,
+            file_name TEXT NULL,
+            sheets_count INTEGER DEFAULT 0,
+            row_count INTEGER DEFAULT 0,
+            matched_count INTEGER DEFAULT 0,
+            missing_count INTEGER DEFAULT 0,
+            mapping_json TEXT NULL,
+            user_id INTEGER NULL,
+            user_name TEXT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )");
+        $this->pdo()->exec("CREATE TABLE IF NOT EXISTS accounting_entries (
+            id SERIAL PRIMARY KEY,
+            import_id INTEGER NOT NULL REFERENCES accounting_imports(id) ON DELETE CASCADE,
+            doc_type VARCHAR(30) NOT NULL,
+            sheet_name TEXT NULL,
+            row_number INTEGER DEFAULT 0,
+            access_key VARCHAR(80) NULL,
+            document_number VARCHAR(80) NULL,
+            party_document VARCHAR(20) NULL,
+            matched_document_id INTEGER NULL REFERENCES documents(id) ON DELETE SET NULL,
+            raw_json TEXT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )");
+        $this->pdo()->exec("CREATE INDEX IF NOT EXISTS idx_accounting_entries_import ON accounting_entries(import_id)");
+        $this->pdo()->exec("CREATE INDEX IF NOT EXISTS idx_accounting_entries_match ON accounting_entries(doc_type, access_key, document_number, party_document)");
+        $this->pdo()->exec("CREATE INDEX IF NOT EXISTS idx_accounting_entries_document ON accounting_entries(matched_document_id)");
     }
 
     private function sqliteSchema(): array
@@ -90,6 +162,7 @@ final class Database
                 email TEXT NOT NULL UNIQUE,
                 password_hash TEXT NOT NULL,
                 role TEXT NOT NULL DEFAULT 'user',
+                can_view_revenue INTEGER DEFAULT 0,
                 can_view_cost INTEGER DEFAULT 0,
                 is_active INTEGER DEFAULT 1,
                 created_at TEXT NOT NULL,
@@ -336,6 +409,23 @@ final class Database
                 updated_at TEXT NOT NULL,
                 UNIQUE(company_id, doc_type, environment)
             )",
+            "CREATE TABLE IF NOT EXISTS nfe_cancellation_queue (id SERIAL PRIMARY KEY, document_id INTEGER NOT NULL REFERENCES documents(id) ON DELETE CASCADE, company_id INTEGER NULL REFERENCES companies(id) ON DELETE SET NULL, access_key VARCHAR(60) NOT NULL, requested_by INTEGER NULL, status VARCHAR(20) NOT NULL DEFAULT 'pending', attempts INTEGER NOT NULL DEFAULT 0, max_attempts INTEGER NOT NULL DEFAULT 5, next_check_at TIMESTAMP NOT NULL DEFAULT NOW(), requested_at TIMESTAMP NOT NULL DEFAULT NOW(), started_at TIMESTAMP NULL, completed_at TIMESTAMP NULL, last_error TEXT NULL, last_cstat VARCHAR(10) NULL, last_message TEXT NULL, updated_at TIMESTAMP NOT NULL DEFAULT NOW())",
+            "CREATE INDEX IF NOT EXISTS idx_nfe_cancel_queue_due ON nfe_cancellation_queue(status, next_check_at)",
+            "CREATE INDEX IF NOT EXISTS idx_nfe_cancel_queue_document ON nfe_cancellation_queue(document_id)",
+            "ALTER TABLE nfe_cancellation_queue ADD COLUMN IF NOT EXISTS company_id INTEGER",
+            "ALTER TABLE nfe_cancellation_queue ADD COLUMN IF NOT EXISTS access_key VARCHAR(60)",
+            "ALTER TABLE nfe_cancellation_queue ADD COLUMN IF NOT EXISTS requested_by INTEGER",
+            "ALTER TABLE nfe_cancellation_queue ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'pending'",
+            "ALTER TABLE nfe_cancellation_queue ADD COLUMN IF NOT EXISTS attempts INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE nfe_cancellation_queue ADD COLUMN IF NOT EXISTS max_attempts INTEGER NOT NULL DEFAULT 5",
+            "ALTER TABLE nfe_cancellation_queue ADD COLUMN IF NOT EXISTS next_check_at TIMESTAMP NOT NULL DEFAULT NOW()",
+            "ALTER TABLE nfe_cancellation_queue ADD COLUMN IF NOT EXISTS requested_at TIMESTAMP NOT NULL DEFAULT NOW()",
+            "ALTER TABLE nfe_cancellation_queue ADD COLUMN IF NOT EXISTS started_at TIMESTAMP NULL",
+            "ALTER TABLE nfe_cancellation_queue ADD COLUMN IF NOT EXISTS completed_at TIMESTAMP NULL",
+            "ALTER TABLE nfe_cancellation_queue ADD COLUMN IF NOT EXISTS last_error TEXT NULL",
+            "ALTER TABLE nfe_cancellation_queue ADD COLUMN IF NOT EXISTS last_cstat VARCHAR(10) NULL",
+            "ALTER TABLE nfe_cancellation_queue ADD COLUMN IF NOT EXISTS last_message TEXT NULL",
+            "ALTER TABLE nfe_cancellation_queue ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW()",
             "CREATE TABLE IF NOT EXISTS period_closures (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 status TEXT NOT NULL,
@@ -402,6 +492,7 @@ final class Database
                 email VARCHAR(180) NOT NULL UNIQUE,
                 password_hash TEXT NOT NULL,
                 role VARCHAR(20) NOT NULL DEFAULT 'user',
+                can_view_revenue BOOLEAN DEFAULT FALSE,
                 can_view_cost BOOLEAN DEFAULT FALSE,
                 is_active BOOLEAN DEFAULT TRUE,
                 created_at TIMESTAMP NOT NULL DEFAULT NOW(),
@@ -620,6 +711,8 @@ final class Database
             "ALTER TABLE revenue_documents ADD COLUMN IF NOT EXISTS cbs_amount NUMERIC(15,2) DEFAULT 0",
             "ALTER TABLE revenue_documents ADD COLUMN IF NOT EXISTS difal_amount NUMERIC(15,2) DEFAULT 0",
             "ALTER TABLE revenue_documents ADD COLUMN IF NOT EXISTS other_taxes_amount NUMERIC(15,2) DEFAULT 0",
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS can_view_revenue BOOLEAN DEFAULT TRUE",
+            "ALTER TABLE users ALTER COLUMN can_view_revenue SET DEFAULT FALSE",
             "ALTER TABLE users ADD COLUMN IF NOT EXISTS can_view_cost BOOLEAN DEFAULT FALSE",
             "ALTER TABLE revenue_items ADD COLUMN IF NOT EXISTS cost_amount NUMERIC(15,2) DEFAULT 0",
             "ALTER TABLE revenue_items ADD COLUMN IF NOT EXISTS icms_amount NUMERIC(15,2) DEFAULT 0",

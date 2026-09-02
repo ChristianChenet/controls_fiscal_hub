@@ -57,7 +57,46 @@ CREATE INDEX IF NOT EXISTS idx_documents_company ON documents(company_id);
 CREATE INDEX IF NOT EXISTS idx_documents_type ON documents(doc_type);
 CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(status);
 CREATE INDEX IF NOT EXISTS idx_documents_access_key ON documents(access_key);
+CREATE INDEX IF NOT EXISTS idx_documents_issue_date ON documents(issue_date);
+CREATE INDEX IF NOT EXISTS idx_documents_company_type_issue ON documents(company_id, doc_type, issue_date);
+CREATE INDEX IF NOT EXISTS idx_documents_number ON documents(number);
+CREATE INDEX IF NOT EXISTS idx_documents_recipient_cnpj ON documents(recipient_cnpj);
+CREATE INDEX IF NOT EXISTS idx_documents_issuer_cnpj ON documents(issuer_cnpj);
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS referenced_nfe_keys TEXT NULL;
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS accounting_posted CHAR(1) DEFAULT 'N';
+UPDATE documents SET accounting_posted = 'N' WHERE accounting_posted IS NULL OR accounting_posted = '';
+CREATE INDEX IF NOT EXISTS idx_documents_accounting_posted ON documents(accounting_posted);
+
+CREATE TABLE IF NOT EXISTS accounting_imports (
+    id SERIAL PRIMARY KEY,
+    doc_type VARCHAR(30) NOT NULL,
+    file_name TEXT NULL,
+    sheets_count INTEGER DEFAULT 0,
+    row_count INTEGER DEFAULT 0,
+    matched_count INTEGER DEFAULT 0,
+    missing_count INTEGER DEFAULT 0,
+    mapping_json TEXT NULL,
+    user_id INTEGER NULL,
+    user_name TEXT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS accounting_entries (
+    id SERIAL PRIMARY KEY,
+    import_id INTEGER NOT NULL REFERENCES accounting_imports(id) ON DELETE CASCADE,
+    doc_type VARCHAR(30) NOT NULL,
+    sheet_name TEXT NULL,
+    row_number INTEGER DEFAULT 0,
+    access_key VARCHAR(80) NULL,
+    document_number VARCHAR(80) NULL,
+    party_document VARCHAR(20) NULL,
+    matched_document_id INTEGER NULL REFERENCES documents(id) ON DELETE SET NULL,
+    raw_json TEXT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_accounting_entries_import ON accounting_entries(import_id);
+CREATE INDEX IF NOT EXISTS idx_accounting_entries_match ON accounting_entries(doc_type, access_key, document_number, party_document);
+CREATE INDEX IF NOT EXISTS idx_accounting_entries_document ON accounting_entries(matched_document_id);
 
 CREATE TABLE IF NOT EXISTS jobs (
     id SERIAL PRIMARY KEY,

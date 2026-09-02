@@ -34,7 +34,8 @@ $Itens = @(
     "RESTAURAR_BANCO_LOCAL.cmd",
     "RESTAURAR_BANCO_LOCAL.ps1",
     "PARAR_SISTEMA.cmd",
-    "DESATIVAR_INICIALIZACAO.cmd"
+    "DESATIVAR_INICIALIZACAO.cmd",
+    "REPARAR_SERVICOS.cmd"
 )
 
 $ArquivosObrigatorios = @(

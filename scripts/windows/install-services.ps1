@@ -47,6 +47,21 @@ function Find-Nssm {
     return $local
 }
 
+function Resolve-PhpExecutable {
+    param([string]$PathOrCommand)
+
+    if ($PathOrCommand -and (Test-Path $PathOrCommand)) {
+        return (Resolve-Path $PathOrCommand -ErrorAction Stop).Path
+    }
+
+    $cmd = Get-Command $PathOrCommand -ErrorAction SilentlyContinue
+    if ($cmd -and $cmd.Source) {
+        return $cmd.Source
+    }
+
+    throw "PHP nao encontrado em '$PathOrCommand'. Informe o caminho completo do php.exe."
+}
+
 function Stop-And-Remove-Service {
     param([string]$Name, [string]$Nssm)
     $service = Get-Service -Name $Name -ErrorAction SilentlyContinue
@@ -106,6 +121,8 @@ function Configure-ServiceStartup {
     if ($DependencyName) {
         sc.exe config $Name depend= $DependencyName | Out-Null
     }
+    sc.exe failure $Name reset= 60 actions= restart/60000/restart/60000/restart/60000 | Out-Null
+    sc.exe failureflag $Name 1 | Out-Null
 }
 
 function Install-ControlSService {
@@ -123,6 +140,11 @@ function Install-ControlSService {
     Stop-And-Remove-Service -Name $Name -Nssm $Nssm
 
     & $Nssm install $Name $Application | Out-Null
+    # Garante que o caminho do NSSM fique entre aspas no registro.
+    # Sem isso, Windows retorna erro 193 quando o app esta em "C:\Control S Fiscal Hub".
+    reg.exe add "HKLM\SYSTEM\CurrentControlSet\Services\$Name" /v ImagePath /t REG_EXPAND_SZ /d ('"""' + $Nssm + '"""') /f | Out-Null
+    # Grava Application e parametros explicitamente para nao herdar configuracao antiga do NSSM.
+    & $Nssm set $Name Application $Application | Out-Null
     & $Nssm set $Name AppParameters ($Arguments -join " ") | Out-Null
     & $Nssm set $Name DisplayName $Name | Out-Null
     & $Nssm set $Name Description $Description | Out-Null
@@ -139,7 +161,36 @@ function Install-ControlSService {
 
 Assert-Admin
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
+$PhpPath = Resolve-PhpExecutable -PathOrCommand $PhpPath
+& $PhpPath -v | Out-Null
+foreach ($requiredPhpFile in @(
+    (Join-Path $AppRoot "public\index.php"),
+    (Join-Path $AppRoot "scripts\auto_cte_worker.php"),
+    (Join-Path $AppRoot "scripts\auto_nfe_worker.php"),
+    (Join-Path $AppRoot "scripts\auto_nfse_worker.php")
+)) {
+    & $PhpPath -l $requiredPhpFile | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        throw "Falha de sintaxe PHP em $requiredPhpFile"
+    }
+}
 $Nssm = Find-Nssm
+
+# Evita concorrencia entre a versao antiga por tarefas agendadas e os servicos oficiais.
+# O Fiscal Hub deve rodar por servicos do Windows no servidor para reiniciar sozinho.
+foreach ($taskName in @(
+    "Control S Fiscal Hub - Portal",
+    "Control S Fiscal Hub - Worker cte",
+    "Control S Fiscal Hub - Worker nfe",
+    "Control S Fiscal Hub - Worker nfse"
+)) {
+    try {
+        Stop-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue
+        Disable-ScheduledTask -TaskName $taskName -ErrorAction SilentlyContinue | Out-Null
+    } catch {
+    }
+}
+
 $postgreSqlServiceName = Get-PostgreSqlServiceName
 if ($postgreSqlServiceName) {
     Write-Host "Dependencia dos servicos: $postgreSqlServiceName"
@@ -148,7 +199,6 @@ if ($postgreSqlServiceName) {
 }
 $serviceScriptDir = Join-Path $ProjectRoot "scripts\windows\services"
 New-Item -ItemType Directory -Force -Path $serviceScriptDir | Out-Null
-
 foreach ($legacyName in @(
     "${ServicePrefix}Workercte",
     "${ServicePrefix}Workernfe",
@@ -195,6 +245,13 @@ foreach ($worker in $workers.GetEnumerator()) {
         -DependencyName $postgreSqlServiceName
 }
 
+$serviceLogs = @{
+    "${ServicePrefix}Portal" = "service_portal.log"
+    "${ServicePrefix}RoboCTe" = "service_RoboCTe.log"
+    "${ServicePrefix}RoboNFe" = "service_RoboNFe.log"
+    "${ServicePrefix}RoboNFSe" = "service_RoboNFSe.log"
+}
+
 foreach ($serviceName in @("${ServicePrefix}Portal", "${ServicePrefix}RoboCTe", "${ServicePrefix}RoboNFe", "${ServicePrefix}RoboNFSe")) {
     $previousErrorAction = $ErrorActionPreference
     $ErrorActionPreference = "Continue"
@@ -204,7 +261,7 @@ foreach ($serviceName in @("${ServicePrefix}Portal", "${ServicePrefix}RoboCTe", 
     $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
     if (!$service -or $service.Status -ne "Running") {
         Write-Host "Aviso: $serviceName nao ficou em execucao. Retorno: $startOutput" -ForegroundColor Yellow
-        Write-Host "Verifique o log: $(Join-Path $LogDir ('service_' + $serviceName.Replace($ServicePrefix, '') + '.log'))" -ForegroundColor Yellow
+        Write-Host "Verifique o log: $(Join-Path $LogDir $serviceLogs[$serviceName])" -ForegroundColor Yellow
     }
 }
 

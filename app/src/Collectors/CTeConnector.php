@@ -160,7 +160,7 @@ XML;
             return ($nodes && $nodes->length > 0) ? trim((string)$nodes->item(0)?->textContent) : '';
         };
 
-        $statusCancellationEvents = ['110111', '610110'];
+        $statusCancellationEvents = ['110111'];
         $events = $xp->query('//*[local-name()="procEventoCTe" or local-name()="retEventoCTe" or local-name()="eventoCTe"]');
         foreach ($events ?: [] as $event) {
             $eventType = $text('.//*[local-name()="tpEvento"]', $event);

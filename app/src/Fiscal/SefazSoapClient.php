@@ -94,11 +94,16 @@ final class SefazSoapClient
 XML;
         }
 
+        $soapHeader = '';
+        if ($methodName === 'nfeConsultaNF' && preg_match('/<chNFe>(\d{44})<\/chNFe>/', $messageXml, $matches)) {
+            $soapHeader = '<soap12:Header><nfeCabecMsg xmlns="' . $methodNamespace . '"><cUF>' . substr($matches[1], 0, 2) . '</cUF><versaoDados>4.00</versaoDados></nfeCabecMsg></soap12:Header>';
+        }
         return <<<XML
 <?xml version="1.0" encoding="utf-8"?>
 <soap12:Envelope xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
                  xmlns:xsd="http://www.w3.org/2001/XMLSchema"
                  xmlns:soap12="http://www.w3.org/2003/05/soap-envelope">
+  {$soapHeader}
   <soap12:Body>
     <{$methodName} xmlns="{$methodNamespace}">
       <{$messageNodeName}>{$messageXml}</{$messageNodeName}>

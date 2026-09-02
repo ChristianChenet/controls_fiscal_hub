@@ -24,14 +24,14 @@ if ($selectedStatus !== '' && $selectedStatus !== 'not_cancelled' && !in_array($
 }
 $filteredTotal = (int)($totals['total'] ?? 0);
 $documentFilterKeys = [
-    'company_id','doc_type','status','manifestation_status','posted_to_erp','without_referenced_nfe','cte_taker_only','ignore_cfops','entry_only','date_start','date_end',
+    'company_id','doc_type','status','manifestation_status','posted_to_erp','accounting_posted','without_referenced_nfe','cte_taker_only','ignore_cfops','entry_only','date_start','date_end',
     'company_q','number_q','issuer_q','recipient_q','access_key_q','referenced_nfe_q','referenced_number_q','product_q','cfop_q','source_q','q','sort_by','sort_dir',
 ];
 ?>
 <div class="page-header split-header documents-page-header">
     <div>
         <h1>Entradas</h1>
-        <p>Conferência operacional de NF-e e CT-e importados, com filtros, DANFE e exportação dos XMLs.</p>
+        <p>Conferência operacional de NF-e, CT-e e NFS-e importados, com filtros, DANFE/DACTE e exportação dos XMLs.</p>
     </div>
 </div>
 
@@ -57,6 +57,9 @@ $documentFilterKeys = [
         <label>CFOP
             <input type="text" name="cfop_q" placeholder="CFOP do item" value="<?= h((string)($filters['cfop_q'] ?? '')) ?>">
         </label>
+        <label>Origem
+            <input type="text" name="source_q" placeholder="Ex.: nfse_pdf_import" value="<?= h((string)($filters['source_q'] ?? '')) ?>">
+        </label>
         <label class="cfop-ignore-field">Ignorados
             <input type="hidden" name="ignore_cfops" value="0">
             <span class="cfop-ignore-line" title="Quando marcado, a tela oculta documentos com CFOPs ou notas cadastrados como ignorados, pois nao devem entrar na rotina operacional de escrituracao. Clique no texto para gerenciar a lista.">
@@ -67,8 +70,8 @@ $documentFilterKeys = [
         <?= compact_multi_picker('Empresa', 'company_id', $companyOptions, $filters['company_id'] ?? []) ?>
         <label>Tipo
             <select name="doc_type">
-                <option value="">NF-e e CT-e</option>
-                <?php foreach (['NFE' => 'NF-e', 'CTE' => 'CT-e'] as $type => $label): ?>
+                <option value="">NF-e, CT-e e NFS-e</option>
+                <?php foreach (['NFE' => 'NF-e', 'CTE' => 'CT-e', 'NFSE' => 'NFS-e'] as $type => $label): ?>
                     <option value="<?= h($type) ?>" <?= (($filters['doc_type'] ?? '') === $type) ? 'selected' : '' ?>><?= h($label) ?></option>
                 <?php endforeach; ?>
             </select>
@@ -87,6 +90,13 @@ $documentFilterKeys = [
                 <option value="">Todas</option>
                 <option value="1" <?= (($filters['posted_to_erp'] ?? '') === '1') ? 'selected' : '' ?>>Sim</option>
                 <option value="0" <?= (($filters['posted_to_erp'] ?? '') === '0') ? 'selected' : '' ?>>Não</option>
+            </select>
+        </label>
+        <label>Lançada contabilidade
+            <select name="accounting_posted">
+                <option value="">Todas</option>
+                <option value="S" <?= (($filters['accounting_posted'] ?? '') === 'S') ? 'selected' : '' ?>>Sim</option>
+                <option value="N" <?= (($filters['accounting_posted'] ?? '') === 'N') ? 'selected' : '' ?>>Não</option>
             </select>
         </label>
         <label>Vinculo NF-e
@@ -149,6 +159,7 @@ $documentFilterKeys = [
             'nfe_vinculada' => 'NF-e vinculada',
             'numero_referenciado' => 'Numero referenciado',
             'erp' => 'Nota lançada no ERP',
+            'contabilidade' => 'Lançada contabilidade',
             'eventos_informativos' => 'Eventos informativos',
             'emissao' => 'Emissão',
             'valor' => 'Valor',
@@ -182,6 +193,9 @@ $documentFilterKeys = [
         <div class="documents-action-bar">
             <button class="primary button-compact" type="button" data-open-action-modal="manifest">Manifestar selecionados</button>
             <button class="button-compact" type="button" data-check-cancel-queue data-filtered-total="<?= h((string)$filteredTotal) ?>" title="Consulta a situacao na SEFAZ em fila, um documento por vez, e marca como cancelado quando houver retorno oficial de cancelamento.">Verificar cancelamentos</button>
+            <a class="button-link button-compact" href="<?= h(base_url('?page=robot_logs')) ?>">Logs dos Rob&ocirc;s</a>
+            <button class="button-compact" type="button" data-open-accounting-import>Importar planilha contabilidade</button>
+            <button class="button-compact" type="button" data-open-accounting-missing>Contabilidade sem portal</button>
             <button class="button-compact" type="button" data-open-action-modal="ignore" title="Adiciona as notas selecionadas a lista de ignoradas com justificativa e historico de usuario, data e hora.">Ignorar notas</button>
         </div>
     </div>
@@ -233,6 +247,7 @@ $documentFilterKeys = [
                     <th class="resizable" data-column="nfe_vinculada">NF-e vinculada</th>
                     <th class="resizable" data-column="numero_referenciado">Numero referenciado</th>
                     <th class="resizable" data-column="erp">Nota lançada no ERP</th>
+                    <th class="resizable" data-column="contabilidade">Lançada contabilidade</th>
                     <th class="resizable" data-column="eventos_informativos">Eventos informativos</th>
                     <th class="resizable" data-column="emissao">Emissão</th>
                     <th class="resizable" data-column="valor">Valor</th>
@@ -252,6 +267,13 @@ $documentFilterKeys = [
                     <th data-column="nfe_vinculada"><input form="column-filter-form" name="referenced_nfe_q" value="<?= h((string)($filters['referenced_nfe_q'] ?? '')) ?>" placeholder="Filtrar"></th>
                     <th data-column="numero_referenciado"><input form="column-filter-form" name="referenced_number_q" value="<?= h((string)($filters['referenced_number_q'] ?? '')) ?>" placeholder="Filtrar"></th>
                     <th data-column="erp"></th>
+                    <th data-column="contabilidade">
+                        <select form="column-filter-form" name="accounting_posted">
+                            <option value="">Todas</option>
+                            <option value="S" <?= (($filters['accounting_posted'] ?? '') === 'S') ? 'selected' : '' ?>>Sim</option>
+                            <option value="N" <?= (($filters['accounting_posted'] ?? '') === 'N') ? 'selected' : '' ?>>Não</option>
+                        </select>
+                    </th>
                     <th data-column="eventos_informativos"></th>
                     <th data-column="emissao"></th>
                     <th data-column="valor"></th>
@@ -265,13 +287,13 @@ $documentFilterKeys = [
                         </select>
                     </th>
                     <th data-column="origem"><input form="column-filter-form" name="source_q" value="<?= h((string)($filters['source_q'] ?? '')) ?>" placeholder="Filtrar"></th>
-                    <th data-column="acoes"><button form="column-filter-form" class="button-compact">Aplicar</button></th>
+                    <th data-column="acoes"><small class="grid-filter-hint">Filtra ao digitar</small></th>
                 </tr>
             </thead>
             <tbody>
             <?php foreach ($documents as $doc): ?>
                 <tr>
-                    <td><input type="checkbox" name="ids[]" value="<?= h((string)$doc['id']) ?>" data-doc-checkbox data-doc-value="<?= h((string)((float)($doc['total_value'] ?? 0))) ?>"></td>
+                    <td><input type="checkbox" name="ids[]" value="<?= h((string)$doc['id']) ?>" data-doc-checkbox data-doc-type="<?= h(strtoupper((string)($doc['doc_type'] ?? ''))) ?>" data-doc-value="<?= h((string)((float)($doc['total_value'] ?? 0))) ?>"></td>
                     <td data-column="empresa"><strong><?= h((string)$doc['company_name']) ?></strong><br><small><?= h((string)$doc['company_cnpj']) ?></small></td>
                     <td data-column="tipo"><span class="pill"><?= h((string)$doc['doc_type']) ?></span></td>
                     <td data-column="numero"><button type="button" class="link-button doc-products-link" data-document-items="<?= h((string)$doc['id']) ?>"><?= h((string)$doc['number']) ?></button></td>
@@ -281,6 +303,13 @@ $documentFilterKeys = [
                     <td data-column="nfe_vinculada"><small><?= h((string)($doc['referenced_nfe_keys'] ?? '')) ?></small></td>
                     <td data-column="numero_referenciado"><small><?= h((string)($doc['referenced_document_numbers'] ?? '')) ?></small></td>
                     <td data-column="erp"><?= !empty($doc['posted_to_erp']) ? 'Sim' : 'Não' ?></td>
+                    <td data-column="contabilidade" class="accounting-status-cell">
+                        <?php if (($doc['accounting_posted'] ?? 'N') === 'S'): ?>
+                            <button type="button" class="link-button" data-accounting-details="<?= h((string)$doc['id']) ?>">Sim</button>
+                        <?php else: ?>
+                            <span>Não</span>
+                        <?php endif; ?>
+                    </td>
                     <td data-column="eventos_informativos">
                         <?php if ((int)($doc['informative_events_count'] ?? 0) > 0): ?>
                             <strong><?= h((string)$doc['informative_events_count']) ?></strong><br>
@@ -297,12 +326,12 @@ $documentFilterKeys = [
                     <td data-column="acoes" class="row-actions">
                         <a class="row-action" target="_blank" href="<?= h(base_url('?page=view_xml&id=' . $doc['id'])) ?>">XML</a>
                         <button type="button" class="row-action row-action-button" data-document-items="<?= h((string)$doc['id']) ?>">Produtos</button>
-                        <?php if ((string)($doc['status'] ?? '') !== 'apenas_resumo'): ?><button type="button" class="row-action row-action-button" data-document-danfe="<?= h((string)$doc['id']) ?>">Espelho</button><?php endif; ?>
+                        <?php if (in_array(strtoupper((string)($doc['doc_type'] ?? '')), ['NFE', 'CTE', 'NFSE'], true) && (string)($doc['status'] ?? '') !== 'apenas_resumo'): ?><button type="button" class="row-action row-action-button" data-document-danfe="<?= h((string)$doc['id']) ?>">Espelho</button><?php endif; ?>
                     </td>
                 </tr>
             <?php endforeach; ?>
             <?php if (!$documents): ?>
-                <tr><td colspan="17">Nenhuma entrada encontrada.</td></tr>
+                <tr><td colspan="18">Nenhuma entrada encontrada.</td></tr>
             <?php endif; ?>
             </tbody>
         </table>
@@ -483,6 +512,8 @@ $documentFilterKeys = [
                         <th>Produto</th>
                         <th>NCM</th>
                         <th>CFOP</th>
+                        <th>Cidade</th>
+                        <th>UF</th>
                         <th>Qtd</th>
                         <th>Un</th>
                         <th>Unitario</th>
@@ -490,7 +521,7 @@ $documentFilterKeys = [
                     </tr>
                 </thead>
                 <tbody id="document-items-body">
-                    <tr><td colspan="9">Carregando produtos...</td></tr>
+                    <tr><td colspan="11">Carregando produtos...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -505,6 +536,7 @@ $documentFilterKeys = [
                 <small>Confira o espelho antes de imprimir.</small>
             </div>
             <div class="modal-header-actions">
+                <button type="button" class="button-compact" data-copy-document-danfe-link>Copiar link</button>
                 <button type="button" class="primary button-compact" data-print-document-danfe>Imprimir</button>
                 <button type="button" class="modal-close" data-close-document-danfe>&times;</button>
             </div>
@@ -513,8 +545,166 @@ $documentFilterKeys = [
     </div>
 </div>
 
+<div class="modal-backdrop action-modal is-hidden" id="accounting-import-modal" role="dialog" aria-modal="true" aria-labelledby="accounting-import-title">
+    <div class="modal-panel action-modal-panel">
+        <div class="modal-header">
+            <div>
+                <h2 id="accounting-import-title">Importar planilha contabilidade</h2>
+                <small>Importa todas as abas da planilha e marca as entradas localizadas.</small>
+            </div>
+            <button type="button" class="modal-close" data-close-accounting-modal>&times;</button>
+        </div>
+        <div class="form-row two">
+            <label>Tipo da planilha
+                <select id="accounting-doc-type">
+                    <option value="NFSE">NFS-e</option>
+                    <option value="NFE">NF-e</option>
+                    <option value="CTE">CT-e</option>
+                </select>
+            </label>
+            <label>Planilha
+                <input type="file" id="accounting-file" accept=".xls,.xlsx,.xlsm,.csv">
+            </label>
+        </div>
+        <div id="accounting-preview" class="empty-state">Selecione a planilha para configurar o de/para.</div>
+        <div class="queue-progress is-hidden" id="accounting-import-progress" aria-live="polite">
+            <div class="queue-progress-header">
+                <strong id="accounting-import-progress-title">Lendo planilha</strong>
+                <span id="accounting-import-progress-text">0%</span>
+            </div>
+            <div class="queue-progress-bar"><span id="accounting-import-progress-bar"></span></div>
+            <small id="accounting-import-progress-detail">Aguardando arquivo.</small>
+        </div>
+        <div class="form-row three" id="accounting-mapping" hidden>
+            <label data-map-field="access_key">Coluna chave de acesso
+                <select id="accounting-map-access-key"></select>
+            </label>
+            <label data-map-field="number">Coluna número da nota
+                <select id="accounting-map-number"></select>
+            </label>
+            <label data-map-field="party_document">Coluna CPF/CNPJ do prestador
+                <select id="accounting-map-party"></select>
+            </label>
+        </div>
+        <div class="modal-actions">
+            <button type="button" class="button-link button-compact" data-close-accounting-modal>Cancelar</button>
+            <button type="button" class="primary button-compact" id="accounting-import-confirm" disabled>Importar e vincular</button>
+            <button type="button" class="primary button-compact is-hidden" id="accounting-import-done">Concluir</button>
+        </div>
+        <div id="accounting-import-feedback" class="export-feedback" aria-live="polite"></div>
+    </div>
+</div>
+
+<div class="modal-backdrop documents-items-modal is-hidden" id="accounting-details-modal" role="dialog" aria-modal="true" aria-labelledby="accounting-details-title">
+    <div class="modal-panel">
+        <div class="modal-header">
+            <div>
+                <h2 id="accounting-details-title">Lançamento na contabilidade</h2>
+                <small id="accounting-details-subtitle"></small>
+            </div>
+            <button type="button" class="modal-close" data-close-accounting-details>&times;</button>
+        </div>
+        <div class="table-wrap">
+            <table class="table documents-items-table">
+                <thead id="accounting-details-head"><tr><th>Aba</th><th>Linha</th><th>Arquivo</th></tr></thead>
+                <tbody id="accounting-details-body"><tr><td colspan="3">Carregando...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal-backdrop documents-items-modal is-hidden" id="accounting-missing-modal" role="dialog" aria-modal="true" aria-labelledby="accounting-missing-title">
+    <div class="modal-panel">
+        <div class="modal-header">
+            <div>
+                <h2 id="accounting-missing-title">Contabilidade sem portal</h2>
+                <small>Registros importados da planilha que ainda nao encontraram entrada no portal.</small>
+            </div>
+            <button type="button" class="modal-close" data-close-accounting-missing>&times;</button>
+        </div>
+        <div class="form-row two">
+            <label>Tipo
+                <select id="accounting-missing-type">
+                    <option value="">Todos</option>
+                    <option value="NFE">NF-e</option>
+                    <option value="CTE">CT-e</option>
+                    <option value="NFSE">NFS-e</option>
+                </select>
+            </label>
+            <label>Número da nota
+                <input type="text" id="accounting-missing-number" placeholder="Número ou parte">
+            </label>
+            <label>Fornecedor
+                <input type="text" id="accounting-missing-supplier" placeholder="Nome, CPF ou CNPJ">
+            </label>
+            <label class="form-action-label">
+                <span>&nbsp;</span>
+                <button type="button" class="button-compact" id="accounting-missing-refresh">Atualizar lista</button>
+            </label>
+            <label class="form-action-label">
+                <span>&nbsp;</span>
+                <button type="button" class="button-compact" id="accounting-missing-export">Exportar Excel</button>
+            </label>
+            <label class="form-action-label">
+                <span>&nbsp;</span>
+                <button type="button" class="primary button-compact" id="accounting-missing-launch">Lançar no portal</button>
+            </label>
+        </div>
+        <div class="table-wrap">
+            <table class="table documents-items-table">
+                <thead id="accounting-missing-head"><tr><th>Tipo</th><th>Aba</th><th>Linha</th><th>Chave/Número</th><th>Documento</th></tr></thead>
+                <tbody id="accounting-missing-body"><tr><td colspan="5">Carregando...</td></tr></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<div class="modal-backdrop action-modal is-hidden" id="accounting-launch-modal" role="dialog" aria-modal="true" aria-labelledby="accounting-launch-title">
+    <div class="modal-panel action-modal-panel">
+        <div class="modal-header">
+            <div>
+                <h2 id="accounting-launch-title">Lançar no portal pela contabilidade</h2>
+                <small id="accounting-launch-subtitle">Confira o de/para antes de gravar as entradas.</small>
+            </div>
+            <button type="button" class="modal-close" data-close-accounting-launch>&times;</button>
+        </div>
+        <div class="form-row two" id="accounting-launch-mapping">
+            <label data-launch-field="access_key">Coluna chave de acesso
+                <select id="accounting-launch-map-access-key"></select>
+            </label>
+            <label>Coluna número da nota
+                <select id="accounting-launch-map-number"></select>
+            </label>
+            <label>Coluna CPF/CNPJ fornecedor
+                <select id="accounting-launch-map-issuer-document"></select>
+            </label>
+            <label>Coluna nome fornecedor
+                <select id="accounting-launch-map-issuer-name"></select>
+            </label>
+            <label>Coluna data emissão
+                <select id="accounting-launch-map-issue-date"></select>
+            </label>
+            <label>Coluna valor
+                <select id="accounting-launch-map-total-value"></select>
+            </label>
+        </div>
+        <div>
+            <h3 class="section-subtitle">Empresa por aba</h3>
+            <div id="accounting-launch-sheets" class="accounting-launch-sheets"></div>
+        </div>
+        <div class="modal-actions">
+            <button type="button" class="button-link button-compact" data-close-accounting-launch>Cancelar</button>
+            <button type="button" class="primary button-compact" id="accounting-launch-confirm">Lançar selecionadas</button>
+        </div>
+        <div id="accounting-launch-feedback" class="export-feedback" aria-live="polite"></div>
+    </div>
+</div>
+
 <form id="column-filter-form" method="get">
     <input type="hidden" name="page" value="documents">
+    <!-- Filtros digitados diretamente no cabecalho do grid tambem precisam acionar a consulta.
+         Sem este marcador o controller mantinha a tela em modo deferido e parecia que o filtro nao funcionava. -->
+    <input type="hidden" name="load_documents" value="1">
     <input type="hidden" name="q" value="<?= h((string)($filters['q'] ?? '')) ?>">
     <?php $companyFilterValues = is_array($filters['company_id'] ?? '') ? ($filters['company_id'] ?? []) : array_filter([(string)($filters['company_id'] ?? '')]); ?>
     <?php foreach ($companyFilterValues as $companyFilterValue): ?>
@@ -530,11 +720,500 @@ $documentFilterKeys = [
     <input type="hidden" name="date_end" value="<?= h((string)($filters['date_end'] ?? '')) ?>">
     <input type="hidden" name="product_q" value="<?= h((string)($filters['product_q'] ?? '')) ?>">
     <input type="hidden" name="cfop_q" value="<?= h((string)($filters['cfop_q'] ?? '')) ?>">
-    <input type="hidden" name="referenced_number_q" value="<?= h((string)($filters['referenced_number_q'] ?? '')) ?>">
-    <!-- O campo recipient_q vem do input visivel do grid; duplicar como hidden sobrescrevia o valor digitado em Destinatario. -->
+    <!-- Campos filtraveis no cabecalho do grid ficam apenas nos inputs visiveis.
+         Duplicar como hidden pode sobrescrever o valor digitado em alguns navegadores. -->
     <input type="hidden" name="sort_by" value="<?= h((string)($filters['sort_by'] ?? 'issue_date')) ?>">
     <input type="hidden" name="sort_dir" value="<?= h((string)($filters['sort_dir'] ?? 'desc')) ?>">
 </form>
+
+<script src="<?= h(base_url('assets/vendor/xlsx.full.min.js?v=20260902-accounting-import')) ?>"></script>
+<script>
+(function () {
+    var modal = document.getElementById('accounting-import-modal');
+    var openButton = document.querySelector('[data-open-accounting-import]');
+    var fileInput = document.getElementById('accounting-file');
+    var docTypeInput = document.getElementById('accounting-doc-type');
+    var preview = document.getElementById('accounting-preview');
+    var mappingBox = document.getElementById('accounting-mapping');
+    var accessSelect = document.getElementById('accounting-map-access-key');
+    var numberSelect = document.getElementById('accounting-map-number');
+    var partySelect = document.getElementById('accounting-map-party');
+    var confirmButton = document.getElementById('accounting-import-confirm');
+    var doneButton = document.getElementById('accounting-import-done');
+    var feedback = document.getElementById('accounting-import-feedback');
+    var progress = document.getElementById('accounting-import-progress');
+    var progressTitle = document.getElementById('accounting-import-progress-title');
+    var progressText = document.getElementById('accounting-import-progress-text');
+    var progressBar = document.getElementById('accounting-import-progress-bar');
+    var progressDetail = document.getElementById('accounting-import-progress-detail');
+    var csrf = document.querySelector('form.documents-card input[name="_csrf"]');
+    var parsedWorkbook = null;
+    var importFinished = false;
+    if (!modal || !openButton || !fileInput || !docTypeInput || !preview || !mappingBox || !confirmButton || !csrf) return;
+
+    function closeModal() {
+        if (importFinished) {
+            window.location.reload();
+            return;
+        }
+        modal.classList.add('is-hidden');
+    }
+    function openModal() {
+        importFinished = false;
+        if (doneButton) doneButton.classList.add('is-hidden');
+        confirmButton.classList.remove('is-hidden');
+        modal.classList.remove('is-hidden');
+    }
+    function setAccountingProgress(title, done, total, detail) {
+        if (!progress || !progressBar || !progressText || !progressDetail || !progressTitle) return;
+        progress.classList.remove('is-hidden');
+        var pct = total > 0 ? Math.max(0, Math.min(100, Math.round((done / total) * 100))) : 0;
+        progressTitle.textContent = title || 'Processando planilha';
+        progressText.textContent = pct + '%';
+        progressBar.style.width = pct + '%';
+        progressDetail.textContent = detail || '';
+    }
+    function sleep(ms) {
+        return new Promise(function (resolve) { window.setTimeout(resolve, ms); });
+    }
+    function escapeHtml(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, function (char) {
+            return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char] || char;
+        });
+    }
+    function normalizeHeader(value, fallback) {
+        var text = String(value == null ? '' : value).trim();
+        return text || fallback;
+    }
+    function norm(value) {
+        return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+    }
+    function fillSelect(select, headers, preferred) {
+        select.innerHTML = headers.map(function (header) {
+            return '<option value="' + escapeHtml(header) + '">' + escapeHtml(header) + '</option>';
+        }).join('');
+        var preferredNorms = preferred.map(norm);
+        var found = headers.find(function (header) {
+            var h = norm(header);
+            return preferredNorms.some(function (token) { return h.indexOf(token) >= 0; });
+        });
+        if (found) select.value = found;
+    }
+    function refreshMappingVisibility() {
+        var type = docTypeInput.value;
+        mappingBox.hidden = !parsedWorkbook;
+        var accessField = mappingBox.querySelector('[data-map-field="access_key"]');
+        var numberField = mappingBox.querySelector('[data-map-field="number"]');
+        var partyField = mappingBox.querySelector('[data-map-field="party_document"]');
+        if (accessField) {
+            accessField.hidden = type === 'NFSE';
+            accessField.style.display = type === 'NFSE' ? 'none' : '';
+        }
+        if (numberField) {
+            numberField.hidden = type !== 'NFSE';
+            numberField.style.display = type !== 'NFSE' ? 'none' : '';
+        }
+        if (partyField) {
+            partyField.hidden = type !== 'NFSE';
+            partyField.style.display = type !== 'NFSE' ? 'none' : '';
+        }
+    }
+    function renderPreview() {
+        if (!parsedWorkbook) return;
+        var headers = parsedWorkbook.headers;
+        fillSelect(accessSelect, headers, ['CHAVE DE ACESSO', 'CHAVE']);
+        fillSelect(numberSelect, headers, ['NOTA', 'NUMERO', 'NUMERO DA NOTA']);
+        fillSelect(partySelect, headers, ['CNPJ/CPF/CEI/CAEPF', 'CPF/CNPJ', 'CNPJ', 'DOCUMENTO']);
+        refreshMappingVisibility();
+        var rows = parsedWorkbook.sheets.reduce(function (total, sheet) { return total + sheet.rows.length; }, 0);
+        var sheetNames = parsedWorkbook.sheets.map(function (sheet) { return sheet.name + ' (' + sheet.rows.length + ')'; }).join(', ');
+        preview.innerHTML = '<strong>' + rows + ' linha(s)</strong> em ' + parsedWorkbook.sheets.length + ' aba(s): ' + escapeHtml(sheetNames);
+        confirmButton.disabled = rows === 0;
+    }
+    async function parseFile(file) {
+        if (!window.XLSX) throw new Error('Leitor de planilhas nao carregou.');
+        setAccountingProgress('Lendo planilha', 1, 100, 'Abrindo arquivo...');
+        var buffer = await file.arrayBuffer();
+        setAccountingProgress('Lendo planilha', 15, 100, 'Identificando abas...');
+        var workbook = XLSX.read(buffer, {type: 'array', cellDates: false, raw: false});
+        var allHeaders = [];
+        var headerSet = {};
+        var sheets = [];
+        for (var sheetIndex = 0; sheetIndex < workbook.SheetNames.length; sheetIndex++) {
+            var name = workbook.SheetNames[sheetIndex];
+            setAccountingProgress('Lendo planilha', sheetIndex + 1, workbook.SheetNames.length, 'Lendo aba ' + name + '...');
+            await sleep(20);
+            var sheet = workbook.Sheets[name];
+            var matrix = XLSX.utils.sheet_to_json(sheet, {header: 1, defval: '', blankrows: false});
+            if (!matrix.length) continue;
+            var headers = matrix[0].map(function (cell, index) { return normalizeHeader(cell, 'COLUNA_' + (index + 1)); });
+            headers.forEach(function (header) {
+                if (!headerSet[header]) { headerSet[header] = true; allHeaders.push(header); }
+            });
+            var rows = matrix.slice(1).map(function (line, idx) {
+                var row = {_rowNumber: idx + 2};
+                headers.forEach(function (header, colIdx) { row[header] = line[colIdx] == null ? '' : String(line[colIdx]).trim(); });
+                return row;
+            }).filter(function (row) {
+                return Object.keys(row).some(function (key) { return key !== '_rowNumber' && String(row[key] || '').trim() !== ''; });
+            });
+            if (rows.length) sheets.push({name: name, rows: rows});
+        }
+        setAccountingProgress('Planilha lida', 100, 100, 'Configure o de/para e confirme a importacao.');
+        return {headers: allHeaders, sheets: sheets};
+    }
+    fileInput.addEventListener('change', async function () {
+        confirmButton.disabled = true;
+        feedback.textContent = '';
+        parsedWorkbook = null;
+        mappingBox.hidden = true;
+        preview.textContent = 'Lendo planilha...';
+        try {
+            var file = fileInput.files && fileInput.files[0];
+            if (!file) throw new Error('Selecione uma planilha.');
+            parsedWorkbook = await parseFile(file);
+            renderPreview();
+        } catch (error) {
+            preview.textContent = error.message || 'Nao foi possivel ler a planilha.';
+        }
+    });
+    docTypeInput.addEventListener('change', refreshMappingVisibility);
+    confirmButton.addEventListener('click', async function () {
+        if (!parsedWorkbook) return;
+        var type = docTypeInput.value;
+        var mapping = type === 'NFSE'
+            ? {number: numberSelect.value, party_document: partySelect.value}
+            : {access_key: accessSelect.value};
+        if (type === 'NFSE' && (!mapping.number || !mapping.party_document)) {
+            feedback.textContent = 'Informe as colunas de numero e CPF/CNPJ.';
+            return;
+        }
+        if (type !== 'NFSE' && !mapping.access_key) {
+            feedback.textContent = 'Informe a coluna da chave de acesso.';
+            return;
+        }
+        confirmButton.disabled = true;
+        feedback.textContent = 'Importando e vinculando...';
+        try {
+            var file = fileInput.files && fileInput.files[0];
+            var replaceExisting = false;
+            var checkParams = new URLSearchParams();
+            checkParams.set('page', 'documents_accounting_check_file');
+            checkParams.set('doc_type', type);
+            checkParams.set('file_name', file ? file.name : '');
+            var checkResponse = await fetch('?' + checkParams.toString(), {headers: {'Accept': 'application/json'}});
+            var checkData = await checkResponse.json();
+            if (!checkResponse.ok || !checkData.ok) throw new Error((checkData && checkData.message) || 'Falha ao verificar importacao anterior.');
+            if (checkData.exists) {
+                replaceExisting = window.confirm('Esta planilha ja foi importada para este tipo. Deseja excluir os dados anteriores e importar novamente?\\n\\nOK: excluir e importar novamente\\nCancelar: nao importar');
+                if (!replaceExisting) {
+                    feedback.textContent = 'Importacao cancelada. Os dados anteriores foram mantidos.';
+                    confirmButton.disabled = false;
+                    return;
+                }
+            }
+            var batchSize = 800;
+            var batches = [];
+            parsedWorkbook.sheets.forEach(function (sheet) {
+                for (var start = 0; start < sheet.rows.length; start += batchSize) {
+                    batches.push({name: sheet.name, rows: sheet.rows.slice(start, start + batchSize)});
+                }
+            });
+            var totals = {row_count: 0, matched_count: 0, missing_count: 0};
+            for (var i = 0; i < batches.length; i++) {
+                feedback.textContent = 'Importando bloco ' + (i + 1) + ' de ' + batches.length + '...';
+                setAccountingProgress('Importando planilha', i, batches.length, 'Enviando bloco ' + (i + 1) + ' de ' + batches.length + '...');
+                var response = await fetch('?page=documents_accounting_import', {
+                    method: 'POST',
+                    headers: {'Accept': 'application/json', 'Content-Type': 'application/json;charset=UTF-8'},
+                    body: JSON.stringify({_csrf: csrf.value, doc_type: type, file_name: file ? file.name : '', mapping: mapping, sheets: [batches[i]], replace_existing: i === 0 && replaceExisting, append_existing: i > 0})
+                });
+                var rawResponse = await response.text();
+                var data = {};
+                try {
+                    data = rawResponse ? JSON.parse(rawResponse) : {};
+                } catch (parseError) {
+                    throw new Error('O servidor nao devolveu uma resposta valida neste bloco. Tente novamente; se persistir, reduza o filtro ou avise o suporte.');
+                }
+                if (!response.ok || !data.ok) throw new Error((data && data.message) || 'Falha ao importar contabilidade.');
+                totals.row_count += Number(data.row_count || 0);
+                totals.matched_count += Number(data.matched_count || 0);
+                totals.missing_count += Number(data.missing_count || 0);
+            }
+            setAccountingProgress('Importacao concluida', batches.length, batches.length, 'Clique em Concluir para atualizar a tela.');
+            feedback.textContent = 'Importacao concluida: ' + totals.row_count + ' linha(s), ' + totals.matched_count + ' entrada(s) localizada(s), ' + totals.missing_count + ' sem vinculo no portal.';
+            importFinished = true;
+            confirmButton.classList.add('is-hidden');
+            if (doneButton) doneButton.classList.remove('is-hidden');
+        } catch (error) {
+            feedback.textContent = error.message || 'Erro ao importar contabilidade.';
+            confirmButton.disabled = false;
+        }
+    });
+    if (doneButton) doneButton.addEventListener('click', function () { window.location.reload(); });
+    openButton.addEventListener('click', openModal);
+    document.querySelectorAll('[data-close-accounting-modal]').forEach(function (button) { button.addEventListener('click', closeModal); });
+    modal.addEventListener('click', function (event) { if (event.target === modal) closeModal(); });
+})();
+</script>
+
+<script>
+(function () {
+    var detailsModal = document.getElementById('accounting-details-modal');
+    var detailsHead = document.getElementById('accounting-details-head');
+    var detailsBody = document.getElementById('accounting-details-body');
+    var detailsSubtitle = document.getElementById('accounting-details-subtitle');
+    var missingModal = document.getElementById('accounting-missing-modal');
+    var missingHead = document.getElementById('accounting-missing-head');
+    var missingBody = document.getElementById('accounting-missing-body');
+    var missingType = document.getElementById('accounting-missing-type');
+    var missingNumber = document.getElementById('accounting-missing-number');
+    var missingSupplier = document.getElementById('accounting-missing-supplier');
+    var missingRefresh = document.getElementById('accounting-missing-refresh');
+    var missingExport = document.getElementById('accounting-missing-export');
+    var missingLaunch = document.getElementById('accounting-missing-launch');
+    var launchModal = document.getElementById('accounting-launch-modal');
+    var launchSubtitle = document.getElementById('accounting-launch-subtitle');
+    var launchAccessKey = document.getElementById('accounting-launch-map-access-key');
+    var launchNumber = document.getElementById('accounting-launch-map-number');
+    var launchIssuerDocument = document.getElementById('accounting-launch-map-issuer-document');
+    var launchIssuerName = document.getElementById('accounting-launch-map-issuer-name');
+    var launchIssueDate = document.getElementById('accounting-launch-map-issue-date');
+    var launchTotalValue = document.getElementById('accounting-launch-map-total-value');
+    var launchSheets = document.getElementById('accounting-launch-sheets');
+    var launchConfirm = document.getElementById('accounting-launch-confirm');
+    var launchFeedback = document.getElementById('accounting-launch-feedback');
+    var csrf = document.querySelector('form.documents-card input[name="_csrf"]');
+    var companyOptions = <?= json_encode($companyOptions, JSON_UNESCAPED_UNICODE) ?>;
+    var missingEntries = [];
+    var launchEntries = [];
+    if (!detailsModal || !detailsBody || !missingModal || !missingBody) return;
+    function escapeHtml(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, function (char) {
+            return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char] || char;
+        });
+    }
+    function norm(value) {
+        return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+    }
+    function fillLaunchSelect(select, headers, preferred, allowEmpty) {
+        if (!select) return;
+        var options = allowEmpty ? [''] : [];
+        options = options.concat(headers);
+        select.innerHTML = options.map(function (header) {
+            return '<option value="' + escapeHtml(header) + '">' + escapeHtml(header || 'Selecionar') + '</option>';
+        }).join('');
+        var preferredNorms = preferred.map(norm);
+        var found = headers.find(function (header) {
+            var h = norm(header);
+            return preferredNorms.some(function (token) { return h.indexOf(token) >= 0; });
+        });
+        if (found) select.value = found;
+    }
+    function selectedMissingEntries() {
+        var ids = Array.from(document.querySelectorAll('[data-accounting-missing-check]:checked')).map(function (input) {
+            return String(input.value || '');
+        });
+        return missingEntries.filter(function (entry) { return ids.indexOf(String(entry.id)) >= 0; });
+    }
+    function rawHeaders(entries) {
+        var headers = [];
+        entries.forEach(function (entry) {
+            Object.keys(entry.raw || {}).forEach(function (key) {
+                if (key !== '_rowNumber' && headers.indexOf(key) < 0) headers.push(key);
+            });
+        });
+        return headers;
+    }
+    function renderHead(head, fixed, headers) {
+        if (!head) return;
+        head.innerHTML = '<tr>' + fixed.concat(headers).map(function (header) {
+            return '<th>' + escapeHtml(header) + '</th>';
+        }).join('') + '</tr>';
+    }
+    function renderRawCells(raw, headers) {
+        return headers.map(function (header) {
+            return '<td>' + escapeHtml((raw || {})[header] || '') + '</td>';
+        }).join('');
+    }
+    function closeDetails() { detailsModal.classList.add('is-hidden'); }
+    function closeMissing() { missingModal.classList.add('is-hidden'); }
+    function closeLaunch() { if (launchModal) launchModal.classList.add('is-hidden'); }
+    document.querySelectorAll('[data-accounting-details]').forEach(function (button) {
+        button.addEventListener('click', async function () {
+            detailsModal.classList.remove('is-hidden');
+            detailsBody.innerHTML = '<tr><td colspan="4">Carregando...</td></tr>';
+            try {
+                var response = await fetch('?page=documents_accounting_entries&id=' + encodeURIComponent(button.getAttribute('data-accounting-details') || ''), {headers: {'Accept': 'application/json'}});
+                var data = await response.json();
+                if (!response.ok || !data.ok) throw new Error((data && data.message) || 'Falha ao carregar detalhe.');
+                var doc = data.document || {};
+                detailsSubtitle.textContent = [doc.doc_type, doc.number, doc.issuer_name].filter(Boolean).join(' | ');
+                var entries = data.entries || [];
+                var headers = rawHeaders(entries);
+                renderHead(detailsHead, ['Aba', 'Linha', 'Arquivo'], headers);
+                detailsBody.innerHTML = entries.length ? entries.map(function (entry) {
+                    return '<tr><td>' + escapeHtml(entry.sheet_name) + '</td><td>' + escapeHtml(entry.row_number) + '</td><td>' + escapeHtml(entry.file_name) + '</td>' + renderRawCells(entry.raw, headers) + '</tr>';
+                }).join('') : '<tr><td colspan="3">Nenhum detalhe encontrado.</td></tr>';
+            } catch (error) {
+                detailsBody.innerHTML = '<tr><td colspan="3">' + escapeHtml(error.message || 'Erro ao carregar detalhe.') + '</td></tr>';
+            }
+        });
+    });
+    async function loadMissing() {
+        missingModal.classList.remove('is-hidden');
+        missingBody.innerHTML = '<tr><td colspan="5">Carregando...</td></tr>';
+        try {
+            var params = new URLSearchParams();
+            params.set('page', 'documents_accounting_missing');
+            if (missingType && missingType.value) params.set('doc_type', missingType.value);
+            if (missingNumber && missingNumber.value) params.set('number_q', missingNumber.value);
+            if (missingSupplier && missingSupplier.value) params.set('supplier_q', missingSupplier.value);
+            var response = await fetch('?' + params.toString(), {headers: {'Accept': 'application/json'}});
+            var data = await response.json();
+            if (!response.ok || !data.ok) throw new Error((data && data.message) || 'Falha ao carregar registros.');
+            var entries = data.entries || [];
+            missingEntries = entries;
+            var headers = rawHeaders(entries);
+            if (missingHead) {
+                missingHead.innerHTML = '<tr><th><input type="checkbox" data-accounting-missing-check-all></th>' + ['Tipo', 'Aba', 'Linha', 'Chave/Número', 'Documento'].concat(headers).map(function (header) {
+                    return '<th>' + escapeHtml(header) + '</th>';
+                }).join('') + '</tr>';
+                var checkAll = missingHead.querySelector('[data-accounting-missing-check-all]');
+                if (checkAll) {
+                    checkAll.addEventListener('change', function () {
+                        document.querySelectorAll('[data-accounting-missing-check]').forEach(function (input) { input.checked = checkAll.checked; });
+                    });
+                }
+            }
+            missingBody.innerHTML = entries.length ? entries.map(function (entry) {
+                var key = entry.access_key || entry.document_number || '';
+                return '<tr><td><input type="checkbox" data-accounting-missing-check value="' + escapeHtml(entry.id) + '"></td><td>' + escapeHtml(entry.doc_type) + '</td><td>' + escapeHtml(entry.sheet_name) + '</td><td>' + escapeHtml(entry.row_number) + '</td><td>' + escapeHtml(key) + '</td><td>' + escapeHtml(entry.party_document || '') + '</td>' + renderRawCells(entry.raw, headers) + '</tr>';
+            }).join('') : '<tr><td colspan="6">Nenhum registro pendente encontrado.</td></tr>';
+        } catch (error) {
+            missingBody.innerHTML = '<tr><td colspan="6">' + escapeHtml(error.message || 'Erro ao carregar registros.') + '</td></tr>';
+        }
+    }
+    function exportMissing() {
+        var params = new URLSearchParams();
+        params.set('page', 'documents_accounting_missing_export');
+        if (missingType && missingType.value) params.set('doc_type', missingType.value);
+        if (missingNumber && missingNumber.value) params.set('number_q', missingNumber.value);
+        if (missingSupplier && missingSupplier.value) params.set('supplier_q', missingSupplier.value);
+        window.location.href = '?' + params.toString();
+    }
+    function openLaunch() {
+        launchEntries = selectedMissingEntries();
+        if (!launchEntries.length) {
+            alert('Selecione ao menos uma nota para lancar no portal.');
+            return;
+        }
+        var types = Array.from(new Set(launchEntries.map(function (entry) { return String(entry.doc_type || '').toUpperCase(); })));
+        if (types.length > 1) {
+            alert('Selecione notas de apenas um tipo por lancamento.');
+            return;
+        }
+        var headers = rawHeaders(launchEntries);
+        fillLaunchSelect(launchAccessKey, headers, ['CHAVE DE ACESSO', 'CHAVE'], true);
+        fillLaunchSelect(launchNumber, headers, ['NOTA', 'NUMERO', 'NUMERO DA NOTA'], false);
+        fillLaunchSelect(launchIssuerDocument, headers, ['CNPJ/CPF/CEI/CAEPF', 'CPF/CNPJ', 'CNPJ', 'DOCUMENTO'], false);
+        fillLaunchSelect(launchIssuerName, headers, ['FORNECEDOR', 'PRESTADOR', 'RAZAO SOCIAL', 'NOME'], true);
+        fillLaunchSelect(launchIssueDate, headers, ['DATA EMISSAO', 'EMISSAO', 'DATA'], true);
+        fillLaunchSelect(launchTotalValue, headers, ['VALOR CONTABIL', 'VALOR', 'TOTAL'], true);
+        var accessField = launchModal ? launchModal.querySelector('[data-launch-field="access_key"]') : null;
+        if (accessField) accessField.style.display = types[0] === 'NFSE' ? 'none' : '';
+        if (launchSubtitle) launchSubtitle.textContent = launchEntries.length + ' nota(s) selecionada(s) para ' + types[0] + '.';
+        var sheets = Array.from(new Set(launchEntries.map(function (entry) { return String(entry.sheet_name || ''); })));
+        if (launchSheets) {
+            launchSheets.innerHTML = sheets.map(function (sheet) {
+                var options = '<option value="">Selecionar empresa</option>' + companyOptions.map(function (company) {
+                    var label = company.label || '';
+                    var sheetNorm = norm(sheet);
+                    var labelNorm = norm(label);
+                    var selected = (sheetNorm.indexOf('MATRIZ') >= 0 && label.indexOf('05102155000152') >= 0)
+                        || (sheetNorm.indexOf('MARINGA') >= 0 && label.indexOf('05102155000152') >= 0)
+                        || (sheetNorm.indexOf('BATAGUASSU') >= 0 && label.indexOf('05102155000586') >= 0)
+                        || (sheetNorm.indexOf('FOZ') >= 0 && label.indexOf('05102155000403') >= 0)
+                        || (sheetNorm.indexOf('CASCAVEL') >= 0 && label.indexOf('05102155000667') >= 0)
+                        || (sheetNorm.indexOf('CURITIBA') >= 0 && label.indexOf('05102155000233') >= 0)
+                        || (labelNorm.indexOf(sheetNorm) >= 0 && sheetNorm !== '');
+                    return '<option value="' + escapeHtml(company.value) + '"' + (selected ? ' selected' : '') + '>' + escapeHtml(label) + '</option>';
+                }).join('');
+                return '<label>' + escapeHtml(sheet || 'Sem aba') + '<select data-accounting-launch-sheet="' + escapeHtml(sheet) + '">' + options + '</select></label>';
+            }).join('');
+        }
+        if (launchFeedback) launchFeedback.textContent = '';
+        if (launchModal) launchModal.classList.remove('is-hidden');
+    }
+    async function confirmLaunch() {
+        if (!launchEntries.length || !csrf || !launchConfirm) return;
+        var sheetCompanies = {};
+        var missingCompany = false;
+        document.querySelectorAll('[data-accounting-launch-sheet]').forEach(function (select) {
+            var sheet = select.getAttribute('data-accounting-launch-sheet') || '';
+            sheetCompanies[sheet] = select.value;
+            if (!select.value) missingCompany = true;
+        });
+        if (missingCompany) {
+            if (launchFeedback) launchFeedback.textContent = 'Informe a empresa de todas as abas selecionadas.';
+            return;
+        }
+        var type = String(launchEntries[0].doc_type || '').toUpperCase();
+        var mapping = {
+            access_key: launchAccessKey ? launchAccessKey.value : '',
+            number: launchNumber ? launchNumber.value : '',
+            issuer_document: launchIssuerDocument ? launchIssuerDocument.value : '',
+            issuer_name: launchIssuerName ? launchIssuerName.value : '',
+            issue_date: launchIssueDate ? launchIssueDate.value : '',
+            total_value: launchTotalValue ? launchTotalValue.value : ''
+        };
+        if (type !== 'NFSE' && !mapping.access_key) {
+            if (launchFeedback) launchFeedback.textContent = 'Informe a coluna de chave de acesso.';
+            return;
+        }
+        if (type === 'NFSE' && (!mapping.number || !mapping.issuer_document)) {
+            if (launchFeedback) launchFeedback.textContent = 'Informe numero da nota e CPF/CNPJ fornecedor.';
+            return;
+        }
+        launchConfirm.disabled = true;
+        if (launchFeedback) launchFeedback.textContent = 'Lancando notas no portal...';
+        try {
+            var response = await fetch('?page=documents_accounting_launch', {
+                method: 'POST',
+                headers: {'Accept': 'application/json', 'Content-Type': 'application/json;charset=UTF-8'},
+                body: JSON.stringify({
+                    _csrf: csrf.value,
+                    entry_ids: launchEntries.map(function (entry) { return entry.id; }),
+                    mapping: mapping,
+                    sheet_companies: sheetCompanies
+                })
+            });
+            var data = await response.json();
+            if (!response.ok || !data.ok) throw new Error((data && data.message) || 'Falha ao lancar no portal.');
+            if (launchFeedback) launchFeedback.textContent = 'Concluido: ' + (data.created_count || 0) + ' criada(s), ' + (data.linked_count || 0) + ' ja existente(s) vinculada(s), ' + (data.skipped_count || 0) + ' ignorada(s).';
+            await loadMissing();
+            window.setTimeout(function () { closeLaunch(); }, 900);
+        } catch (error) {
+            if (launchFeedback) launchFeedback.textContent = error.message || 'Erro ao lancar no portal.';
+        } finally {
+            launchConfirm.disabled = false;
+        }
+    }
+    document.querySelectorAll('[data-open-accounting-missing]').forEach(function (button) { button.addEventListener('click', loadMissing); });
+    if (missingRefresh) missingRefresh.addEventListener('click', loadMissing);
+    if (missingExport) missingExport.addEventListener('click', exportMissing);
+    if (missingLaunch) missingLaunch.addEventListener('click', openLaunch);
+    if (launchConfirm) launchConfirm.addEventListener('click', confirmLaunch);
+    if (missingNumber) missingNumber.addEventListener('keydown', function (event) { if (event.key === 'Enter') { event.preventDefault(); loadMissing(); } });
+    if (missingSupplier) missingSupplier.addEventListener('keydown', function (event) { if (event.key === 'Enter') { event.preventDefault(); loadMissing(); } });
+    document.querySelectorAll('[data-close-accounting-details]').forEach(function (button) { button.addEventListener('click', closeDetails); });
+    document.querySelectorAll('[data-close-accounting-missing]').forEach(function (button) { button.addEventListener('click', closeMissing); });
+    document.querySelectorAll('[data-close-accounting-launch]').forEach(function (button) { button.addEventListener('click', closeLaunch); });
+    detailsModal.addEventListener('click', function (event) { if (event.target === detailsModal) closeDetails(); });
+    missingModal.addEventListener('click', function (event) { if (event.target === missingModal) closeMissing(); });
+    if (launchModal) launchModal.addEventListener('click', function (event) { if (event.target === launchModal) closeLaunch(); });
+})();
+</script>
 
 <script>
 (function () {
@@ -551,6 +1230,12 @@ $documentFilterKeys = [
     }
     function selectedIds() {
         return Array.from(document.querySelectorAll('[data-doc-checkbox]:checked')).map(function (input) { return input.value; }).filter(Boolean);
+    }
+    function selectedNfeConsultaCount() {
+        return Array.from(document.querySelectorAll('[data-doc-checkbox]:checked')).filter(function (input) {
+            var type = String(input.getAttribute('data-doc-type') || '').toUpperCase();
+            return type === 'NFE' || type === 'NFCE';
+        }).length;
     }
     async function filteredIds() {
         var params = new URLSearchParams(window.location.search);
@@ -576,11 +1261,22 @@ $documentFilterKeys = [
             alert('Selecione ao menos uma entrada.');
             return;
         }
+        var nfeConsultaCount = selectedNfeConsultaCount();
+        if (nfeConsultaCount > 1) {
+            alert('A verifica\u00e7\u00e3o manual de cancelamento de NF-e/NFC-e deve ser feita uma nota por vez. Desmarque as notas adicionais e tente novamente. A consulta em lote permanece dispon\u00edvel para CT-e e NFS-e.');
+            return;
+        }
         button.disabled = true;
         modal.classList.remove('is-hidden');
         try {
             var visibleIds = pageIds();
             var filteredTotal = Number(button.getAttribute('data-filtered-total') || 0);
+            if (nfeConsultaCount > 0 && visibleIds.length > 0 && ids.length === visibleIds.length && filteredTotal > ids.length) {
+                modal.classList.add('is-hidden');
+                button.disabled = false;
+                alert('Para NF-e/NFC-e, a verifica\u00e7\u00e3o manual\u00a0\u00e9 permitida somente para uma nota por vez. Refine o filtro para uma \u00fanica nota e selecione apenas essa nota. CT-e e NFS-e podem ser verificados em lote.');
+                return;
+            }
             if (visibleIds.length > 0 && ids.length === visibleIds.length && filteredTotal > ids.length) {
                 var useAll = confirm('Você marcou todos os documentos desta página. Deseja verificar todos os ' + filteredTotal + ' documento(s) do filtro atual?\\n\\nOK: todos do filtro\\nCancelar: somente os selecionados da página');
                 if (useAll) {
@@ -596,6 +1292,7 @@ $documentFilterKeys = [
         setProgress(0, ids.length, 'Iniciando fila de consulta...');
         var cancelled = 0;
         var errors = 0;
+        var scheduled = 0;
         for (var i = 0; i < ids.length; i++) {
             var body = new URLSearchParams();
             body.set('_csrf', csrf.value);
@@ -609,13 +1306,17 @@ $documentFilterKeys = [
                 var data = await response.json();
                 if (!response.ok || !data.ok) throw new Error((data && data.message) || 'Falha ao consultar documento.');
                 if (data.cancelled) cancelled++;
-                setProgress(i + 1, ids.length, data.message || 'Consulta concluida.');
+                if (data.queue_status === 'retry' || data.queue_status === 'pending' || data.queue_status === 'running') scheduled++;
+                if (data.queue_status === 'failed') errors++;
+                var progressMessage = data.message || 'Consulta concluida.';
+                if (data.next_attempt_at) progressMessage += ' | Nova tentativa: ' + data.next_attempt_at;
+                setProgress(i + 1, ids.length, progressMessage);
             } catch (error) {
                 errors++;
                 setProgress(i + 1, ids.length, error.message || 'Erro ao consultar documento.');
             }
         }
-        detail.textContent = 'Fila concluida: ' + ids.length + ' consultado(s), ' + cancelled + ' cancelado(s), ' + errors + ' erro(s). Atualizando a tela...';
+        detail.textContent = 'Fila concluida: ' + ids.length + ' consultado(s), ' + cancelled + ' cancelado(s), ' + scheduled + ' reagendado(s), ' + errors + ' erro(s). Atualizando a tela...';
         setTimeout(function () { window.location.reload(); }, 900);
     });
 })();
@@ -626,8 +1327,65 @@ $documentFilterKeys = [
     var form = document.querySelector('form.documents-filter');
     var modal = document.getElementById('documents-loading-modal');
     if (!form || !modal) return;
+    function syncGridFilters() {
+        var gridForm = document.getElementById('column-filter-form');
+        if (!gridForm) return;
+        var fields = ['company_q', 'number_q', 'issuer_q', 'recipient_q', 'access_key_q', 'referenced_nfe_q', 'referenced_number_q', 'manifestation_status', 'source_q', 'accounting_posted'];
+        fields.forEach(function (name) {
+            var source = gridForm.querySelector('[name="' + name + '"]');
+            if (!source || source.value === '') return;
+            var target = form.querySelector('[name="' + name + '"]');
+            if (!target) {
+                target = document.createElement('input');
+                target.type = 'hidden';
+                target.name = name;
+                form.appendChild(target);
+            }
+            target.value = source.value;
+        });
+    }
     form.addEventListener('submit', function () {
+        syncGridFilters();
         modal.classList.remove('is-hidden');
+    });
+})();
+</script>
+
+<script>
+(function () {
+    var form = document.getElementById('column-filter-form');
+    var modal = document.getElementById('documents-loading-modal');
+    if (!form) return;
+
+    var timer = null;
+    var delay = 650;
+    var controls = document.querySelectorAll('.grid-filters input[form="column-filter-form"], .grid-filters select[form="column-filter-form"]');
+
+    function submitGridFilter() {
+        if (modal) modal.classList.remove('is-hidden');
+        if (typeof form.requestSubmit === 'function') {
+            form.requestSubmit();
+            return;
+        }
+        form.submit();
+    }
+
+    function scheduleSubmit() {
+        window.clearTimeout(timer);
+        timer = window.setTimeout(submitGridFilter, delay);
+    }
+
+    controls.forEach(function (control) {
+        // Filtros do cabecalho consultam o servidor automaticamente para respeitar totais,
+        // paginacao e busca parcial por texto, sem depender de botao Aplicar.
+        control.addEventListener(control.tagName === 'SELECT' ? 'change' : 'input', scheduleSubmit);
+        control.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                window.clearTimeout(timer);
+                submitGridFilter();
+            }
+        });
     });
 })();
 </script>
@@ -698,14 +1456,17 @@ $documentFilterKeys = [
 (function () {
     var modal = document.getElementById('document-danfe-modal');
     var frame = document.getElementById('document-danfe-frame');
+    var currentLink = '';
     if (!modal || !frame) return;
     function closeModal() {
         modal.classList.add('is-hidden');
         frame.removeAttribute('src');
+        currentLink = '';
     }
     function openModal(documentId) {
         modal.classList.remove('is-hidden');
-        frame.src = '?page=documents_danfe&id=' + encodeURIComponent(documentId);
+        currentLink = new URL('?page=documents_danfe&id=' + encodeURIComponent(documentId), window.location.href).href;
+        frame.src = currentLink;
     }
     document.querySelectorAll('[data-document-danfe]').forEach(function (button) {
         button.addEventListener('click', function () {
@@ -718,6 +1479,19 @@ $documentFilterKeys = [
     document.querySelectorAll('[data-print-document-danfe]').forEach(function (button) {
         button.addEventListener('click', function () {
             if (frame.contentWindow) frame.contentWindow.print();
+        });
+    });
+    document.querySelectorAll('[data-copy-document-danfe-link]').forEach(function (button) {
+        button.addEventListener('click', async function () {
+            if (!currentLink) return;
+            try {
+                await navigator.clipboard.writeText(currentLink);
+                var original = button.textContent;
+                button.textContent = 'Link copiado';
+                window.setTimeout(function () { button.textContent = original; }, 1400);
+            } catch (error) {
+                window.prompt('Copie o link do espelho:', currentLink);
+            }
         });
     });
     modal.addEventListener('click', function (event) {
@@ -745,7 +1519,7 @@ $documentFilterKeys = [
     }
     function openModal(documentId) {
         modal.classList.remove('is-hidden');
-        body.innerHTML = '<tr><td colspan="9">Carregando produtos...</td></tr>';
+        body.innerHTML = '<tr><td colspan="11">Carregando produtos...</td></tr>';
         subtitle.textContent = '';
         fetch('?page=document_items&id=' + encodeURIComponent(documentId), {headers: {'Accept': 'application/json'}})
             .then(function (response) {
@@ -757,7 +1531,7 @@ $documentFilterKeys = [
                 subtitle.textContent = [doc.doc_type, doc.number, doc.issuer_name, doc.total_value].filter(Boolean).join(' | ');
                 var items = data.items || [];
                 if (!items.length) {
-                    body.innerHTML = '<tr><td colspan="9">Nenhum produto encontrado no XML desta entrada.</td></tr>';
+                    body.innerHTML = '<tr><td colspan="11">Nenhum produto encontrado no XML desta entrada.</td></tr>';
                     return;
                 }
                 body.innerHTML = items.map(function (item) {
@@ -767,6 +1541,8 @@ $documentFilterKeys = [
                         + '<td><strong>' + escapeHtml(item.product_name) + '</strong></td>'
                         + '<td>' + escapeHtml(item.ncm) + '</td>'
                         + '<td>' + escapeHtml(item.cfop) + '</td>'
+                        + '<td>' + escapeHtml(item.city) + '</td>'
+                        + '<td>' + escapeHtml(item.uf) + '</td>'
                         + '<td>' + escapeHtml(item.quantity) + '</td>'
                         + '<td>' + escapeHtml(item.unit) + '</td>'
                         + '<td>' + escapeHtml(item.unit_amount) + '</td>'
@@ -775,7 +1551,7 @@ $documentFilterKeys = [
                 }).join('');
             })
             .catch(function (error) {
-                body.innerHTML = '<tr><td colspan="9">' + escapeHtml(error.message || 'Erro ao carregar produtos.') + '</td></tr>';
+                body.innerHTML = '<tr><td colspan="11">' + escapeHtml(error.message || 'Erro ao carregar produtos.') + '</td></tr>';
             });
     }
     document.querySelectorAll('[data-document-items]').forEach(function (button) {
@@ -800,6 +1576,12 @@ $documentFilterKeys = [
     var feedback = document.getElementById('local-export-feedback');
     function selectedIds() {
         return Array.from(document.querySelectorAll('[data-doc-checkbox]:checked')).map(function (input) { return input.value; }).filter(Boolean);
+    }
+    function selectedNfeCount() {
+        return Array.from(document.querySelectorAll('[data-doc-checkbox]:checked')).filter(function (input) {
+            var type = String(input.getAttribute('data-doc-type') || '').toUpperCase();
+            return type === 'NFE' || type === 'NFCE';
+        }).length;
     }
     function show(message, type) {
         if (!feedback) return;

@@ -329,21 +329,41 @@ XML;
 
     private function consultaProtocoloUrl(string $accessKey): string
     {
-        $configured = trim((string)($this->config['nfe_consulta_protocolo_url'] ?? ''));
-        if ($configured !== '') {
-            return $configured;
-        }
         $environment = (string)($this->config['sefaz_environment'] ?? '1');
         $uf = substr($accessKey, 0, 2);
+        $configured = trim((string)($this->config['nfe_consulta_protocolo_url'] ?? ''));
+        if ($environment !== '1' && $configured !== '') {
+            return $configured;
+        }
         $production = [
+            '12' => 'https://nfe.svrs.rs.gov.br/ws/NfeConsulta/NfeConsulta4.asmx',
+            '13' => 'https://nfe.sefaz.am.gov.br/services2/services/NfeConsulta4',
+            '16' => 'https://nfe.svrs.rs.gov.br/ws/NfeConsulta/NfeConsulta4.asmx',
+            '17' => 'https://nfe.svrs.rs.gov.br/ws/NfeConsulta/NfeConsulta4.asmx',
+            '21' => 'https://www.sefazvirtual.fazenda.gov.br/NFeConsultaProtocolo4/NFeConsultaProtocolo4.asmx',
+            '23' => 'https://nfe.svrs.rs.gov.br/ws/NfeConsulta/NfeConsulta4.asmx',
+            '24' => 'https://nfe.svrs.rs.gov.br/ws/NfeConsulta/NfeConsulta4.asmx',
+            '25' => 'https://nfe.svrs.rs.gov.br/ws/NfeConsulta/NfeConsulta4.asmx',
+            '26' => 'https://nfe.sefaz.pe.gov.br/nfe-service/services/NFeConsultaProtocolo4',
+            '27' => 'https://nfe.svrs.rs.gov.br/ws/NfeConsulta/NfeConsulta4.asmx',
+            '28' => 'https://nfe.svrs.rs.gov.br/ws/NfeConsulta/NfeConsulta4.asmx',
+            '29' => 'https://nfe.sefaz.ba.gov.br/webservices/NFeConsultaProtocolo4/NFeConsultaProtocolo4.asmx',
+            '31' => 'https://nfe.fazenda.mg.gov.br/nfe2/services/NFeConsultaProtocolo4',
+            '32' => 'https://nfe.svrs.rs.gov.br/ws/NfeConsulta/NfeConsulta4.asmx',
+            '35' => 'https://nfe.fazenda.sp.gov.br/ws/nfeconsultaprotocolo4.asmx',
             '41' => 'https://nfe.sefa.pr.gov.br/nfe/NFeConsultaProtocolo4',
+            '42' => 'https://nfe.svrs.rs.gov.br/ws/NfeConsulta/NfeConsulta4.asmx',
+            '43' => 'https://nfe.sefazrs.rs.gov.br/ws/NfeConsulta/NfeConsulta4.asmx',
+            '50' => 'https://nfe.sefaz.ms.gov.br/ws/NFeConsultaProtocolo4',
+            '51' => 'https://nfe.sefaz.mt.gov.br/nfews/v2/services/NfeConsulta4',
+            '52' => 'https://nfe.sefaz.go.gov.br/nfe/services/NFeConsultaProtocolo4',
+            '53' => 'https://nfe.svrs.rs.gov.br/ws/NfeConsulta/NfeConsulta4.asmx',
         ];
-        $homologation = [
-            '41' => 'https://homologacao.nfe.sefa.pr.gov.br/nfe/NFeConsultaProtocolo4',
-        ];
-        $map = $environment === '2' ? $homologation : $production;
-        if (!empty($map[$uf])) {
-            return $map[$uf];
+        if (!empty($production[$uf])) {
+            return $production[$uf];
+        }
+        if ($configured !== '') {
+            return $configured;
         }
         throw new \RuntimeException('URL de consulta de protocolo NF-e não configurada para a UF da chave ' . $uf . '. Configure NFE_CONSULTA_PROTOCOLO_URL no ambiente.');
     }
