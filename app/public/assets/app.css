@@ -1721,18 +1721,11 @@ textarea{
 .queue-progress-bar{height:10px;background:#dceee4;border-radius:999px;overflow:hidden}
 .queue-progress-bar span{display:block;height:100%;width:0;background:linear-gradient(90deg,#20c45a,#0b8f3a);transition:width .18s ease}
 .queue-progress small{color:#536579}
-.documents-table th[data-column="contabilidade"],
-.documents-table td[data-column="contabilidade"],
-.documents-table .grid-filters th[data-column="contabilidade"]{
+.documents-table td[data-column="contabilidade"]{
   text-align:center!important;
 }
 .documents-table td[data-column="contabilidade"]{
   vertical-align:middle;
-}
-.documents-table [data-column="contabilidade"] select{
-  display:block;
-  margin-left:auto;
-  margin-right:auto;
 }
 .documents-table td[data-column="contabilidade"] .link-button{
   display:inline-flex;
@@ -1740,7 +1733,9 @@ textarea{
   margin-left:auto;
   margin-right:auto;
 }
-.accounting-launch-sheets{display:grid;gap:10px;margin-top:8px}
+.accounting-launch-sheets{display:grid;gap:12px;margin-top:8px}
+.accounting-launch-sheet-card{display:grid;gap:10px;padding:12px;border:1px solid #dfe8e4;border-radius:8px;background:#f8fbfa}
+.accounting-launch-sheet-map{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
 .accounting-launch-sheets label{display:grid;gap:6px;font-weight:700;color:#19243a}
 .accounting-launch-sheets select{font-weight:400}
 .loading-modal-panel{

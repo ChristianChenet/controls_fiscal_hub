@@ -329,22 +329,32 @@ final class Repository
             $issuerCnpj = preg_replace('/\D+/', '', (string)$data['issuer_cnpj']);
             $numberDigits = preg_replace('/\D+/', '', (string)$data['number']);
             if ($companyCnpj !== '' && $issuerCnpj !== '' && $numberDigits !== '') {
+                $normalizedNumbers = $this->accountingNumberVariants((string)$data['number'], (string)($data['issue_date'] ?? ''));
+                $variantPlaceholders = [];
+                foreach ($normalizedNumbers as $idx => $variant) {
+                    $variantPlaceholders[] = ':number_variant_' . $idx;
+                }
+                $normalizedNumberSql = $this->nfseNumberComparableSql($this->digitsOnlySql('number'));
                 $stmt = $this->pdo->prepare("SELECT * FROM documents
                     WHERE doc_type = 'NFSE'
                       AND {$this->digitsOnlySql('company_cnpj')} = :company_cnpj
                       AND {$this->digitsOnlySql('issuer_cnpj')} = :issuer_cnpj
                       AND (
                           {$this->digitsOnlySql('number')} = :number_digits
-                          OR LTRIM({$this->digitsOnlySql('number')}, '0') = :number_normalized
+                          OR COALESCE(NULLIF(LTRIM({$this->digitsOnlySql('number')}, '0'), ''), '0') IN (" . implode(',', $variantPlaceholders) . ")
+                          OR {$normalizedNumberSql} IN (" . implode(',', $variantPlaceholders) . ")
                       )
                     ORDER BY id DESC
                     LIMIT 1");
-                $stmt->execute([
+                $params = [
                     'company_cnpj' => $companyCnpj,
                     'issuer_cnpj' => $issuerCnpj,
                     'number_digits' => $numberDigits,
-                    'number_normalized' => ltrim($numberDigits, '0') ?: '0',
-                ]);
+                ];
+                foreach ($normalizedNumbers as $idx => $variant) {
+                    $params['number_variant_' . $idx] = $variant;
+                }
+                $stmt->execute($params);
                 $existing = $stmt->fetch();
             }
         }
@@ -728,8 +738,9 @@ final class Repository
                 $accessKey = $docType === 'NFSE' ? '' : $this->digits((string)($raw[(string)($mapping['access_key'] ?? '')] ?? ''));
                 $documentNumber = $docType === 'NFSE' ? trim((string)($raw[(string)($mapping['number'] ?? '')] ?? '')) : '';
                 $partyDocument = $docType === 'NFSE' ? $this->digits((string)($raw[(string)($mapping['party_document'] ?? '')] ?? '')) : '';
+                $accountingIssueDate = $docType === 'NFSE' ? $this->parseAccountingDate((string)($raw[(string)($mapping['issue_date'] ?? '')] ?? '')) : null;
                 $document = $docType === 'NFSE'
-                    ? $this->findAccountingNFSeDocument($documentNumber, $partyDocument)
+                    ? $this->findAccountingNFSeDocument($documentNumber, $partyDocument, $accountingIssueDate)
                     : $this->findAccountingAccessKeyDocument($docType, $accessKey);
                 $documentId = $document ? (int)$document['id'] : null;
                 if ($documentId) {
@@ -810,7 +821,7 @@ final class Repository
         foreach ($params as $key => $value) {
             $stmt->bindValue(':' . $key, $value);
         }
-        $stmt->bindValue(':limit', max(1, min(2000, $limit)), PDO::PARAM_INT);
+        $stmt->bindValue(':limit', max(1, min(20000, $limit)), PDO::PARAM_INT);
         $stmt->execute();
         return $stmt->fetchAll();
     }
@@ -859,21 +870,24 @@ final class Repository
                     throw new \RuntimeException('Informe a empresa da aba ' . (string)($entry['sheet_name'] ?? '') . '.');
                 }
 
-                $accessKey = $this->digits($this->accountingMappedValue($raw, $mapping, 'access_key'));
+                $entryMapping = is_array($mapping['_sheets'][$entry['sheet_name'] ?? ''] ?? null)
+                    ? $mapping['_sheets'][$entry['sheet_name']]
+                    : $mapping;
+                $accessKey = $this->digits($this->accountingMappedValue($raw, $entryMapping, 'access_key'));
                 if ($accessKey === '') {
                     $accessKey = $this->digits((string)($entry['access_key'] ?? ''));
                 }
-                $number = trim($this->accountingMappedValue($raw, $mapping, 'number'));
+                $number = trim($this->accountingMappedValue($raw, $entryMapping, 'number'));
                 if ($number === '') {
                     $number = trim((string)($entry['document_number'] ?? ''));
                 }
-                $issuerDocument = $this->digits($this->accountingMappedValue($raw, $mapping, 'issuer_document'));
+                $issuerDocument = $this->digits($this->accountingMappedValue($raw, $entryMapping, 'issuer_document'));
                 if ($issuerDocument === '') {
                     $issuerDocument = $this->digits((string)($entry['party_document'] ?? ''));
                 }
-                $issuerName = trim($this->accountingMappedValue($raw, $mapping, 'issuer_name'));
-                $issueDate = $this->parseAccountingDate($this->accountingMappedValue($raw, $mapping, 'issue_date'));
-                $totalValue = $this->parseAccountingMoney($this->accountingMappedValue($raw, $mapping, 'total_value'));
+                $issuerName = trim($this->accountingMappedValue($raw, $entryMapping, 'issuer_name'));
+                $issueDate = $this->parseAccountingDate($this->accountingMappedValue($raw, $entryMapping, 'issue_date'));
+                $totalValue = $this->parseAccountingMoney($this->accountingMappedValue($raw, $entryMapping, 'total_value'));
 
                 if ($docType === 'NFSE' && ($number === '' || $issuerDocument === '')) {
                     $skipped++;
@@ -885,7 +899,7 @@ final class Repository
                 }
 
                 $existing = $docType === 'NFSE'
-                    ? $this->findAccountingNFSeDocument($number, $issuerDocument)
+                    ? $this->findAccountingNFSeDocument($number, $issuerDocument, $issueDate)
                     : $this->findAccountingAccessKeyDocument($docType, $accessKey);
 
                 if ($existing) {
@@ -913,7 +927,7 @@ final class Repository
                         'manifestation_status' => 'not_applicable',
                         'source' => 'contabilidade_planilha',
                         'notes' => 'Documento lancado no portal a partir da planilha da contabilidade. Arquivo: ' . (string)($entry['file_name'] ?? '') . '; aba: ' . (string)($entry['sheet_name'] ?? '') . '; linha: ' . (string)($entry['row_number'] ?? '') . '.',
-                        'raw_xml' => $this->buildAccountingRawXml($docType, $entry, $raw, $company, $mapping),
+                        'raw_xml' => $this->buildAccountingRawXml($docType, $entry, $raw, $company, $entryMapping),
                         'digest' => $digest,
                         'schema_name' => 'accounting_spreadsheet',
                     ]);
@@ -1031,6 +1045,47 @@ final class Repository
         return ltrim($digits, '0') ?: '0';
     }
 
+    private function accountingNumberVariants(string $value, ?string $issueDate = null): array
+    {
+        $digits = $this->digits($value);
+        if ($digits === '') {
+            return [];
+        }
+        $variants = [ltrim($digits, '0') ?: '0'];
+        $timestamp = $issueDate ? strtotime($issueDate) : false;
+        if ($timestamp) {
+            $yyyy = date('Y', $timestamp);
+            $yy = date('y', $timestamp);
+            if (str_starts_with($digits, $yyyy)) {
+                $variants[] = ltrim(substr($digits, 4), '0') ?: '0';
+            }
+            if (str_starts_with($digits, $yy)) {
+                $variants[] = ltrim(substr($digits, 2), '0') ?: '0';
+            }
+        }
+        return array_values(array_unique(array_filter($variants, static fn(string $variant): bool => $variant !== '')));
+    }
+
+    private function nfseNumberComparableSql(string $digitsExpression): string
+    {
+        if ((string)$this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
+            $year = "strftime('%Y', issue_date)";
+            $shortYear = "substr(strftime('%Y', issue_date), 3, 2)";
+            return "CASE
+                WHEN issue_date IS NOT NULL AND substr({$digitsExpression}, 1, 4) = {$year} THEN COALESCE(NULLIF(LTRIM(substr({$digitsExpression}, 5), '0'), ''), '0')
+                WHEN issue_date IS NOT NULL AND substr({$digitsExpression}, 1, 2) = {$shortYear} THEN COALESCE(NULLIF(LTRIM(substr({$digitsExpression}, 3), '0'), ''), '0')
+                ELSE COALESCE(NULLIF(LTRIM({$digitsExpression}, '0'), ''), '0')
+            END";
+        }
+        $year = "EXTRACT(YEAR FROM issue_date)::TEXT";
+        $shortYear = "RIGHT(EXTRACT(YEAR FROM issue_date)::TEXT, 2)";
+        return "CASE
+            WHEN issue_date IS NOT NULL AND LEFT({$digitsExpression}, 4) = {$year} THEN COALESCE(NULLIF(LTRIM(SUBSTRING({$digitsExpression} FROM 5), '0'), ''), '0')
+            WHEN issue_date IS NOT NULL AND LEFT({$digitsExpression}, 2) = {$shortYear} THEN COALESCE(NULLIF(LTRIM(SUBSTRING({$digitsExpression} FROM 3), '0'), ''), '0')
+            ELSE COALESCE(NULLIF(LTRIM({$digitsExpression}, '0'), ''), '0')
+        END";
+    }
+
     private function accountingMappedValue(array $raw, array $mapping, string $field): string
     {
         $column = trim((string)($mapping[$field] ?? ''));
@@ -1119,29 +1174,38 @@ final class Repository
         return $row ?: null;
     }
 
-    private function findAccountingNFSeDocument(string $number, string $partyDocument): ?array
+    private function findAccountingNFSeDocument(string $number, string $partyDocument, ?string $issueDate = null): ?array
     {
-        $normalizedNumber = $this->normalizeAccountingNumber($number);
-        if ($normalizedNumber === '' || $partyDocument === '') {
+        $normalizedNumbers = $this->accountingNumberVariants($number, $issueDate);
+        if (!$normalizedNumbers || $partyDocument === '') {
             return null;
         }
         $issuerDigits = $this->digitsOnlySql('issuer_cnpj');
+        $numberDigitsSql = $this->digitsOnlySql('number');
+        $comparableNumberSql = $this->nfseNumberComparableSql($numberDigitsSql);
+        $variantPlaceholders = [];
+        $params = [
+            'party_document' => $partyDocument,
+            'number_raw' => trim($number),
+            'number_digits' => $this->digits($number),
+        ];
+        foreach ($normalizedNumbers as $idx => $variant) {
+            $key = 'number_variant_' . $idx;
+            $variantPlaceholders[] = ':' . $key;
+            $params[$key] = $variant;
+        }
         $stmt = $this->pdo->prepare("SELECT * FROM documents
             WHERE doc_type = 'NFSE'
               AND {$issuerDigits} = :party_document
               AND (
                   number = :number_raw
-                  OR {$this->digitsOnlySql('number')} = :number_digits
-                  OR LTRIM({$this->digitsOnlySql('number')}, '0') = :number_normalized
+                  OR {$numberDigitsSql} = :number_digits
+                  OR COALESCE(NULLIF(LTRIM({$numberDigitsSql}, '0'), ''), '0') IN (" . implode(',', $variantPlaceholders) . ")
+                  OR {$comparableNumberSql} IN (" . implode(',', $variantPlaceholders) . ")
               )
             ORDER BY id DESC
             LIMIT 1");
-        $stmt->execute([
-            'party_document' => $partyDocument,
-            'number_raw' => trim($number),
-            'number_digits' => $this->digits($number),
-            'number_normalized' => $normalizedNumber,
-        ]);
+        $stmt->execute($params);
         $row = $stmt->fetch();
         return $row ?: null;
     }

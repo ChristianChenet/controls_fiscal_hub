@@ -585,6 +585,9 @@ $documentFilterKeys = [
             <label data-map-field="party_document">Coluna CPF/CNPJ do prestador
                 <select id="accounting-map-party"></select>
             </label>
+            <label data-map-field="issue_date">Coluna data emissão
+                <select id="accounting-map-issue-date"></select>
+            </label>
         </div>
         <div class="modal-actions">
             <button type="button" class="button-link button-compact" data-close-accounting-modal>Cancelar</button>
@@ -689,7 +692,7 @@ $documentFilterKeys = [
             </label>
         </div>
         <div>
-            <h3 class="section-subtitle">Empresa por aba</h3>
+            <h3 class="section-subtitle">De/para por aba</h3>
             <div id="accounting-launch-sheets" class="accounting-launch-sheets"></div>
         </div>
         <div class="modal-actions">
@@ -738,6 +741,7 @@ $documentFilterKeys = [
     var accessSelect = document.getElementById('accounting-map-access-key');
     var numberSelect = document.getElementById('accounting-map-number');
     var partySelect = document.getElementById('accounting-map-party');
+    var issueDateSelect = document.getElementById('accounting-map-issue-date');
     var confirmButton = document.getElementById('accounting-import-confirm');
     var doneButton = document.getElementById('accounting-import-done');
     var feedback = document.getElementById('accounting-import-feedback');
@@ -789,6 +793,7 @@ $documentFilterKeys = [
         return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
     }
     function fillSelect(select, headers, preferred) {
+        if (!select) return;
         select.innerHTML = headers.map(function (header) {
             return '<option value="' + escapeHtml(header) + '">' + escapeHtml(header) + '</option>';
         }).join('');
@@ -805,6 +810,7 @@ $documentFilterKeys = [
         var accessField = mappingBox.querySelector('[data-map-field="access_key"]');
         var numberField = mappingBox.querySelector('[data-map-field="number"]');
         var partyField = mappingBox.querySelector('[data-map-field="party_document"]');
+        var issueDateField = mappingBox.querySelector('[data-map-field="issue_date"]');
         if (accessField) {
             accessField.hidden = type === 'NFSE';
             accessField.style.display = type === 'NFSE' ? 'none' : '';
@@ -817,6 +823,10 @@ $documentFilterKeys = [
             partyField.hidden = type !== 'NFSE';
             partyField.style.display = type !== 'NFSE' ? 'none' : '';
         }
+        if (issueDateField) {
+            issueDateField.hidden = type !== 'NFSE';
+            issueDateField.style.display = type !== 'NFSE' ? 'none' : '';
+        }
     }
     function renderPreview() {
         if (!parsedWorkbook) return;
@@ -824,6 +834,7 @@ $documentFilterKeys = [
         fillSelect(accessSelect, headers, ['CHAVE DE ACESSO', 'CHAVE']);
         fillSelect(numberSelect, headers, ['NOTA', 'NUMERO', 'NUMERO DA NOTA']);
         fillSelect(partySelect, headers, ['CNPJ/CPF/CEI/CAEPF', 'CPF/CNPJ', 'CNPJ', 'DOCUMENTO']);
+        fillSelect(issueDateSelect, headers, ['DATA EMISSAO', 'DATA EMISSÃO', 'EMISSAO', 'EMISSÃO', 'DATA']);
         refreshMappingVisibility();
         var rows = parsedWorkbook.sheets.reduce(function (total, sheet) { return total + sheet.rows.length; }, 0);
         var sheetNames = parsedWorkbook.sheets.map(function (sheet) { return sheet.name + ' (' + sheet.rows.length + ')'; }).join(', ');
@@ -882,7 +893,7 @@ $documentFilterKeys = [
         if (!parsedWorkbook) return;
         var type = docTypeInput.value;
         var mapping = type === 'NFSE'
-            ? {number: numberSelect.value, party_document: partySelect.value}
+            ? {number: numberSelect.value, party_document: partySelect.value, issue_date: issueDateSelect ? issueDateSelect.value : ''}
             : {access_key: accessSelect.value};
         if (type === 'NFSE' && (!mapping.number || !mapping.party_document)) {
             feedback.textContent = 'Informe as colunas de numero e CPF/CNPJ.';
@@ -1003,12 +1014,22 @@ $documentFilterKeys = [
         select.innerHTML = options.map(function (header) {
             return '<option value="' + escapeHtml(header) + '">' + escapeHtml(header || 'Selecionar') + '</option>';
         }).join('');
+        var found = preferredHeader(headers, preferred);
+        if (found) select.value = found;
+    }
+    function preferredHeader(headers, preferred) {
         var preferredNorms = preferred.map(norm);
-        var found = headers.find(function (header) {
+        return headers.find(function (header) {
             var h = norm(header);
             return preferredNorms.some(function (token) { return h.indexOf(token) >= 0; });
-        });
-        if (found) select.value = found;
+        }) || '';
+    }
+    function launchSelectHtml(sheet, field, headers, preferred, allowEmpty, hidden) {
+        var selected = preferredHeader(headers, preferred);
+        var options = (allowEmpty ? [''] : []).concat(headers).map(function (header) {
+            return '<option value="' + escapeHtml(header) + '"' + (header === selected ? ' selected' : '') + '>' + escapeHtml(header || 'Selecionar') + '</option>';
+        }).join('');
+        return '<label' + (hidden ? ' class="is-hidden"' : '') + '>' + escapeHtml(field.label) + '<select data-accounting-launch-sheet-map="' + escapeHtml(sheet) + '" data-accounting-launch-map-field="' + escapeHtml(field.key) + '">' + options + '</select></label>';
     }
     function selectedMissingEntries() {
         var ids = Array.from(document.querySelectorAll('[data-accounting-missing-check]:checked')).map(function (input) {
@@ -1060,12 +1081,13 @@ $documentFilterKeys = [
             }
         });
     });
-    async function loadMissing() {
+    async function loadMissing(selectAll, limit) {
         missingModal.classList.remove('is-hidden');
-        missingBody.innerHTML = '<tr><td colspan="5">Carregando...</td></tr>';
+        missingBody.innerHTML = '<tr><td colspan="6">Carregando...</td></tr>';
         try {
             var params = new URLSearchParams();
             params.set('page', 'documents_accounting_missing');
+            if (limit) params.set('limit', String(limit));
             if (missingType && missingType.value) params.set('doc_type', missingType.value);
             if (missingNumber && missingNumber.value) params.set('number_q', missingNumber.value);
             if (missingSupplier && missingSupplier.value) params.set('supplier_q', missingSupplier.value);
@@ -1081,14 +1103,20 @@ $documentFilterKeys = [
                 }).join('') + '</tr>';
                 var checkAll = missingHead.querySelector('[data-accounting-missing-check-all]');
                 if (checkAll) {
+                    checkAll.checked = !!selectAll;
                     checkAll.addEventListener('change', function () {
+                        if (checkAll.checked && missingEntries.length >= 500 && !limit) {
+                            missingBody.innerHTML = '<tr><td colspan="6">Carregando todos os registros do filtro...</td></tr>';
+                            loadMissing(true, 20000);
+                            return;
+                        }
                         document.querySelectorAll('[data-accounting-missing-check]').forEach(function (input) { input.checked = checkAll.checked; });
                     });
                 }
             }
             missingBody.innerHTML = entries.length ? entries.map(function (entry) {
                 var key = entry.access_key || entry.document_number || '';
-                return '<tr><td><input type="checkbox" data-accounting-missing-check value="' + escapeHtml(entry.id) + '"></td><td>' + escapeHtml(entry.doc_type) + '</td><td>' + escapeHtml(entry.sheet_name) + '</td><td>' + escapeHtml(entry.row_number) + '</td><td>' + escapeHtml(key) + '</td><td>' + escapeHtml(entry.party_document || '') + '</td>' + renderRawCells(entry.raw, headers) + '</tr>';
+                return '<tr><td><input type="checkbox" data-accounting-missing-check value="' + escapeHtml(entry.id) + '"' + (selectAll ? ' checked' : '') + '></td><td>' + escapeHtml(entry.doc_type) + '</td><td>' + escapeHtml(entry.sheet_name) + '</td><td>' + escapeHtml(entry.row_number) + '</td><td>' + escapeHtml(key) + '</td><td>' + escapeHtml(entry.party_document || '') + '</td>' + renderRawCells(entry.raw, headers) + '</tr>';
             }).join('') : '<tr><td colspan="6">Nenhum registro pendente encontrado.</td></tr>';
         } catch (error) {
             missingBody.innerHTML = '<tr><td colspan="6">' + escapeHtml(error.message || 'Erro ao carregar registros.') + '</td></tr>';
@@ -1126,6 +1154,8 @@ $documentFilterKeys = [
         var sheets = Array.from(new Set(launchEntries.map(function (entry) { return String(entry.sheet_name || ''); })));
         if (launchSheets) {
             launchSheets.innerHTML = sheets.map(function (sheet) {
+                var sheetEntries = launchEntries.filter(function (entry) { return String(entry.sheet_name || '') === sheet; });
+                var sheetHeaders = rawHeaders(sheetEntries);
                 var options = '<option value="">Selecionar empresa</option>' + companyOptions.map(function (company) {
                     var label = company.label || '';
                     var sheetNorm = norm(sheet);
@@ -1139,7 +1169,18 @@ $documentFilterKeys = [
                         || (labelNorm.indexOf(sheetNorm) >= 0 && sheetNorm !== '');
                     return '<option value="' + escapeHtml(company.value) + '"' + (selected ? ' selected' : '') + '>' + escapeHtml(label) + '</option>';
                 }).join('');
-                return '<label>' + escapeHtml(sheet || 'Sem aba') + '<select data-accounting-launch-sheet="' + escapeHtml(sheet) + '">' + options + '</select></label>';
+                var fields = [
+                    {key: 'access_key', label: 'Chave de acesso', preferred: ['CHAVE DE ACESSO', 'CHAVE'], allowEmpty: true, hidden: types[0] === 'NFSE'},
+                    {key: 'number', label: 'Numero da nota', preferred: ['NOTA', 'NUMERO', 'NUMERO DA NOTA'], allowEmpty: false},
+                    {key: 'issuer_document', label: 'CPF/CNPJ fornecedor', preferred: ['CNPJ/CPF/CEI/CAEPF', 'CPF/CNPJ', 'CNPJ', 'DOCUMENTO'], allowEmpty: false},
+                    {key: 'issuer_name', label: 'Nome fornecedor', preferred: ['FORNECEDOR', 'PRESTADOR', 'RAZAO SOCIAL', 'NOME'], allowEmpty: true},
+                    {key: 'issue_date', label: 'Data emissao', preferred: ['DATA EMISSAO', 'DATA EMISSÃO', 'EMISSAO', 'EMISSÃO', 'DATA'], allowEmpty: true},
+                    {key: 'total_value', label: 'Valor', preferred: ['VALOR CONTABIL', 'VALOR', 'TOTAL'], allowEmpty: true}
+                ];
+                var mappings = fields.map(function (field) {
+                    return launchSelectHtml(sheet, field, sheetHeaders, field.preferred, field.allowEmpty, field.hidden);
+                }).join('');
+                return '<div class="accounting-launch-sheet-card"><strong>' + escapeHtml(sheet || 'Sem aba') + '</strong><label>Empresa<select data-accounting-launch-sheet="' + escapeHtml(sheet) + '">' + options + '</select></label><div class="accounting-launch-sheet-map">' + mappings + '</div></div>';
             }).join('');
         }
         if (launchFeedback) launchFeedback.textContent = '';
@@ -1167,12 +1208,27 @@ $documentFilterKeys = [
             issue_date: launchIssueDate ? launchIssueDate.value : '',
             total_value: launchTotalValue ? launchTotalValue.value : ''
         };
-        if (type !== 'NFSE' && !mapping.access_key) {
-            if (launchFeedback) launchFeedback.textContent = 'Informe a coluna de chave de acesso.';
-            return;
-        }
-        if (type === 'NFSE' && (!mapping.number || !mapping.issuer_document)) {
-            if (launchFeedback) launchFeedback.textContent = 'Informe numero da nota e CPF/CNPJ fornecedor.';
+        mapping._sheets = {};
+        document.querySelectorAll('[data-accounting-launch-sheet]').forEach(function (select) {
+            var sheet = select.getAttribute('data-accounting-launch-sheet') || '';
+            mapping._sheets[sheet] = Object.assign({}, mapping);
+        });
+        document.querySelectorAll('[data-accounting-launch-sheet-map]').forEach(function (select) {
+            var sheet = select.getAttribute('data-accounting-launch-sheet-map') || '';
+            var field = select.getAttribute('data-accounting-launch-map-field') || '';
+            if (!mapping._sheets[sheet]) mapping._sheets[sheet] = Object.assign({}, mapping);
+            mapping._sheets[sheet][field] = select.value;
+        });
+        var invalidSheet = Object.keys(mapping._sheets).find(function (sheet) {
+            var sheetMapping = mapping._sheets[sheet] || {};
+            return type === 'NFSE'
+                ? (!sheetMapping.number || !sheetMapping.issuer_document)
+                : (!sheetMapping.access_key);
+        });
+        if (invalidSheet) {
+            if (launchFeedback) launchFeedback.textContent = type === 'NFSE'
+                ? 'Informe numero da nota e CPF/CNPJ fornecedor na aba ' + invalidSheet + '.'
+                : 'Informe a chave de acesso na aba ' + invalidSheet + '.';
             return;
         }
         launchConfirm.disabled = true;
