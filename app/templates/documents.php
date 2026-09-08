@@ -154,7 +154,7 @@ $documentFilterKeys = [
             'tipo' => 'Tipo',
             'numero' => 'Número',
             'emissor' => 'Emissor',
-            'destinatario' => 'Destinatario',
+            'tomador' => 'Tomador',
             'chave' => 'Chave',
             'nfe_vinculada' => 'NF-e vinculada',
             'numero_referenciado' => 'Numero referenciado',
@@ -242,7 +242,7 @@ $documentFilterKeys = [
                     <th class="resizable" data-column="tipo">Tipo</th>
                     <th class="resizable" data-column="numero">Número</th>
                     <th class="resizable" data-column="emissor">Emissor</th>
-                    <th class="resizable" data-column="destinatario">Destinatario</th>
+                    <th class="resizable" data-column="tomador">Tomador</th>
                     <th class="resizable" data-column="chave">Chave</th>
                     <th class="resizable" data-column="nfe_vinculada">NF-e vinculada</th>
                     <th class="resizable" data-column="numero_referenciado">Numero referenciado</th>
@@ -262,7 +262,7 @@ $documentFilterKeys = [
                     <th data-column="tipo"></th>
                     <th data-column="numero"><input form="column-filter-form" name="number_q" value="<?= h((string)($filters['number_q'] ?? '')) ?>" placeholder="Filtrar"></th>
                     <th data-column="emissor"><input form="column-filter-form" name="issuer_q" value="<?= h((string)($filters['issuer_q'] ?? '')) ?>" placeholder="Filtrar"></th>
-                    <th data-column="destinatario"><input form="column-filter-form" name="recipient_q" value="<?= h((string)($filters['recipient_q'] ?? '')) ?>" placeholder="Filtrar"></th>
+                    <th data-column="tomador"><input form="column-filter-form" name="recipient_q" value="<?= h((string)($filters['recipient_q'] ?? '')) ?>" placeholder="Filtrar"></th>
                     <th data-column="chave"><input form="column-filter-form" name="access_key_q" value="<?= h((string)($filters['access_key_q'] ?? '')) ?>" placeholder="Filtrar"></th>
                     <th data-column="nfe_vinculada"><input form="column-filter-form" name="referenced_nfe_q" value="<?= h((string)($filters['referenced_nfe_q'] ?? '')) ?>" placeholder="Filtrar"></th>
                     <th data-column="numero_referenciado"><input form="column-filter-form" name="referenced_number_q" value="<?= h((string)($filters['referenced_number_q'] ?? '')) ?>" placeholder="Filtrar"></th>
@@ -298,7 +298,7 @@ $documentFilterKeys = [
                     <td data-column="tipo"><span class="pill"><?= h((string)$doc['doc_type']) ?></span></td>
                     <td data-column="numero"><button type="button" class="link-button doc-products-link" data-document-items="<?= h((string)$doc['id']) ?>"><?= h((string)$doc['number']) ?></button></td>
                     <td data-column="emissor"><strong><?= h((string)$doc['issuer_name']) ?></strong><br><small><?= h((string)$doc['issuer_cnpj']) ?></small></td>
-                    <td data-column="destinatario"><strong><?= h((string)($doc['recipient_name'] ?? '')) ?></strong><br><small><?= h((string)($doc['recipient_cnpj'] ?? '')) ?></small></td>
+                    <td data-column="tomador"><strong><?= h((string)($doc['recipient_name'] ?? '')) ?></strong><br><small><?= h((string)($doc['recipient_cnpj'] ?? '')) ?></small></td>
                     <td data-column="chave"><small><?= h((string)$doc['access_key']) ?></small></td>
                     <td data-column="nfe_vinculada"><small><?= h((string)($doc['referenced_nfe_keys'] ?? '')) ?></small></td>
                     <td data-column="numero_referenciado"><small><?= h((string)($doc['referenced_document_numbers'] ?? '')) ?></small></td>
@@ -1748,8 +1748,16 @@ $documentFilterKeys = [
     function readState() {
         try { return JSON.parse(localStorage.getItem(key) || '{}'); } catch (e) { return {}; }
     }
+    function migrateState(state) {
+        if (Object.prototype.hasOwnProperty.call(state, 'destinatario') && !Object.prototype.hasOwnProperty.call(state, 'tomador')) {
+            state.tomador = true;
+            delete state.destinatario;
+            localStorage.setItem(key, JSON.stringify(state));
+        }
+        return state;
+    }
     function applyColumns() {
-        var state = readState();
+        var state = migrateState(readState());
         toggles.forEach(function (toggle) {
             var column = toggle.getAttribute('data-column-toggle');
             var hasSaved = Object.prototype.hasOwnProperty.call(state, column);
@@ -1797,7 +1805,21 @@ $documentFilterKeys = [
             });
         });
     }
-    try { applyOrder(JSON.parse(localStorage.getItem(key) || '[]')); } catch (e) {}
+    function migrateOrder(order) {
+        if (!Array.isArray(order) || !order.length) return order;
+        var oldIndex = order.indexOf('destinatario');
+        var newIndex = order.indexOf('tomador');
+        if (oldIndex >= 0) {
+            order.splice(oldIndex, 1);
+            if (newIndex < 0) order.splice(oldIndex, 0, 'tomador');
+        } else if (newIndex < 0) {
+            var issuerIndex = order.indexOf('emissor');
+            if (issuerIndex >= 0) order.splice(issuerIndex + 1, 0, 'tomador');
+        }
+        localStorage.setItem(key, JSON.stringify(order));
+        return order;
+    }
+    try { applyOrder(migrateOrder(JSON.parse(localStorage.getItem(key) || '[]'))); } catch (e) {}
     table.querySelectorAll('thead tr:first-child th[data-column]').forEach(function (th) {
         th.draggable = true;
         th.title = (th.title ? th.title + ' | ' : '') + 'Arraste para reorganizar a coluna';
