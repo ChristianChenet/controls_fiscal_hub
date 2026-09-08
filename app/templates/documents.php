@@ -655,8 +655,8 @@ $documentFilterKeys = [
         </div>
         <div class="table-wrap">
             <table class="table documents-items-table">
-                <thead id="accounting-missing-head"><tr><th>Tipo</th><th>Aba</th><th>Linha</th><th>Chave/Número</th><th>Documento</th></tr></thead>
-                <tbody id="accounting-missing-body"><tr><td colspan="5">Carregando...</td></tr></tbody>
+                <thead id="accounting-missing-head"><tr><th>Tipo</th><th>Planilha</th><th>Aba</th><th>Linha</th><th>Chave/Número</th><th>Documento</th></tr></thead>
+                <tbody id="accounting-missing-body"><tr><td colspan="6">Carregando...</td></tr></tbody>
             </table>
         </div>
     </div>
@@ -692,7 +692,7 @@ $documentFilterKeys = [
             </label>
         </div>
         <div>
-            <h3 class="section-subtitle">De/para por aba</h3>
+            <h3 class="section-subtitle">De/para por planilha e aba</h3>
             <div id="accounting-launch-sheets" class="accounting-launch-sheets"></div>
         </div>
         <div class="modal-actions">
@@ -1046,6 +1046,14 @@ $documentFilterKeys = [
         });
         return headers;
     }
+    function accountingGroupKey(entry) {
+        return String(entry.file_name || '') + '||' + String(entry.sheet_name || '');
+    }
+    function accountingGroupLabel(entry) {
+        var file = String(entry.file_name || 'Sem planilha');
+        var sheet = String(entry.sheet_name || 'Sem aba');
+        return file + ' > ' + sheet;
+    }
     function renderHead(head, fixed, headers) {
         if (!head) return;
         head.innerHTML = '<tr>' + fixed.concat(headers).map(function (header) {
@@ -1083,7 +1091,7 @@ $documentFilterKeys = [
     });
     async function loadMissing(selectAll, limit) {
         missingModal.classList.remove('is-hidden');
-        missingBody.innerHTML = '<tr><td colspan="6">Carregando...</td></tr>';
+        missingBody.innerHTML = '<tr><td colspan="7">Carregando...</td></tr>';
         try {
             var params = new URLSearchParams();
             params.set('page', 'documents_accounting_missing');
@@ -1098,7 +1106,7 @@ $documentFilterKeys = [
             missingEntries = entries;
             var headers = rawHeaders(entries);
             if (missingHead) {
-                missingHead.innerHTML = '<tr><th><input type="checkbox" data-accounting-missing-check-all></th>' + ['Tipo', 'Aba', 'Linha', 'Chave/Número', 'Documento'].concat(headers).map(function (header) {
+                missingHead.innerHTML = '<tr><th><input type="checkbox" data-accounting-missing-check-all></th>' + ['Tipo', 'Planilha', 'Aba', 'Linha', 'Chave/Número', 'Documento'].concat(headers).map(function (header) {
                     return '<th>' + escapeHtml(header) + '</th>';
                 }).join('') + '</tr>';
                 var checkAll = missingHead.querySelector('[data-accounting-missing-check-all]');
@@ -1106,7 +1114,7 @@ $documentFilterKeys = [
                     checkAll.checked = !!selectAll;
                     checkAll.addEventListener('change', function () {
                         if (checkAll.checked && missingEntries.length >= 500 && !limit) {
-                            missingBody.innerHTML = '<tr><td colspan="6">Carregando todos os registros do filtro...</td></tr>';
+                            missingBody.innerHTML = '<tr><td colspan="7">Carregando todos os registros do filtro...</td></tr>';
                             loadMissing(true, 20000);
                             return;
                         }
@@ -1116,10 +1124,10 @@ $documentFilterKeys = [
             }
             missingBody.innerHTML = entries.length ? entries.map(function (entry) {
                 var key = entry.access_key || entry.document_number || '';
-                return '<tr><td><input type="checkbox" data-accounting-missing-check value="' + escapeHtml(entry.id) + '"' + (selectAll ? ' checked' : '') + '></td><td>' + escapeHtml(entry.doc_type) + '</td><td>' + escapeHtml(entry.sheet_name) + '</td><td>' + escapeHtml(entry.row_number) + '</td><td>' + escapeHtml(key) + '</td><td>' + escapeHtml(entry.party_document || '') + '</td>' + renderRawCells(entry.raw, headers) + '</tr>';
-            }).join('') : '<tr><td colspan="6">Nenhum registro pendente encontrado.</td></tr>';
+                return '<tr><td><input type="checkbox" data-accounting-missing-check value="' + escapeHtml(entry.id) + '"' + (selectAll ? ' checked' : '') + '></td><td>' + escapeHtml(entry.doc_type) + '</td><td>' + escapeHtml(entry.file_name || '') + '</td><td>' + escapeHtml(entry.sheet_name) + '</td><td>' + escapeHtml(entry.row_number) + '</td><td>' + escapeHtml(key) + '</td><td>' + escapeHtml(entry.party_document || '') + '</td>' + renderRawCells(entry.raw, headers) + '</tr>';
+            }).join('') : '<tr><td colspan="7">Nenhum registro pendente encontrado.</td></tr>';
         } catch (error) {
-            missingBody.innerHTML = '<tr><td colspan="6">' + escapeHtml(error.message || 'Erro ao carregar registros.') + '</td></tr>';
+            missingBody.innerHTML = '<tr><td colspan="7">' + escapeHtml(error.message || 'Erro ao carregar registros.') + '</td></tr>';
         }
     }
     function exportMissing() {
@@ -1151,10 +1159,13 @@ $documentFilterKeys = [
         var accessField = launchModal ? launchModal.querySelector('[data-launch-field="access_key"]') : null;
         if (accessField) accessField.style.display = types[0] === 'NFSE' ? 'none' : '';
         if (launchSubtitle) launchSubtitle.textContent = launchEntries.length + ' nota(s) selecionada(s) para ' + types[0] + '.';
-        var sheets = Array.from(new Set(launchEntries.map(function (entry) { return String(entry.sheet_name || ''); })));
+        var groupKeys = Array.from(new Set(launchEntries.map(accountingGroupKey)));
         if (launchSheets) {
-            launchSheets.innerHTML = sheets.map(function (sheet) {
-                var sheetEntries = launchEntries.filter(function (entry) { return String(entry.sheet_name || '') === sheet; });
+            launchSheets.innerHTML = groupKeys.map(function (groupKey) {
+                var sheetEntries = launchEntries.filter(function (entry) { return accountingGroupKey(entry) === groupKey; });
+                var firstEntry = sheetEntries[0] || {};
+                var sheet = String(firstEntry.sheet_name || '');
+                var label = accountingGroupLabel(firstEntry);
                 var sheetHeaders = rawHeaders(sheetEntries);
                 var options = '<option value="">Selecionar empresa</option>' + companyOptions.map(function (company) {
                     var label = company.label || '';
@@ -1178,9 +1189,9 @@ $documentFilterKeys = [
                     {key: 'total_value', label: 'Valor', preferred: ['VALOR CONTABIL', 'VALOR', 'TOTAL'], allowEmpty: true}
                 ];
                 var mappings = fields.map(function (field) {
-                    return launchSelectHtml(sheet, field, sheetHeaders, field.preferred, field.allowEmpty, field.hidden);
+                    return launchSelectHtml(groupKey, field, sheetHeaders, field.preferred, field.allowEmpty, field.hidden);
                 }).join('');
-                return '<div class="accounting-launch-sheet-card"><strong>' + escapeHtml(sheet || 'Sem aba') + '</strong><label>Empresa<select data-accounting-launch-sheet="' + escapeHtml(sheet) + '">' + options + '</select></label><div class="accounting-launch-sheet-map">' + mappings + '</div></div>';
+                return '<div class="accounting-launch-sheet-card"><strong>' + escapeHtml(label) + '</strong><label>Empresa<select data-accounting-launch-sheet="' + escapeHtml(groupKey) + '">' + options + '</select></label><div class="accounting-launch-sheet-map">' + mappings + '</div></div>';
             }).join('');
         }
         if (launchFeedback) launchFeedback.textContent = '';
@@ -1219,16 +1230,18 @@ $documentFilterKeys = [
             if (!mapping._sheets[sheet]) mapping._sheets[sheet] = Object.assign({}, mapping);
             mapping._sheets[sheet][field] = select.value;
         });
-        var invalidSheet = Object.keys(mapping._sheets).find(function (sheet) {
-            var sheetMapping = mapping._sheets[sheet] || {};
+        var invalidSheet = Object.keys(mapping._sheets).find(function (groupKey) {
+            var sheetMapping = mapping._sheets[groupKey] || {};
             return type === 'NFSE'
                 ? (!sheetMapping.number || !sheetMapping.issuer_document)
                 : (!sheetMapping.access_key);
         });
         if (invalidSheet) {
+            var invalidEntry = launchEntries.find(function (entry) { return accountingGroupKey(entry) === invalidSheet; });
+            var invalidLabel = invalidEntry ? accountingGroupLabel(invalidEntry) : invalidSheet;
             if (launchFeedback) launchFeedback.textContent = type === 'NFSE'
-                ? 'Informe numero da nota e CPF/CNPJ fornecedor na aba ' + invalidSheet + '.'
-                : 'Informe a chave de acesso na aba ' + invalidSheet + '.';
+                ? 'Informe numero da nota e CPF/CNPJ fornecedor em ' + invalidLabel + '.'
+                : 'Informe a chave de acesso em ' + invalidLabel + '.';
             return;
         }
         launchConfirm.disabled = true;

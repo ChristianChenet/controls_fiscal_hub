@@ -864,15 +864,22 @@ final class Repository
                     $skipped++;
                     continue;
                 }
-                $companyId = (int)($sheetCompanies[(string)($entry['sheet_name'] ?? '')] ?? 0);
+                $fileName = (string)($entry['file_name'] ?? '');
+                $sheetName = (string)($entry['sheet_name'] ?? '');
+                $groupKey = $fileName . '||' . $sheetName;
+                $companyId = (int)($sheetCompanies[$groupKey] ?? $sheetCompanies[$sheetName] ?? 0);
                 $company = $companyId > 0 ? $this->findCompany($companyId) : null;
                 if (!$company) {
-                    throw new \RuntimeException('Informe a empresa da aba ' . (string)($entry['sheet_name'] ?? '') . '.');
+                    throw new \RuntimeException('Informe a empresa da planilha ' . $fileName . ' / aba ' . $sheetName . '.');
                 }
 
-                $entryMapping = is_array($mapping['_sheets'][$entry['sheet_name'] ?? ''] ?? null)
-                    ? $mapping['_sheets'][$entry['sheet_name']]
-                    : $mapping;
+                if (is_array($mapping['_sheets'][$groupKey] ?? null)) {
+                    $entryMapping = $mapping['_sheets'][$groupKey];
+                } elseif (is_array($mapping['_sheets'][$sheetName] ?? null)) {
+                    $entryMapping = $mapping['_sheets'][$sheetName];
+                } else {
+                    $entryMapping = $mapping;
+                }
                 $accessKey = $this->digits($this->accountingMappedValue($raw, $entryMapping, 'access_key'));
                 if ($accessKey === '') {
                     $accessKey = $this->digits((string)($entry['access_key'] ?? ''));
