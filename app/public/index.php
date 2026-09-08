@@ -964,10 +964,10 @@ if ($page === 'documents_accounting_missing') {
             unset($entry['raw_json']);
             return $entry;
         }, $repo->accountingMissingEntries($docType, $perPage, $supplier, $number, $offset));
-        echo json_encode(['ok' => true, 'entries' => $entries, 'total' => $total, 'page' => $pageNumber, 'per_page' => $perPage], JSON_UNESCAPED_UNICODE);
+        echo json_encode(['ok' => true, 'entries' => $entries, 'total' => $total, 'page' => $pageNumber, 'per_page' => $perPage], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
     } catch (Throwable $e) {
         http_response_code(400);
-        echo json_encode(['ok' => false, 'message' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+        echo json_encode(['ok' => false, 'message' => $e->getMessage()], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
     }
     exit;
 }
@@ -1032,10 +1032,10 @@ if ($page === 'documents_accounting_launch') {
             $auth->user()
         );
         $repo->logAction('accounting_launch', 'Lancamento no portal pela contabilidade: ' . $result['created_count'] . ' criado(s), ' . $result['linked_count'] . ' vinculado(s), ' . $result['skipped_count'] . ' ignorado(s).');
-        echo json_encode(['ok' => true] + $result, JSON_UNESCAPED_UNICODE);
+        echo json_encode(['ok' => true] + $result, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
     } catch (Throwable $e) {
         http_response_code(400);
-        echo json_encode(['ok' => false, 'message' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+        echo json_encode(['ok' => false, 'message' => $e->getMessage()], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
     }
     exit;
 }

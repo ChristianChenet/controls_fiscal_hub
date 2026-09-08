@@ -662,10 +662,13 @@ $documentFilterKeys = [
         <div class="pagination-bar" id="accounting-missing-pagination">
             <span id="accounting-missing-page-info">Página 1</span>
             <div class="pagination-actions">
+                <button type="button" class="button-compact" id="accounting-missing-select-all-filter">Marcar todos do filtro</button>
+                <button type="button" class="button-compact" id="accounting-missing-clear-selection">Limpar seleção</button>
                 <button type="button" class="button-compact" id="accounting-missing-prev">Anterior</button>
                 <button type="button" class="button-compact" id="accounting-missing-next">Próxima</button>
             </div>
         </div>
+        <div id="accounting-missing-selection-info" class="export-feedback"></div>
     </div>
 </div>
 
@@ -1010,6 +1013,9 @@ $documentFilterKeys = [
     var missingPageInfo = document.getElementById('accounting-missing-page-info');
     var missingPrev = document.getElementById('accounting-missing-prev');
     var missingNext = document.getElementById('accounting-missing-next');
+    var missingSelectAllFilter = document.getElementById('accounting-missing-select-all-filter');
+    var missingClearSelection = document.getElementById('accounting-missing-clear-selection');
+    var missingSelectionInfo = document.getElementById('accounting-missing-selection-info');
     var launchModal = document.getElementById('accounting-launch-modal');
     var launchSubtitle = document.getElementById('accounting-launch-subtitle');
     var launchAccessKey = document.getElementById('accounting-launch-map-access-key');
@@ -1127,6 +1133,11 @@ $documentFilterKeys = [
             var end = Math.min(missingTotal, missingPage * missingPerPage);
             missingPageInfo.textContent = 'Página ' + missingPage + ' de ' + pages + ' | ' + start + '-' + end + ' de ' + missingTotal + ' registro(s)';
         }
+        if (missingSelectionInfo) {
+            missingSelectionInfo.textContent = missingAllSelected
+                ? 'Todos os ' + missingTotal + ' registro(s) do filtro estao marcados, incluindo as outras paginas.'
+                : '';
+        }
         if (missingPrev) missingPrev.disabled = missingPage <= 1;
         if (missingNext) missingNext.disabled = missingPage >= pages;
     }
@@ -1187,6 +1198,7 @@ $documentFilterKeys = [
                     checkAll.addEventListener('change', function () {
                         missingAllSelected = checkAll.checked;
                         document.querySelectorAll('[data-accounting-missing-check]').forEach(function (input) { input.checked = checkAll.checked; });
+                        updateMissingPagination();
                     });
                 }
             }
@@ -1200,6 +1212,7 @@ $documentFilterKeys = [
                         missingAllSelected = false;
                         var checkAll = missingHead ? missingHead.querySelector('[data-accounting-missing-check-all]') : null;
                         if (checkAll) checkAll.checked = false;
+                        updateMissingPagination();
                     }
                 });
             });
@@ -1415,6 +1428,20 @@ $documentFilterKeys = [
             missingPage++;
             loadMissing(missingAllSelected, missingPage);
         }
+    });
+    if (missingSelectAllFilter) missingSelectAllFilter.addEventListener('click', function () {
+        missingAllSelected = true;
+        document.querySelectorAll('[data-accounting-missing-check]').forEach(function (input) { input.checked = true; });
+        var checkAll = missingHead ? missingHead.querySelector('[data-accounting-missing-check-all]') : null;
+        if (checkAll) checkAll.checked = true;
+        updateMissingPagination();
+    });
+    if (missingClearSelection) missingClearSelection.addEventListener('click', function () {
+        missingAllSelected = false;
+        document.querySelectorAll('[data-accounting-missing-check]').forEach(function (input) { input.checked = false; });
+        var checkAll = missingHead ? missingHead.querySelector('[data-accounting-missing-check-all]') : null;
+        if (checkAll) checkAll.checked = false;
+        updateMissingPagination();
     });
     if (missingType) missingType.addEventListener('change', function () {
         missingPage = 1;
