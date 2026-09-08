@@ -659,6 +659,13 @@ $documentFilterKeys = [
                 <tbody id="accounting-missing-body"><tr><td colspan="6">Carregando...</td></tr></tbody>
             </table>
         </div>
+        <div class="pagination-bar" id="accounting-missing-pagination">
+            <span id="accounting-missing-page-info">Página 1</span>
+            <div class="pagination-actions">
+                <button type="button" class="button-compact" id="accounting-missing-prev">Anterior</button>
+                <button type="button" class="button-compact" id="accounting-missing-next">Próxima</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -687,8 +694,17 @@ $documentFilterKeys = [
             <label>Coluna data emissão
                 <select id="accounting-launch-map-issue-date"></select>
             </label>
+            <label>Coluna data entrada
+                <select id="accounting-launch-map-entry-date"></select>
+            </label>
             <label>Coluna valor
                 <select id="accounting-launch-map-total-value"></select>
+            </label>
+            <label>Coluna CFOP
+                <select id="accounting-launch-map-cfop"></select>
+            </label>
+            <label>Coluna descrição
+                <select id="accounting-launch-map-description"></select>
             </label>
         </div>
         <div>
@@ -698,6 +714,14 @@ $documentFilterKeys = [
         <div class="modal-actions">
             <button type="button" class="button-link button-compact" data-close-accounting-launch>Cancelar</button>
             <button type="button" class="primary button-compact" id="accounting-launch-confirm">Lançar selecionadas</button>
+        </div>
+        <div class="queue-progress is-hidden" id="accounting-launch-progress" aria-live="polite">
+            <div class="queue-progress-header">
+                <strong id="accounting-launch-progress-title">Lançando notas</strong>
+                <span id="accounting-launch-progress-text">0%</span>
+            </div>
+            <div class="queue-progress-bar"><span id="accounting-launch-progress-bar"></span></div>
+            <small id="accounting-launch-progress-detail">Aguardando confirmação.</small>
         </div>
         <div id="accounting-launch-feedback" class="export-feedback" aria-live="polite"></div>
     </div>
@@ -983,6 +1007,9 @@ $documentFilterKeys = [
     var missingRefresh = document.getElementById('accounting-missing-refresh');
     var missingExport = document.getElementById('accounting-missing-export');
     var missingLaunch = document.getElementById('accounting-missing-launch');
+    var missingPageInfo = document.getElementById('accounting-missing-page-info');
+    var missingPrev = document.getElementById('accounting-missing-prev');
+    var missingNext = document.getElementById('accounting-missing-next');
     var launchModal = document.getElementById('accounting-launch-modal');
     var launchSubtitle = document.getElementById('accounting-launch-subtitle');
     var launchAccessKey = document.getElementById('accounting-launch-map-access-key');
@@ -990,14 +1017,26 @@ $documentFilterKeys = [
     var launchIssuerDocument = document.getElementById('accounting-launch-map-issuer-document');
     var launchIssuerName = document.getElementById('accounting-launch-map-issuer-name');
     var launchIssueDate = document.getElementById('accounting-launch-map-issue-date');
+    var launchEntryDate = document.getElementById('accounting-launch-map-entry-date');
     var launchTotalValue = document.getElementById('accounting-launch-map-total-value');
+    var launchCfop = document.getElementById('accounting-launch-map-cfop');
+    var launchDescription = document.getElementById('accounting-launch-map-description');
     var launchSheets = document.getElementById('accounting-launch-sheets');
     var launchConfirm = document.getElementById('accounting-launch-confirm');
     var launchFeedback = document.getElementById('accounting-launch-feedback');
+    var launchProgress = document.getElementById('accounting-launch-progress');
+    var launchProgressTitle = document.getElementById('accounting-launch-progress-title');
+    var launchProgressText = document.getElementById('accounting-launch-progress-text');
+    var launchProgressBar = document.getElementById('accounting-launch-progress-bar');
+    var launchProgressDetail = document.getElementById('accounting-launch-progress-detail');
     var csrf = document.querySelector('form.documents-card input[name="_csrf"]');
     var companyOptions = <?= json_encode($companyOptions, JSON_UNESCAPED_UNICODE) ?>;
     var missingEntries = [];
     var launchEntries = [];
+    var missingPage = 1;
+    var missingPerPage = 100;
+    var missingTotal = 0;
+    var missingAllSelected = false;
     if (!detailsModal || !detailsBody || !missingModal || !missingBody) return;
     function escapeHtml(value) {
         return String(value == null ? '' : value).replace(/[&<>"']/g, function (char) {
@@ -1065,9 +1104,48 @@ $documentFilterKeys = [
             return '<td>' + escapeHtml((raw || {})[header] || '') + '</td>';
         }).join('');
     }
+    function missingParams(limit, page) {
+        var params = new URLSearchParams();
+        params.set('page', 'documents_accounting_missing');
+        params.set('limit', String(limit || missingPerPage));
+        params.set('missing_page', String(page || missingPage));
+        if (missingType && missingType.value) params.set('doc_type', missingType.value);
+        if (missingNumber && missingNumber.value) params.set('number_q', missingNumber.value);
+        if (missingSupplier && missingSupplier.value) params.set('supplier_q', missingSupplier.value);
+        return params;
+    }
+    async function fetchMissingEntries(limit, page) {
+        var response = await fetch('?' + missingParams(limit, page).toString(), {headers: {'Accept': 'application/json'}});
+        var data = await response.json();
+        if (!response.ok || !data.ok) throw new Error((data && data.message) || 'Falha ao carregar registros.');
+        return data;
+    }
+    function updateMissingPagination() {
+        var pages = Math.max(1, Math.ceil(missingTotal / missingPerPage));
+        if (missingPageInfo) {
+            var start = missingTotal ? ((missingPage - 1) * missingPerPage + 1) : 0;
+            var end = Math.min(missingTotal, missingPage * missingPerPage);
+            missingPageInfo.textContent = 'Página ' + missingPage + ' de ' + pages + ' | ' + start + '-' + end + ' de ' + missingTotal + ' registro(s)';
+        }
+        if (missingPrev) missingPrev.disabled = missingPage <= 1;
+        if (missingNext) missingNext.disabled = missingPage >= pages;
+    }
+    function setLaunchProgress(current, total, detail) {
+        if (!launchProgress) return;
+        launchProgress.classList.remove('is-hidden');
+        var percent = total > 0 ? Math.round((current / total) * 100) : 0;
+        if (launchProgressTitle) launchProgressTitle.textContent = 'Lançando notas no portal';
+        if (launchProgressText) launchProgressText.textContent = percent + '%';
+        if (launchProgressBar) launchProgressBar.style.width = Math.max(0, Math.min(100, percent)) + '%';
+        if (launchProgressDetail) launchProgressDetail.textContent = detail || '';
+    }
     function closeDetails() { detailsModal.classList.add('is-hidden'); }
     function closeMissing() { missingModal.classList.add('is-hidden'); }
-    function closeLaunch() { if (launchModal) launchModal.classList.add('is-hidden'); }
+    function closeLaunch() {
+        if (launchModal) launchModal.classList.add('is-hidden');
+        if (launchProgress) launchProgress.classList.add('is-hidden');
+        if (launchProgressBar) launchProgressBar.style.width = '0';
+    }
     document.querySelectorAll('[data-accounting-details]').forEach(function (button) {
         button.addEventListener('click', async function () {
             detailsModal.classList.remove('is-hidden');
@@ -1089,20 +1167,14 @@ $documentFilterKeys = [
             }
         });
     });
-    async function loadMissing(selectAll, limit) {
+    async function loadMissing(selectAll, page) {
         missingModal.classList.remove('is-hidden');
         missingBody.innerHTML = '<tr><td colspan="7">Carregando...</td></tr>';
         try {
-            var params = new URLSearchParams();
-            params.set('page', 'documents_accounting_missing');
-            if (limit) params.set('limit', String(limit));
-            if (missingType && missingType.value) params.set('doc_type', missingType.value);
-            if (missingNumber && missingNumber.value) params.set('number_q', missingNumber.value);
-            if (missingSupplier && missingSupplier.value) params.set('supplier_q', missingSupplier.value);
-            var response = await fetch('?' + params.toString(), {headers: {'Accept': 'application/json'}});
-            var data = await response.json();
-            if (!response.ok || !data.ok) throw new Error((data && data.message) || 'Falha ao carregar registros.');
+            missingPage = Math.max(1, page || missingPage || 1);
+            var data = await fetchMissingEntries(missingPerPage, missingPage);
             var entries = data.entries || [];
+            missingTotal = Number(data.total || entries.length || 0);
             missingEntries = entries;
             var headers = rawHeaders(entries);
             if (missingHead) {
@@ -1111,21 +1183,27 @@ $documentFilterKeys = [
                 }).join('') + '</tr>';
                 var checkAll = missingHead.querySelector('[data-accounting-missing-check-all]');
                 if (checkAll) {
-                    checkAll.checked = !!selectAll;
+                    checkAll.checked = !!selectAll || missingAllSelected;
                     checkAll.addEventListener('change', function () {
-                        if (checkAll.checked && missingEntries.length >= 500 && !limit) {
-                            missingBody.innerHTML = '<tr><td colspan="7">Carregando todos os registros do filtro...</td></tr>';
-                            loadMissing(true, 20000);
-                            return;
-                        }
+                        missingAllSelected = checkAll.checked;
                         document.querySelectorAll('[data-accounting-missing-check]').forEach(function (input) { input.checked = checkAll.checked; });
                     });
                 }
             }
             missingBody.innerHTML = entries.length ? entries.map(function (entry) {
                 var key = entry.access_key || entry.document_number || '';
-                return '<tr><td><input type="checkbox" data-accounting-missing-check value="' + escapeHtml(entry.id) + '"' + (selectAll ? ' checked' : '') + '></td><td>' + escapeHtml(entry.doc_type) + '</td><td>' + escapeHtml(entry.file_name || '') + '</td><td>' + escapeHtml(entry.sheet_name) + '</td><td>' + escapeHtml(entry.row_number) + '</td><td>' + escapeHtml(key) + '</td><td>' + escapeHtml(entry.party_document || '') + '</td>' + renderRawCells(entry.raw, headers) + '</tr>';
+                return '<tr><td><input type="checkbox" data-accounting-missing-check value="' + escapeHtml(entry.id) + '"' + ((selectAll || missingAllSelected) ? ' checked' : '') + '></td><td>' + escapeHtml(entry.doc_type) + '</td><td>' + escapeHtml(entry.file_name || '') + '</td><td>' + escapeHtml(entry.sheet_name) + '</td><td>' + escapeHtml(entry.row_number) + '</td><td>' + escapeHtml(key) + '</td><td>' + escapeHtml(entry.party_document || '') + '</td>' + renderRawCells(entry.raw, headers) + '</tr>';
             }).join('') : '<tr><td colspan="7">Nenhum registro pendente encontrado.</td></tr>';
+            document.querySelectorAll('[data-accounting-missing-check]').forEach(function (input) {
+                input.addEventListener('change', function () {
+                    if (!input.checked) {
+                        missingAllSelected = false;
+                        var checkAll = missingHead ? missingHead.querySelector('[data-accounting-missing-check-all]') : null;
+                        if (checkAll) checkAll.checked = false;
+                    }
+                });
+            });
+            updateMissingPagination();
         } catch (error) {
             missingBody.innerHTML = '<tr><td colspan="7">' + escapeHtml(error.message || 'Erro ao carregar registros.') + '</td></tr>';
         }
@@ -1138,8 +1216,26 @@ $documentFilterKeys = [
         if (missingSupplier && missingSupplier.value) params.set('supplier_q', missingSupplier.value);
         window.location.href = '?' + params.toString();
     }
-    function openLaunch() {
-        launchEntries = selectedMissingEntries();
+    async function openLaunch() {
+        if (missingAllSelected) {
+            if (launchFeedback) launchFeedback.textContent = '';
+            if (missingLaunch) missingLaunch.disabled = true;
+            missingBody.innerHTML = '<tr><td colspan="7">Carregando todos os registros do filtro para montar o de/para...</td></tr>';
+            try {
+                var allData = await fetchMissingEntries(500000, 1);
+                launchEntries = allData.entries || [];
+                missingEntries = launchEntries.slice(0, missingPerPage);
+                missingTotal = Number(allData.total || launchEntries.length || 0);
+            } catch (error) {
+                missingBody.innerHTML = '<tr><td colspan="7">' + escapeHtml(error.message || 'Erro ao carregar todos os registros.') + '</td></tr>';
+                if (missingLaunch) missingLaunch.disabled = false;
+                return;
+            } finally {
+                if (missingLaunch) missingLaunch.disabled = false;
+            }
+        } else {
+            launchEntries = selectedMissingEntries();
+        }
         if (!launchEntries.length) {
             alert('Selecione ao menos uma nota para lancar no portal.');
             return;
@@ -1155,7 +1251,10 @@ $documentFilterKeys = [
         fillLaunchSelect(launchIssuerDocument, headers, ['CNPJ/CPF/CEI/CAEPF', 'CPF/CNPJ', 'CNPJ', 'DOCUMENTO'], false);
         fillLaunchSelect(launchIssuerName, headers, ['FORNECEDOR', 'PRESTADOR', 'RAZAO SOCIAL', 'NOME'], true);
         fillLaunchSelect(launchIssueDate, headers, ['DATA EMISSAO', 'EMISSAO', 'DATA'], true);
+        fillLaunchSelect(launchEntryDate, headers, ['DATA ENTRADA', 'ENTRADA'], true);
         fillLaunchSelect(launchTotalValue, headers, ['VALOR CONTABIL', 'VALOR', 'TOTAL'], true);
+        fillLaunchSelect(launchCfop, headers, ['CFOP'], true);
+        fillLaunchSelect(launchDescription, headers, ['DESCRICAO', 'DISCRIMINACAO', 'SERVICO', 'HISTORICO', 'PRODUTO'], true);
         var accessField = launchModal ? launchModal.querySelector('[data-launch-field="access_key"]') : null;
         if (accessField) accessField.style.display = types[0] === 'NFSE' ? 'none' : '';
         if (launchSubtitle) launchSubtitle.textContent = launchEntries.length + ' nota(s) selecionada(s) para ' + types[0] + '.';
@@ -1165,20 +1264,20 @@ $documentFilterKeys = [
                 var sheetEntries = launchEntries.filter(function (entry) { return accountingGroupKey(entry) === groupKey; });
                 var firstEntry = sheetEntries[0] || {};
                 var sheet = String(firstEntry.sheet_name || '');
-                var label = accountingGroupLabel(firstEntry);
+                var groupLabel = accountingGroupLabel(firstEntry);
                 var sheetHeaders = rawHeaders(sheetEntries);
                 var options = '<option value="">Selecionar empresa</option>' + companyOptions.map(function (company) {
-                    var label = company.label || '';
+                    var companyLabel = company.label || '';
                     var sheetNorm = norm(sheet);
-                    var labelNorm = norm(label);
-                    var selected = (sheetNorm.indexOf('MATRIZ') >= 0 && label.indexOf('05102155000152') >= 0)
-                        || (sheetNorm.indexOf('MARINGA') >= 0 && label.indexOf('05102155000152') >= 0)
-                        || (sheetNorm.indexOf('BATAGUASSU') >= 0 && label.indexOf('05102155000586') >= 0)
-                        || (sheetNorm.indexOf('FOZ') >= 0 && label.indexOf('05102155000403') >= 0)
-                        || (sheetNorm.indexOf('CASCAVEL') >= 0 && label.indexOf('05102155000667') >= 0)
-                        || (sheetNorm.indexOf('CURITIBA') >= 0 && label.indexOf('05102155000233') >= 0)
+                    var labelNorm = norm(companyLabel);
+                    var selected = (sheetNorm.indexOf('MATRIZ') >= 0 && companyLabel.indexOf('05102155000152') >= 0)
+                        || (sheetNorm.indexOf('MARINGA') >= 0 && companyLabel.indexOf('05102155000152') >= 0)
+                        || (sheetNorm.indexOf('BATAGUASSU') >= 0 && companyLabel.indexOf('05102155000586') >= 0)
+                        || (sheetNorm.indexOf('FOZ') >= 0 && companyLabel.indexOf('05102155000403') >= 0)
+                        || (sheetNorm.indexOf('CASCAVEL') >= 0 && companyLabel.indexOf('05102155000667') >= 0)
+                        || (sheetNorm.indexOf('CURITIBA') >= 0 && companyLabel.indexOf('05102155000233') >= 0)
                         || (labelNorm.indexOf(sheetNorm) >= 0 && sheetNorm !== '');
-                    return '<option value="' + escapeHtml(company.value) + '"' + (selected ? ' selected' : '') + '>' + escapeHtml(label) + '</option>';
+                    return '<option value="' + escapeHtml(company.value) + '"' + (selected ? ' selected' : '') + '>' + escapeHtml(companyLabel) + '</option>';
                 }).join('');
                 var fields = [
                     {key: 'access_key', label: 'Chave de acesso', preferred: ['CHAVE DE ACESSO', 'CHAVE'], allowEmpty: true, hidden: types[0] === 'NFSE'},
@@ -1186,15 +1285,20 @@ $documentFilterKeys = [
                     {key: 'issuer_document', label: 'CPF/CNPJ fornecedor', preferred: ['CNPJ/CPF/CEI/CAEPF', 'CPF/CNPJ', 'CNPJ', 'DOCUMENTO'], allowEmpty: false},
                     {key: 'issuer_name', label: 'Nome fornecedor', preferred: ['FORNECEDOR', 'PRESTADOR', 'RAZAO SOCIAL', 'NOME'], allowEmpty: true},
                     {key: 'issue_date', label: 'Data emissao', preferred: ['DATA EMISSAO', 'DATA EMISSÃO', 'EMISSAO', 'EMISSÃO', 'DATA'], allowEmpty: true},
-                    {key: 'total_value', label: 'Valor', preferred: ['VALOR CONTABIL', 'VALOR', 'TOTAL'], allowEmpty: true}
+                    {key: 'entry_date', label: 'Data entrada', preferred: ['DATA ENTRADA', 'ENTRADA'], allowEmpty: true},
+                    {key: 'total_value', label: 'Valor', preferred: ['VALOR CONTABIL', 'VALOR', 'TOTAL'], allowEmpty: true},
+                    {key: 'cfop', label: 'CFOP', preferred: ['CFOP'], allowEmpty: true},
+                    {key: 'description', label: 'Descricao', preferred: ['DESCRICAO', 'DISCRIMINACAO', 'SERVICO', 'HISTORICO', 'PRODUTO'], allowEmpty: true}
                 ];
                 var mappings = fields.map(function (field) {
                     return launchSelectHtml(groupKey, field, sheetHeaders, field.preferred, field.allowEmpty, field.hidden);
                 }).join('');
-                return '<div class="accounting-launch-sheet-card"><strong>' + escapeHtml(label) + '</strong><label>Empresa<select data-accounting-launch-sheet="' + escapeHtml(groupKey) + '">' + options + '</select></label><div class="accounting-launch-sheet-map">' + mappings + '</div></div>';
+                return '<div class="accounting-launch-sheet-card"><strong>' + escapeHtml(groupLabel) + '</strong><label>Empresa<select data-accounting-launch-sheet="' + escapeHtml(groupKey) + '">' + options + '</select></label><div class="accounting-launch-sheet-map">' + mappings + '</div></div>';
             }).join('');
         }
         if (launchFeedback) launchFeedback.textContent = '';
+        if (launchProgress) launchProgress.classList.add('is-hidden');
+        if (launchProgressBar) launchProgressBar.style.width = '0';
         if (launchModal) launchModal.classList.remove('is-hidden');
     }
     async function confirmLaunch() {
@@ -1217,7 +1321,10 @@ $documentFilterKeys = [
             issuer_document: launchIssuerDocument ? launchIssuerDocument.value : '',
             issuer_name: launchIssuerName ? launchIssuerName.value : '',
             issue_date: launchIssueDate ? launchIssueDate.value : '',
-            total_value: launchTotalValue ? launchTotalValue.value : ''
+            entry_date: launchEntryDate ? launchEntryDate.value : '',
+            total_value: launchTotalValue ? launchTotalValue.value : '',
+            cfop: launchCfop ? launchCfop.value : '',
+            description: launchDescription ? launchDescription.value : ''
         };
         var mapping = Object.assign({_sheets: {}}, baseMapping);
         mapping._sheets = {};
@@ -1246,36 +1353,76 @@ $documentFilterKeys = [
             return;
         }
         launchConfirm.disabled = true;
-        if (launchFeedback) launchFeedback.textContent = 'Lancando notas no portal...';
+        if (launchFeedback) launchFeedback.textContent = 'Iniciando lancamento no portal...';
+        setLaunchProgress(0, launchEntries.length, 'Preparando ' + launchEntries.length + ' nota(s)...');
         try {
-            var response = await fetch('?page=documents_accounting_launch', {
-                method: 'POST',
-                headers: {'Accept': 'application/json', 'Content-Type': 'application/json;charset=UTF-8'},
-                body: JSON.stringify({
-                    _csrf: csrf.value,
-                    entry_ids: launchEntries.map(function (entry) { return entry.id; }),
-                    mapping: mapping,
-                    sheet_companies: sheetCompanies
-                })
-            });
-            var data = await response.json();
-            if (!response.ok || !data.ok) throw new Error((data && data.message) || 'Falha ao lancar no portal.');
-            if (launchFeedback) launchFeedback.textContent = 'Concluido: ' + (data.created_count || 0) + ' criada(s), ' + (data.linked_count || 0) + ' ja existente(s) vinculada(s), ' + (data.skipped_count || 0) + ' ignorada(s).';
-            await loadMissing();
-            window.setTimeout(function () { closeLaunch(); }, 900);
+            var ids = launchEntries.map(function (entry) { return entry.id; });
+            var batchSize = 100;
+            var totals = {created_count: 0, linked_count: 0, skipped_count: 0};
+            for (var start = 0; start < ids.length; start += batchSize) {
+                var batch = ids.slice(start, start + batchSize);
+                setLaunchProgress(start, ids.length, 'Enviando bloco ' + (Math.floor(start / batchSize) + 1) + ' de ' + Math.ceil(ids.length / batchSize) + '...');
+                var response = await fetch('?page=documents_accounting_launch', {
+                    method: 'POST',
+                    headers: {'Accept': 'application/json', 'Content-Type': 'application/json;charset=UTF-8'},
+                    body: JSON.stringify({
+                        _csrf: csrf.value,
+                        entry_ids: batch,
+                        mapping: mapping,
+                        sheet_companies: sheetCompanies
+                    })
+                });
+                var data = await response.json();
+                if (!response.ok || !data.ok) throw new Error((data && data.message) || 'Falha ao lancar no portal.');
+                totals.created_count += Number(data.created_count || 0);
+                totals.linked_count += Number(data.linked_count || 0);
+                totals.skipped_count += Number(data.skipped_count || 0);
+                setLaunchProgress(Math.min(start + batch.length, ids.length), ids.length, 'Processadas ' + Math.min(start + batch.length, ids.length) + ' de ' + ids.length + ' nota(s).');
+            }
+            if (launchFeedback) launchFeedback.textContent = 'Concluido: ' + totals.created_count + ' criada(s), ' + totals.linked_count + ' ja existente(s) vinculada(s), ' + totals.skipped_count + ' ignorada(s).';
+            missingAllSelected = false;
+            await loadMissing(false, 1);
         } catch (error) {
             if (launchFeedback) launchFeedback.textContent = error.message || 'Erro ao lancar no portal.';
         } finally {
             launchConfirm.disabled = false;
         }
     }
-    document.querySelectorAll('[data-open-accounting-missing]').forEach(function (button) { button.addEventListener('click', loadMissing); });
-    if (missingRefresh) missingRefresh.addEventListener('click', loadMissing);
+    document.querySelectorAll('[data-open-accounting-missing]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            missingPage = 1;
+            missingAllSelected = false;
+            loadMissing(false, 1);
+        });
+    });
+    if (missingRefresh) missingRefresh.addEventListener('click', function () {
+        missingPage = 1;
+        missingAllSelected = false;
+        loadMissing(false, 1);
+    });
     if (missingExport) missingExport.addEventListener('click', exportMissing);
     if (missingLaunch) missingLaunch.addEventListener('click', openLaunch);
     if (launchConfirm) launchConfirm.addEventListener('click', confirmLaunch);
-    if (missingNumber) missingNumber.addEventListener('keydown', function (event) { if (event.key === 'Enter') { event.preventDefault(); loadMissing(); } });
-    if (missingSupplier) missingSupplier.addEventListener('keydown', function (event) { if (event.key === 'Enter') { event.preventDefault(); loadMissing(); } });
+    if (missingPrev) missingPrev.addEventListener('click', function () {
+        if (missingPage > 1) {
+            missingPage--;
+            loadMissing(missingAllSelected, missingPage);
+        }
+    });
+    if (missingNext) missingNext.addEventListener('click', function () {
+        var pages = Math.max(1, Math.ceil(missingTotal / missingPerPage));
+        if (missingPage < pages) {
+            missingPage++;
+            loadMissing(missingAllSelected, missingPage);
+        }
+    });
+    if (missingType) missingType.addEventListener('change', function () {
+        missingPage = 1;
+        missingAllSelected = false;
+        loadMissing(false, 1);
+    });
+    if (missingNumber) missingNumber.addEventListener('keydown', function (event) { if (event.key === 'Enter') { event.preventDefault(); missingPage = 1; missingAllSelected = false; loadMissing(false, 1); } });
+    if (missingSupplier) missingSupplier.addEventListener('keydown', function (event) { if (event.key === 'Enter') { event.preventDefault(); missingPage = 1; missingAllSelected = false; loadMissing(false, 1); } });
     document.querySelectorAll('[data-close-accounting-details]').forEach(function (button) { button.addEventListener('click', closeDetails); });
     document.querySelectorAll('[data-close-accounting-missing]').forEach(function (button) { button.addEventListener('click', closeMissing); });
     document.querySelectorAll('[data-close-accounting-launch]').forEach(function (button) { button.addEventListener('click', closeLaunch); });

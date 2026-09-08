@@ -952,12 +952,19 @@ if ($page === 'documents_accounting_missing') {
     header('Content-Type: application/json; charset=utf-8');
     try {
         if (!$auth->canAccess('documents')) { throw new RuntimeException('Sem permissao para consultar contabilidade.'); }
+        $docType = (string)($_GET['doc_type'] ?? '');
+        $supplier = (string)($_GET['supplier_q'] ?? '');
+        $number = (string)($_GET['number_q'] ?? '');
+        $perPage = max(1, min(500000, (int)($_GET['limit'] ?? 100)));
+        $pageNumber = max(1, (int)($_GET['missing_page'] ?? 1));
+        $offset = ($pageNumber - 1) * $perPage;
+        $total = $repo->accountingMissingCount($docType, $supplier, $number);
         $entries = array_map(static function (array $entry): array {
             $entry['raw'] = json_decode((string)($entry['raw_json'] ?? '{}'), true) ?: [];
             unset($entry['raw_json']);
             return $entry;
-        }, $repo->accountingMissingEntries((string)($_GET['doc_type'] ?? ''), (int)($_GET['limit'] ?? 500), (string)($_GET['supplier_q'] ?? ''), (string)($_GET['number_q'] ?? '')));
-        echo json_encode(['ok' => true, 'entries' => $entries], JSON_UNESCAPED_UNICODE);
+        }, $repo->accountingMissingEntries($docType, $perPage, $supplier, $number, $offset));
+        echo json_encode(['ok' => true, 'entries' => $entries, 'total' => $total, 'page' => $pageNumber, 'per_page' => $perPage], JSON_UNESCAPED_UNICODE);
     } catch (Throwable $e) {
         http_response_code(400);
         echo json_encode(['ok' => false, 'message' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
@@ -970,7 +977,7 @@ if ($page === 'documents_accounting_missing_export') {
         $entry['raw'] = json_decode((string)($entry['raw_json'] ?? '{}'), true) ?: [];
         unset($entry['raw_json']);
         return $entry;
-    }, $repo->accountingMissingEntries((string)($_GET['doc_type'] ?? ''), 20000, (string)($_GET['supplier_q'] ?? ''), (string)($_GET['number_q'] ?? '')));
+    }, $repo->accountingMissingEntries((string)($_GET['doc_type'] ?? ''), 500000, (string)($_GET['supplier_q'] ?? ''), (string)($_GET['number_q'] ?? '')));
     $headers = [];
     foreach ($entries as $entry) {
         foreach (array_keys($entry['raw'] ?? []) as $header) {
@@ -983,7 +990,7 @@ if ($page === 'documents_accounting_missing_export') {
     header('Content-Type: application/vnd.ms-excel; charset=utf-8');
     header('Content-Disposition: attachment; filename="' . $filename . '"');
     echo "\xEF\xBB\xBF";
-    echo '<table border="1"><tr><th>Tipo</th><th>Aba</th><th>Linha</th><th>Arquivo</th><th>Chave acesso</th><th>Numero nota</th><th>CPF/CNPJ prestador</th>';
+    echo '<table border="1"><tr><th>Tipo</th><th>Planilha</th><th>Aba</th><th>Linha</th><th>Chave acesso</th><th>Numero nota</th><th>CPF/CNPJ prestador</th>';
     foreach ($headers as $header) {
         echo '<th>' . h((string)$header) . '</th>';
     }
@@ -992,9 +999,9 @@ if ($page === 'documents_accounting_missing_export') {
         echo '<tr>';
         foreach ([
             $entry['doc_type'] ?? '',
+            $entry['file_name'] ?? '',
             $entry['sheet_name'] ?? '',
             $entry['row_number'] ?? '',
-            $entry['file_name'] ?? '',
             $entry['access_key'] ?? '',
             $entry['document_number'] ?? '',
             $entry['party_document'] ?? '',

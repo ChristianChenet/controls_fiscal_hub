@@ -792,7 +792,7 @@ final class Repository
         return $stmt->fetchAll();
     }
 
-    public function accountingMissingEntries(?string $docType = null, int $limit = 500, string $supplier = '', string $number = ''): array
+    private function accountingMissingWhere(?string $docType = null, string $supplier = '', string $number = ''): array
     {
         $where = ['e.matched_document_id IS NULL'];
         $params = [];
@@ -812,16 +812,37 @@ final class Repository
             $where[] = '(COALESCE(e.document_number, \'\') ILIKE :number OR COALESCE(e.access_key, \'\') ILIKE :number OR COALESCE(e.raw_json, \'\') ILIKE :number)';
             $params['number'] = '%' . $number . '%';
         }
+        return [$where, $params];
+    }
+
+    public function accountingMissingCount(?string $docType = null, string $supplier = '', string $number = ''): int
+    {
+        [$where, $params] = $this->accountingMissingWhere($docType, $supplier, $number);
+        $stmt = $this->pdo->prepare('SELECT COUNT(*) AS total
+            FROM accounting_entries e
+            JOIN accounting_imports i ON i.id = e.import_id
+            WHERE ' . implode(' AND ', $where));
+        foreach ($params as $key => $value) {
+            $stmt->bindValue(':' . $key, $value);
+        }
+        $stmt->execute();
+        return (int)$stmt->fetchColumn();
+    }
+
+    public function accountingMissingEntries(?string $docType = null, int $limit = 500, string $supplier = '', string $number = '', int $offset = 0): array
+    {
+        [$where, $params] = $this->accountingMissingWhere($docType, $supplier, $number);
         $stmt = $this->pdo->prepare('SELECT e.*, i.file_name, i.created_at AS import_created_at, i.user_name AS import_user_name
             FROM accounting_entries e
             JOIN accounting_imports i ON i.id = e.import_id
             WHERE ' . implode(' AND ', $where) . '
             ORDER BY i.created_at DESC, e.id DESC
-            LIMIT :limit');
+            LIMIT :limit OFFSET :offset');
         foreach ($params as $key => $value) {
             $stmt->bindValue(':' . $key, $value);
         }
-        $stmt->bindValue(':limit', max(1, min(20000, $limit)), PDO::PARAM_INT);
+        $stmt->bindValue(':limit', max(1, min(500000, $limit)), PDO::PARAM_INT);
+        $stmt->bindValue(':offset', max(0, $offset), PDO::PARAM_INT);
         $stmt->execute();
         return $stmt->fetchAll();
     }
@@ -894,7 +915,10 @@ final class Repository
                 }
                 $issuerName = trim($this->accountingMappedValue($raw, $entryMapping, 'issuer_name'));
                 $issueDate = $this->parseAccountingDate($this->accountingMappedValue($raw, $entryMapping, 'issue_date'));
+                $entryDate = $this->parseAccountingDate($this->accountingMappedValue($raw, $entryMapping, 'entry_date'));
                 $totalValue = $this->parseAccountingMoney($this->accountingMappedValue($raw, $entryMapping, 'total_value'));
+                $cfop = $this->digits($this->accountingMappedValue($raw, $entryMapping, 'cfop'));
+                $serviceDescription = trim($this->accountingMappedValue($raw, $entryMapping, 'description'));
 
                 if ($docType === 'NFSE' && ($number === '' || $issuerDocument === '')) {
                     $skipped++;
@@ -933,12 +957,15 @@ final class Repository
                         'status' => 'apenas_resumo',
                         'manifestation_status' => 'not_applicable',
                         'source' => 'contabilidade_planilha',
-                        'notes' => 'Documento lancado no portal a partir da planilha da contabilidade. Arquivo: ' . (string)($entry['file_name'] ?? '') . '; aba: ' . (string)($entry['sheet_name'] ?? '') . '; linha: ' . (string)($entry['row_number'] ?? '') . '.',
+                        'notes' => 'Documento lancado no portal a partir da planilha da contabilidade. Arquivo: ' . (string)($entry['file_name'] ?? '') . '; aba: ' . (string)($entry['sheet_name'] ?? '') . '; linha: ' . (string)($entry['row_number'] ?? '') . ($entryDate ? '; data entrada: ' . $entryDate : '') . '.',
                         'raw_xml' => $this->buildAccountingRawXml($docType, $entry, $raw, $company, $entryMapping),
                         'digest' => $digest,
                         'schema_name' => 'accounting_spreadsheet',
                     ]);
                     $documentId = (int)($document['id'] ?? 0);
+                    if ($documentId > 0 && ($cfop !== '' || $serviceDescription !== '')) {
+                        $this->saveAccountingDocumentItem($documentId, $cfop, $serviceDescription, $totalValue);
+                    }
                     $created++;
                 }
 
@@ -1155,6 +1182,9 @@ final class Repository
             '  <numero>' . $escape($this->accountingMappedValue($raw, $mapping, 'number')) . '</numero>',
             '  <emitente documento="' . $escape($this->digits($this->accountingMappedValue($raw, $mapping, 'issuer_document'))) . '">' . $escape($this->accountingMappedValue($raw, $mapping, 'issuer_name')) . '</emitente>',
             '  <valor>' . $escape($this->accountingMappedValue($raw, $mapping, 'total_value')) . '</valor>',
+            '  <dataEntrada>' . $escape($this->accountingMappedValue($raw, $mapping, 'entry_date')) . '</dataEntrada>',
+            '  <cfop>' . $escape($this->accountingMappedValue($raw, $mapping, 'cfop')) . '</cfop>',
+            '  <descricao>' . $escape($this->accountingMappedValue($raw, $mapping, 'description')) . '</descricao>',
             '  <campos>',
         ];
         foreach ($raw as $key => $value) {
@@ -1166,6 +1196,27 @@ final class Repository
         $lines[] = '  </campos>';
         $lines[] = '</documentoContabilidade>';
         return implode("\n", $lines);
+    }
+
+    private function saveAccountingDocumentItem(int $documentId, string $cfop, string $description, float $totalValue): void
+    {
+        $delete = $this->pdo->prepare('DELETE FROM document_items WHERE document_id = :document_id');
+        $delete->execute(['document_id' => $documentId]);
+        $insert = $this->pdo->prepare('INSERT INTO document_items(document_id, item_number, product_code, product_name, ncm, cfop, quantity, unit, unit_amount, total_amount, created_at)
+            VALUES(:document_id, :item_number, :product_code, :product_name, :ncm, :cfop, :quantity, :unit, :unit_amount, :total_amount, :created_at)');
+        $insert->execute([
+            'document_id' => $documentId,
+            'item_number' => 1,
+            'product_code' => '',
+            'product_name' => $description !== '' ? $description : 'Lancamento importado da contabilidade',
+            'ncm' => '',
+            'cfop' => $cfop,
+            'quantity' => 1,
+            'unit' => 'UN',
+            'unit_amount' => $totalValue,
+            'total_amount' => $totalValue,
+            'created_at' => date('c'),
+        ]);
     }
 
     private function findAccountingAccessKeyDocument(string $docType, string $accessKey): ?array
