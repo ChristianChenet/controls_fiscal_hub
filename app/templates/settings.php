@@ -11,35 +11,6 @@ $activeAutomationCompanyIds = array_map(static fn(array $co): int => (int)$co['i
 $autoCteAll = ($settings['auto_cte_all_companies'] ?? '0') === '1' || ($activeAutomationCompanyIds && count(array_intersect($activeAutomationCompanyIds, $selectedAutoCte)) === count($activeAutomationCompanyIds));
 $autoNfeAll = ($settings['auto_nfe_all_companies'] ?? '0') === '1' || ($activeAutomationCompanyIds && count(array_intersect($activeAutomationCompanyIds, $selectedAutoNfe)) === count($activeAutomationCompanyIds));
 $autoNfseAll = ($settings['auto_nfse_all_companies'] ?? '0') === '1' || ($activeAutomationCompanyIds && count(array_intersect($activeAutomationCompanyIds, $selectedAutoNfse)) === count($activeAutomationCompanyIds));
-$sefazUfOptions = [
-    '11' => 'RO - Rondonia',
-    '12' => 'AC - Acre',
-    '13' => 'AM - Amazonas',
-    '14' => 'RR - Roraima',
-    '15' => 'PA - Para',
-    '16' => 'AP - Amapa',
-    '17' => 'TO - Tocantins',
-    '21' => 'MA - Maranhao',
-    '22' => 'PI - Piaui',
-    '23' => 'CE - Ceara',
-    '24' => 'RN - Rio Grande do Norte',
-    '25' => 'PB - Paraiba',
-    '26' => 'PE - Pernambuco',
-    '27' => 'AL - Alagoas',
-    '28' => 'SE - Sergipe',
-    '29' => 'BA - Bahia',
-    '31' => 'MG - Minas Gerais',
-    '32' => 'ES - Espirito Santo',
-    '33' => 'RJ - Rio de Janeiro',
-    '35' => 'SP - Sao Paulo',
-    '41' => 'PR - Parana',
-    '42' => 'SC - Santa Catarina',
-    '43' => 'RS - Rio Grande do Sul',
-    '50' => 'MS - Mato Grosso do Sul',
-    '51' => 'MT - Mato Grosso',
-    '52' => 'GO - Goias',
-    '53' => 'DF - Distrito Federal',
-];
 ?>
 <div class="page-header">
     <h1>Configurações</h1>
@@ -94,13 +65,8 @@ $sefazUfOptions = [
                 <option value="2" <?= $settings['sefaz_environment'] === '2' ? 'selected' : '' ?>>Homologação</option>
             </select>
         </label>
-        <label>UF autor
-            <select name="sefaz_uf_author">
-                <?php foreach ($sefazUfOptions as $code => $description): ?>
-                    <option value="<?= h($code) ?>" <?= ((string)($settings['sefaz_uf_author'] ?? '') === $code) ? 'selected' : '' ?>><?= h($code . ' - ' . $description) ?></option>
-                <?php endforeach; ?>
-            </select>
-            <small>Selecione pelo código IBGE e descrição da UF.</small>
+        <label>UF autor (código IBGE da UF, ex.: 41 = PR)
+            <input type="text" name="sefaz_uf_author" value="<?= h($settings['sefaz_uf_author']) ?>">
         </label>
 
         <h2>NF-e / NFC-e</h2>
