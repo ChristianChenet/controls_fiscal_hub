@@ -1723,9 +1723,7 @@ textarea{
 .queue-progress small{color:#536579}
 .documents-table td[data-column="contabilidade"]{
   text-align:center!important;
-}
-.documents-table td[data-column="contabilidade"]{
-  vertical-align:middle;
+  vertical-align:top;
 }
 .documents-table td[data-column="contabilidade"] .link-button{
   display:inline-flex;
