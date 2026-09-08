@@ -1211,7 +1211,7 @@ $documentFilterKeys = [
             return;
         }
         var type = String(launchEntries[0].doc_type || '').toUpperCase();
-        var mapping = {
+        var baseMapping = {
             access_key: launchAccessKey ? launchAccessKey.value : '',
             number: launchNumber ? launchNumber.value : '',
             issuer_document: launchIssuerDocument ? launchIssuerDocument.value : '',
@@ -1219,15 +1219,16 @@ $documentFilterKeys = [
             issue_date: launchIssueDate ? launchIssueDate.value : '',
             total_value: launchTotalValue ? launchTotalValue.value : ''
         };
+        var mapping = Object.assign({_sheets: {}}, baseMapping);
         mapping._sheets = {};
         document.querySelectorAll('[data-accounting-launch-sheet]').forEach(function (select) {
             var sheet = select.getAttribute('data-accounting-launch-sheet') || '';
-            mapping._sheets[sheet] = Object.assign({}, mapping);
+            mapping._sheets[sheet] = Object.assign({}, baseMapping);
         });
         document.querySelectorAll('[data-accounting-launch-sheet-map]').forEach(function (select) {
             var sheet = select.getAttribute('data-accounting-launch-sheet-map') || '';
             var field = select.getAttribute('data-accounting-launch-map-field') || '';
-            if (!mapping._sheets[sheet]) mapping._sheets[sheet] = Object.assign({}, mapping);
+            if (!mapping._sheets[sheet]) mapping._sheets[sheet] = Object.assign({}, baseMapping);
             mapping._sheets[sheet][field] = select.value;
         });
         var invalidSheet = Object.keys(mapping._sheets).find(function (groupKey) {
