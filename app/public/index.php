@@ -1994,8 +1994,11 @@ if ($page === 'documents_export') {
     header('Content-Disposition: attachment; filename="' . $filename . '"');
     echo "\xEF\xBB\xBF";
     echo '<table border="1">';
-    echo '<tr><th>Empresa</th><th>CNPJ</th><th>Tipo</th><th>N&uacute;mero</th><th>Pedido</th><th>Emissor</th><th>CNPJ emissor</th><th>Destinat&aacute;rio</th><th>Documento destinat&aacute;rio</th><th>Chave</th><th>NF-e vinculada</th><th>N&uacute;mero doc. referenciado</th><th>Nota lan&ccedil;ada no ERP</th><th>Lan&ccedil;ada contabilidade</th><th>Eventos informativos</th><th>Emiss&atilde;o</th><th>Valor</th><th>Status</th><th>Manifesta&ccedil;&atilde;o</th><th>Origem</th><th>Pasta</th></tr>';
+    echo '<tr><th>Empresa</th><th>CNPJ</th><th>Tipo</th><th>N&uacute;mero</th><th>Pedido</th><th>Emissor</th><th>CNPJ emissor</th><th>Destinat&aacute;rio</th><th>Documento destinat&aacute;rio</th><th>Chave</th><th>NF-e vinculada</th><th>N&uacute;mero doc. referenciado</th><th>Nota lan&ccedil;ada no ERP</th><th>Lan&ccedil;ada contabilidade</th><th>Eventos informativos</th><th>Emiss&atilde;o</th><th>Valor</th><th>Status</th><th>Manifesta&ccedil;&atilde;o</th><th>Origem</th><th>Link espelho</th><th>Pasta</th></tr>';
     foreach ($docs as $doc) {
+        $hasMirror = in_array(strtoupper((string)($doc['doc_type'] ?? '')), ['NFE', 'CTE', 'NFSE'], true)
+            && (string)($doc['status'] ?? '') !== 'apenas_resumo';
+        $mirrorLink = $hasMirror ? absolute_url('?page=documents_danfe&id=' . (int)($doc['id'] ?? 0)) : '';
         echo '<tr>';
         foreach ([
             $doc['company_name'] ?? '',
@@ -2018,6 +2021,7 @@ if ($page === 'documents_export') {
             document_status_label((string)($doc['status'] ?? '')),
             manifestation_status_label((string)($doc['manifestation_status'] ?? '')),
             $doc['source'] ?? '',
+            $mirrorLink,
             $doc['storage_dir'] ?? '',
         ] as $value) {
             echo '<td>' . h((string)$value) . '</td>';

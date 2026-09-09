@@ -27,6 +27,8 @@ $documentFilterKeys = [
     'company_id','doc_type','status','manifestation_status','posted_to_erp','accounting_posted','without_referenced_nfe','cte_taker_only','ignore_cfops','entry_only','date_start','date_end',
     'company_q','number_q','issuer_q','recipient_q','access_key_q','referenced_nfe_q','referenced_number_q','product_q','cfop_q','source_q','q','sort_by','sort_dir',
 ];
+$canShowDocumentMirror = static fn(array $doc): bool => in_array(strtoupper((string)($doc['doc_type'] ?? '')), ['NFE', 'CTE', 'NFSE'], true)
+    && (string)($doc['status'] ?? '') !== 'apenas_resumo';
 ?>
 <div class="page-header split-header documents-page-header">
     <div>
@@ -166,6 +168,7 @@ $documentFilterKeys = [
             'status' => 'Status',
             'manifestacao' => 'Manifestacao',
             'origem' => 'Origem',
+            'link_espelho' => 'Link espelho',
             'acoes' => 'Ações',
         ] as $columnKey => $columnLabel): ?>
             <?php $defaultVisible = $columnKey !== 'origem'; ?>
@@ -254,6 +257,7 @@ $documentFilterKeys = [
                     <th class="resizable" data-column="status">Status</th>
                     <th class="resizable" data-column="manifestacao">Manifestacao</th>
                     <th class="resizable" data-column="origem">Origem</th>
+                    <th class="resizable" data-column="link_espelho">Link espelho</th>
                     <th class="resizable actions-col" data-column="acoes">Acoes</th>
                 </tr>
                 <tr class="grid-filters">
@@ -287,6 +291,7 @@ $documentFilterKeys = [
                         </select>
                     </th>
                     <th data-column="origem"><input form="column-filter-form" name="source_q" value="<?= h((string)($filters['source_q'] ?? '')) ?>" placeholder="Filtrar"></th>
+                    <th data-column="link_espelho"></th>
                     <th data-column="acoes"><small class="grid-filter-hint">Filtra ao digitar</small></th>
                 </tr>
             </thead>
@@ -323,15 +328,22 @@ $documentFilterKeys = [
                     <td data-column="status"><?= h(document_status_label((string)$doc['status'])) ?></td>
                     <td data-column="manifestacao"><?= h(manifestation_status_label((string)$doc['manifestation_status'])) ?></td>
                     <td data-column="origem"><?= h((string)$doc['source']) ?></td>
+                    <td data-column="link_espelho">
+                        <?php if ($canShowDocumentMirror($doc)): ?>
+                            <a class="row-action" target="_blank" href="<?= h(base_url('?page=documents_danfe&id=' . $doc['id'])) ?>">Abrir</a>
+                        <?php else: ?>
+                            <small>-</small>
+                        <?php endif; ?>
+                    </td>
                     <td data-column="acoes" class="row-actions">
                         <a class="row-action" target="_blank" href="<?= h(base_url('?page=view_xml&id=' . $doc['id'])) ?>">XML</a>
                         <button type="button" class="row-action row-action-button" data-document-items="<?= h((string)$doc['id']) ?>">Produtos</button>
-                        <?php if (in_array(strtoupper((string)($doc['doc_type'] ?? '')), ['NFE', 'CTE', 'NFSE'], true) && (string)($doc['status'] ?? '') !== 'apenas_resumo'): ?><button type="button" class="row-action row-action-button" data-document-danfe="<?= h((string)$doc['id']) ?>">Espelho</button><?php endif; ?>
+                        <?php if ($canShowDocumentMirror($doc)): ?><button type="button" class="row-action row-action-button" data-document-danfe="<?= h((string)$doc['id']) ?>">Espelho</button><?php endif; ?>
                     </td>
                 </tr>
             <?php endforeach; ?>
             <?php if (!$documents): ?>
-                <tr><td colspan="18">Nenhuma entrada encontrada.</td></tr>
+                <tr><td colspan="19">Nenhuma entrada encontrada.</td></tr>
             <?php endif; ?>
             </tbody>
         </table>

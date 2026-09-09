@@ -73,6 +73,18 @@ function base_url(string $path = ''): string
     return ($script === '' ? '' : $script) . '/' . ltrim($path, '/');
 }
 
+function absolute_url(string $path = ''): string
+{
+    $host = $_SERVER['HTTP_HOST'] ?? '';
+    if ($host === '') {
+        return base_url($path);
+    }
+
+    $https = !empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off';
+    $scheme = $https ? 'https' : 'http';
+    return $scheme . '://' . $host . base_url($path);
+}
+
 function nl2br_safe(?string $value): string
 {
     return nl2br(h($value));
