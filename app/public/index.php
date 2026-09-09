@@ -963,6 +963,22 @@ if ($page === 'documents_accounting_missing') {
         $pageNumber = max(1, (int)($_GET['missing_page'] ?? 1));
         $offset = ($pageNumber - 1) * $perPage;
         $total = $repo->accountingMissingCount($docType, $supplier, $number, $file, $sheet, $dateStart, $dateEnd);
+        if ((string)($_GET['options_only'] ?? '') === '1') {
+            $files = [];
+            $sheets = [];
+            foreach ($repo->accountingMissingGroups($docType, $supplier, $number, $file, $sheet, $dateStart, $dateEnd) as $group) {
+                $fileName = trim((string)($group['file_name'] ?? ''));
+                $sheetName = trim((string)($group['sheet_name'] ?? ''));
+                if ($fileName !== '') {
+                    $files[$fileName] = true;
+                }
+                if ($sheetName !== '') {
+                    $sheets[$sheetName] = true;
+                }
+            }
+            echo json_encode(['ok' => true, 'files' => array_keys($files), 'sheets' => array_keys($sheets), 'total' => $total], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+            exit;
+        }
         if ((string)($_GET['groups_only'] ?? '') === '1') {
             $groups = array_map(static function (array $entry): array {
                 $raw = json_decode((string)($entry['raw_json'] ?? '{}'), true) ?: [];

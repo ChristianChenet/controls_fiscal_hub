@@ -641,10 +641,12 @@ $documentFilterKeys = [
                 <input type="text" id="accounting-missing-supplier" placeholder="Nome, CPF ou CNPJ">
             </label>
             <label>Planilha
-                <input type="text" id="accounting-missing-file" placeholder="Nome da planilha">
+                <input type="text" id="accounting-missing-file" list="accounting-missing-file-options" placeholder="Nome da planilha">
+                <datalist id="accounting-missing-file-options"></datalist>
             </label>
             <label>Aba
-                <input type="text" id="accounting-missing-sheet" placeholder="Nome da aba">
+                <input type="text" id="accounting-missing-sheet" list="accounting-missing-sheet-options" placeholder="Nome da aba">
+                <datalist id="accounting-missing-sheet-options"></datalist>
             </label>
             <label>Data inicial
                 <input type="date" id="accounting-missing-date-start">
@@ -654,7 +656,7 @@ $documentFilterKeys = [
             </label>
             <label class="form-action-label">
                 <span>&nbsp;</span>
-                <button type="button" class="button-compact" id="accounting-missing-refresh">Atualizar lista</button>
+                <button type="button" class="button-compact" id="accounting-missing-refresh">Filtrar</button>
             </label>
             <label class="form-action-label">
                 <span>&nbsp;</span>
@@ -1039,6 +1041,8 @@ $documentFilterKeys = [
     var missingSupplier = document.getElementById('accounting-missing-supplier');
     var missingFile = document.getElementById('accounting-missing-file');
     var missingSheet = document.getElementById('accounting-missing-sheet');
+    var missingFileOptions = document.getElementById('accounting-missing-file-options');
+    var missingSheetOptions = document.getElementById('accounting-missing-sheet-options');
     var missingDateStart = document.getElementById('accounting-missing-date-start');
     var missingDateEnd = document.getElementById('accounting-missing-date-end');
     var missingRefresh = document.getElementById('accounting-missing-refresh');
@@ -1184,6 +1188,23 @@ $documentFilterKeys = [
         if (!response.ok || !data.ok) throw new Error((data && data.message) || 'Falha ao carregar planilhas e abas.');
         return data;
     }
+    async function fetchMissingOptions() {
+        var params = missingParams(1, 1);
+        params.set('options_only', '1');
+        var response = await fetch('?' + params.toString(), {headers: {'Accept': 'application/json'}});
+        var data = await response.json();
+        if (!response.ok || !data.ok) return;
+        if (missingFileOptions) {
+            missingFileOptions.innerHTML = (data.files || []).map(function (value) {
+                return '<option value="' + escapeHtml(value) + '"></option>';
+            }).join('');
+        }
+        if (missingSheetOptions) {
+            missingSheetOptions.innerHTML = (data.sheets || []).map(function (value) {
+                return '<option value="' + escapeHtml(value) + '"></option>';
+            }).join('');
+        }
+    }
     async function fetchMissingIds(limit) {
         var params = missingParams(limit || 500, 1);
         params.set('ids_only', '1');
@@ -1248,6 +1269,7 @@ $documentFilterKeys = [
         missingModal.classList.remove('is-hidden');
         missingBody.innerHTML = '<tr><td colspan="7">Carregando...</td></tr>';
         try {
+            fetchMissingOptions().catch(function () {});
             missingPage = Math.max(1, page || missingPage || 1);
             var data = await fetchMissingEntries(missingPerPage, missingPage);
             var entries = data.entries || [];
