@@ -792,7 +792,7 @@ final class Repository
         return $stmt->fetchAll();
     }
 
-    private function accountingMissingWhere(?string $docType = null, string $supplier = '', string $number = ''): array
+    private function accountingMissingWhere(?string $docType = null, string $supplier = '', string $number = '', string $file = '', string $sheet = '', string $dateStart = '', string $dateEnd = ''): array
     {
         $where = ['e.matched_document_id IS NULL'];
         $params = [];
@@ -812,12 +812,42 @@ final class Repository
             $where[] = '(COALESCE(e.document_number, \'\') ILIKE :number OR COALESCE(e.access_key, \'\') ILIKE :number OR COALESCE(e.raw_json, \'\') ILIKE :number)';
             $params['number'] = '%' . $number . '%';
         }
+        $file = trim($file);
+        if ($file !== '') {
+            $where[] = 'i.file_name ILIKE :file_name';
+            $params['file_name'] = '%' . $file . '%';
+        }
+        $sheet = trim($sheet);
+        if ($sheet !== '') {
+            $where[] = 'e.sheet_name ILIKE :sheet_name';
+            $params['sheet_name'] = '%' . $sheet . '%';
+        }
+        $dateStart = $this->normalizeFilterDate($dateStart) ?? '';
+        $dateEnd = $this->normalizeFilterDate($dateEnd) ?? '';
+        if (($dateStart !== '' || $dateEnd !== '') && (string)$this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) !== 'sqlite') {
+            $rawJson = "NULLIF(e.raw_json, '')::jsonb";
+            $dateValue = "COALESCE({$rawJson} ->> 'Data Emissão', {$rawJson} ->> 'Data Emissao', {$rawJson} ->> 'Emissão', {$rawJson} ->> 'Emissao', {$rawJson} ->> 'DATA EMISSÃO', {$rawJson} ->> 'DATA EMISSAO', '')";
+            $dateExpr = "(CASE
+                WHEN {$dateValue} ~ '^[0-9]+(\\.[0-9]+)?$' THEN (DATE '1899-12-30' + FLOOR({$dateValue}::numeric)::int)::date
+                WHEN {$dateValue} ~ '^[0-9]{2}/[0-9]{2}/[0-9]{4}' THEN TO_DATE(SUBSTRING({$dateValue} FROM 1 FOR 10), 'DD/MM/YYYY')
+                WHEN {$dateValue} ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}' THEN SUBSTRING({$dateValue} FROM 1 FOR 10)::date
+                ELSE NULL
+            END)";
+            if ($dateStart !== '') {
+                $where[] = "{$dateExpr} >= :date_start";
+                $params['date_start'] = $dateStart;
+            }
+            if ($dateEnd !== '') {
+                $where[] = "{$dateExpr} <= :date_end";
+                $params['date_end'] = $dateEnd;
+            }
+        }
         return [$where, $params];
     }
 
-    public function accountingMissingCount(?string $docType = null, string $supplier = '', string $number = ''): int
+    public function accountingMissingCount(?string $docType = null, string $supplier = '', string $number = '', string $file = '', string $sheet = '', string $dateStart = '', string $dateEnd = ''): int
     {
-        [$where, $params] = $this->accountingMissingWhere($docType, $supplier, $number);
+        [$where, $params] = $this->accountingMissingWhere($docType, $supplier, $number, $file, $sheet, $dateStart, $dateEnd);
         $stmt = $this->pdo->prepare('SELECT COUNT(*) AS total
             FROM accounting_entries e
             JOIN accounting_imports i ON i.id = e.import_id
@@ -829,9 +859,9 @@ final class Repository
         return (int)$stmt->fetchColumn();
     }
 
-    public function accountingMissingGroups(?string $docType = null, string $supplier = '', string $number = ''): array
+    public function accountingMissingGroups(?string $docType = null, string $supplier = '', string $number = '', string $file = '', string $sheet = '', string $dateStart = '', string $dateEnd = ''): array
     {
-        [$where, $params] = $this->accountingMissingWhere($docType, $supplier, $number);
+        [$where, $params] = $this->accountingMissingWhere($docType, $supplier, $number, $file, $sheet, $dateStart, $dateEnd);
         $stmt = $this->pdo->prepare('SELECT e.doc_type, i.file_name, e.sheet_name, COUNT(*) AS total, MAX(e.raw_json) AS raw_json
             FROM accounting_entries e
             JOIN accounting_imports i ON i.id = e.import_id
@@ -845,9 +875,9 @@ final class Repository
         return $stmt->fetchAll();
     }
 
-    public function accountingMissingIds(?string $docType = null, int $limit = 500, string $supplier = '', string $number = ''): array
+    public function accountingMissingIds(?string $docType = null, int $limit = 500, string $supplier = '', string $number = '', string $file = '', string $sheet = '', string $dateStart = '', string $dateEnd = ''): array
     {
-        [$where, $params] = $this->accountingMissingWhere($docType, $supplier, $number);
+        [$where, $params] = $this->accountingMissingWhere($docType, $supplier, $number, $file, $sheet, $dateStart, $dateEnd);
         $stmt = $this->pdo->prepare('SELECT e.id
             FROM accounting_entries e
             JOIN accounting_imports i ON i.id = e.import_id
@@ -862,9 +892,9 @@ final class Repository
         return array_map(static fn(array $row): int => (int)$row['id'], $stmt->fetchAll());
     }
 
-    public function accountingMissingEntries(?string $docType = null, int $limit = 500, string $supplier = '', string $number = '', int $offset = 0): array
+    public function accountingMissingEntries(?string $docType = null, int $limit = 500, string $supplier = '', string $number = '', int $offset = 0, string $file = '', string $sheet = '', string $dateStart = '', string $dateEnd = ''): array
     {
-        [$where, $params] = $this->accountingMissingWhere($docType, $supplier, $number);
+        [$where, $params] = $this->accountingMissingWhere($docType, $supplier, $number, $file, $sheet, $dateStart, $dateEnd);
         $stmt = $this->pdo->prepare('SELECT e.*, i.file_name, i.created_at AS import_created_at, i.user_name AS import_user_name
             FROM accounting_entries e
             JOIN accounting_imports i ON i.id = e.import_id

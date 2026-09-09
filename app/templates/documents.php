@@ -640,6 +640,18 @@ $documentFilterKeys = [
             <label>Fornecedor
                 <input type="text" id="accounting-missing-supplier" placeholder="Nome, CPF ou CNPJ">
             </label>
+            <label>Planilha
+                <input type="text" id="accounting-missing-file" placeholder="Nome da planilha">
+            </label>
+            <label>Aba
+                <input type="text" id="accounting-missing-sheet" placeholder="Nome da aba">
+            </label>
+            <label>Data inicial
+                <input type="date" id="accounting-missing-date-start">
+            </label>
+            <label>Data final
+                <input type="date" id="accounting-missing-date-end">
+            </label>
             <label class="form-action-label">
                 <span>&nbsp;</span>
                 <button type="button" class="button-compact" id="accounting-missing-refresh">Atualizar lista</button>
@@ -1025,6 +1037,10 @@ $documentFilterKeys = [
     var missingType = document.getElementById('accounting-missing-type');
     var missingNumber = document.getElementById('accounting-missing-number');
     var missingSupplier = document.getElementById('accounting-missing-supplier');
+    var missingFile = document.getElementById('accounting-missing-file');
+    var missingSheet = document.getElementById('accounting-missing-sheet');
+    var missingDateStart = document.getElementById('accounting-missing-date-start');
+    var missingDateEnd = document.getElementById('accounting-missing-date-end');
     var missingRefresh = document.getElementById('accounting-missing-refresh');
     var missingExport = document.getElementById('accounting-missing-export');
     var missingLaunch = document.getElementById('accounting-missing-launch');
@@ -1148,6 +1164,10 @@ $documentFilterKeys = [
         if (missingType && missingType.value) params.set('doc_type', missingType.value);
         if (missingNumber && missingNumber.value) params.set('number_q', missingNumber.value);
         if (missingSupplier && missingSupplier.value) params.set('supplier_q', missingSupplier.value);
+        if (missingFile && missingFile.value) params.set('file_q', missingFile.value);
+        if (missingSheet && missingSheet.value) params.set('sheet_q', missingSheet.value);
+        if (missingDateStart && missingDateStart.value) params.set('date_start', missingDateStart.value);
+        if (missingDateEnd && missingDateEnd.value) params.set('date_end', missingDateEnd.value);
         return params;
     }
     async function fetchMissingEntries(limit, page) {
@@ -1273,6 +1293,10 @@ $documentFilterKeys = [
         if (missingType && missingType.value) params.set('doc_type', missingType.value);
         if (missingNumber && missingNumber.value) params.set('number_q', missingNumber.value);
         if (missingSupplier && missingSupplier.value) params.set('supplier_q', missingSupplier.value);
+        if (missingFile && missingFile.value) params.set('file_q', missingFile.value);
+        if (missingSheet && missingSheet.value) params.set('sheet_q', missingSheet.value);
+        if (missingDateStart && missingDateStart.value) params.set('date_start', missingDateStart.value);
+        if (missingDateEnd && missingDateEnd.value) params.set('date_end', missingDateEnd.value);
         window.location.href = '?' + params.toString();
     }
     async function openLaunch() {
@@ -1528,13 +1552,23 @@ $documentFilterKeys = [
         if (checkAll) checkAll.checked = false;
         updateMissingPagination();
     });
-    if (missingType) missingType.addEventListener('change', function () {
+    function reloadMissingFromFirstPage() {
         missingPage = 1;
         missingAllSelected = false;
         loadMissing(false, 1);
+    }
+    if (missingType) missingType.addEventListener('change', reloadMissingFromFirstPage);
+    if (missingDateStart) missingDateStart.addEventListener('change', reloadMissingFromFirstPage);
+    if (missingDateEnd) missingDateEnd.addEventListener('change', reloadMissingFromFirstPage);
+    [missingNumber, missingSupplier, missingFile, missingSheet].forEach(function (input) {
+        if (!input) return;
+        input.addEventListener('keydown', function (event) {
+            if (event.key === 'Enter') {
+                event.preventDefault();
+                reloadMissingFromFirstPage();
+            }
+        });
     });
-    if (missingNumber) missingNumber.addEventListener('keydown', function (event) { if (event.key === 'Enter') { event.preventDefault(); missingPage = 1; missingAllSelected = false; loadMissing(false, 1); } });
-    if (missingSupplier) missingSupplier.addEventListener('keydown', function (event) { if (event.key === 'Enter') { event.preventDefault(); missingPage = 1; missingAllSelected = false; loadMissing(false, 1); } });
     document.querySelectorAll('[data-close-accounting-details]').forEach(function (button) { button.addEventListener('click', closeDetails); });
     document.querySelectorAll('[data-close-accounting-missing]').forEach(function (button) { button.addEventListener('click', closeMissing); });
     document.querySelectorAll('[data-close-accounting-launch]').forEach(function (button) { button.addEventListener('click', closeLaunch); });
