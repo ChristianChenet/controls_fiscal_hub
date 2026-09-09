@@ -1067,6 +1067,7 @@ $documentFilterKeys = [
     var missingPerPage = 100;
     var missingTotal = 0;
     var missingAllSelected = false;
+    var launchAllFromFilter = false;
     if (!detailsModal || !detailsBody || !missingModal || !missingBody) return;
     function escapeHtml(value) {
         return String(value == null ? '' : value).replace(/[&<>"']/g, function (char) {
@@ -1109,6 +1110,11 @@ $documentFilterKeys = [
     function rawHeaders(entries) {
         var headers = [];
         entries.forEach(function (entry) {
+            if (Array.isArray(entry.headers)) {
+                entry.headers.forEach(function (key) {
+                    if (key && headers.indexOf(key) < 0) headers.push(key);
+                });
+            }
             Object.keys(entry.raw || {}).forEach(function (key) {
                 if (key !== '_rowNumber' && headers.indexOf(key) < 0) headers.push(key);
             });
@@ -1149,6 +1155,22 @@ $documentFilterKeys = [
         var data = await response.json();
         if (!response.ok || !data.ok) throw new Error((data && data.message) || 'Falha ao carregar registros.');
         return data;
+    }
+    async function fetchMissingGroups() {
+        var params = missingParams(1, 1);
+        params.set('groups_only', '1');
+        var response = await fetch('?' + params.toString(), {headers: {'Accept': 'application/json'}});
+        var data = await response.json();
+        if (!response.ok || !data.ok) throw new Error((data && data.message) || 'Falha ao carregar planilhas e abas.');
+        return data;
+    }
+    async function fetchMissingIds(limit) {
+        var params = missingParams(limit || 500, 1);
+        params.set('ids_only', '1');
+        var response = await fetch('?' + params.toString(), {headers: {'Accept': 'application/json'}});
+        var data = await response.json();
+        if (!response.ok || !data.ok) throw new Error((data && data.message) || 'Falha ao carregar notas para lancamento.');
+        return data.ids || [];
     }
     function updateMissingPagination() {
         var pages = Math.max(1, Math.ceil(missingTotal / missingPerPage));
@@ -1257,14 +1279,14 @@ $documentFilterKeys = [
         if (missingAllSelected) {
             if (launchFeedback) launchFeedback.textContent = '';
             if (missingLaunch) missingLaunch.disabled = true;
-            missingBody.innerHTML = '<tr><td colspan="7">Carregando todos os registros do filtro para montar o de/para...</td></tr>';
+            missingBody.innerHTML = '<tr><td colspan="7">Carregando planilhas e abas do filtro para montar o de/para...</td></tr>';
             try {
-                var allData = await fetchMissingEntries(500000, 1);
-                launchEntries = allData.entries || [];
-                missingEntries = launchEntries.slice(0, missingPerPage);
-                missingTotal = Number(allData.total || launchEntries.length || 0);
+                var groupData = await fetchMissingGroups();
+                launchEntries = groupData.groups || [];
+                missingTotal = Number(groupData.total || missingTotal || 0);
+                launchAllFromFilter = true;
             } catch (error) {
-                missingBody.innerHTML = '<tr><td colspan="7">' + escapeHtml(error.message || 'Erro ao carregar todos os registros.') + '</td></tr>';
+                missingBody.innerHTML = '<tr><td colspan="7">' + escapeHtml(error.message || 'Erro ao carregar planilhas e abas.') + '</td></tr>';
                 if (missingLaunch) missingLaunch.disabled = false;
                 return;
             } finally {
@@ -1272,6 +1294,7 @@ $documentFilterKeys = [
             }
         } else {
             launchEntries = selectedMissingEntries();
+            launchAllFromFilter = false;
         }
         if (!launchEntries.length) {
             alert('Selecione ao menos uma nota para lancar no portal.');
@@ -1300,7 +1323,7 @@ $documentFilterKeys = [
         fillLaunchSelect(launchDescription, headers, ['DESCRICAO', 'DISCRIMINACAO', 'SERVICO', 'HISTORICO', 'PRODUTO'], true);
         var accessField = launchModal ? launchModal.querySelector('[data-launch-field="access_key"]') : null;
         if (accessField) accessField.style.display = types[0] === 'NFSE' ? 'none' : '';
-        if (launchSubtitle) launchSubtitle.textContent = launchEntries.length + ' nota(s) selecionada(s) para ' + types[0] + '.';
+        if (launchSubtitle) launchSubtitle.textContent = (launchAllFromFilter ? missingTotal : launchEntries.length) + ' nota(s) selecionada(s) para ' + types[0] + '.';
         var groupKeys = Array.from(new Set(launchEntries.map(accountingGroupKey)));
         if (launchSheets) {
             launchSheets.innerHTML = groupKeys.map(function (groupKey) {
@@ -1342,7 +1365,8 @@ $documentFilterKeys = [
                 var mappings = fields.map(function (field) {
                     return launchSelectHtml(groupKey, field, sheetHeaders, field.preferred, field.allowEmpty, field.hidden);
                 }).join('');
-                return '<div class="accounting-launch-sheet-card"><strong>' + escapeHtml(groupLabel) + '</strong><label>Empresa<select data-accounting-launch-sheet="' + escapeHtml(groupKey) + '">' + options + '</select></label><div class="accounting-launch-sheet-map">' + mappings + '</div></div>';
+                var groupTotal = firstEntry.total ? ' <small>(' + escapeHtml(firstEntry.total) + ' registro(s))</small>' : '';
+                return '<div class="accounting-launch-sheet-card"><strong>' + escapeHtml(groupLabel) + groupTotal + '</strong><label>Empresa<select data-accounting-launch-sheet="' + escapeHtml(groupKey) + '">' + options + '</select></label><div class="accounting-launch-sheet-map">' + mappings + '</div></div>';
             }).join('');
         }
         if (launchFeedback) launchFeedback.textContent = '';
@@ -1408,15 +1432,14 @@ $documentFilterKeys = [
             return;
         }
         launchConfirm.disabled = true;
+        var totalToProcess = launchAllFromFilter ? missingTotal : launchEntries.length;
         if (launchFeedback) launchFeedback.textContent = 'Iniciando lancamento no portal...';
-        setLaunchProgress(0, launchEntries.length, 'Preparando ' + launchEntries.length + ' nota(s)...');
+        setLaunchProgress(0, totalToProcess, 'Preparando ' + totalToProcess + ' nota(s)...');
         try {
-            var ids = launchEntries.map(function (entry) { return entry.id; });
             var batchSize = 100;
             var totals = {created_count: 0, linked_count: 0, skipped_count: 0};
-            for (var start = 0; start < ids.length; start += batchSize) {
-                var batch = ids.slice(start, start + batchSize);
-                setLaunchProgress(start, ids.length, 'Enviando bloco ' + (Math.floor(start / batchSize) + 1) + ' de ' + Math.ceil(ids.length / batchSize) + '...');
+            var processed = 0;
+            async function sendLaunchBatch(batch) {
                 var response = await fetch('?page=documents_accounting_launch', {
                     method: 'POST',
                     headers: {'Accept': 'application/json', 'Content-Type': 'application/json;charset=UTF-8'},
@@ -1432,7 +1455,27 @@ $documentFilterKeys = [
                 totals.created_count += Number(data.created_count || 0);
                 totals.linked_count += Number(data.linked_count || 0);
                 totals.skipped_count += Number(data.skipped_count || 0);
-                setLaunchProgress(Math.min(start + batch.length, ids.length), ids.length, 'Processadas ' + Math.min(start + batch.length, ids.length) + ' de ' + ids.length + ' nota(s).');
+                processed += batch.length;
+                setLaunchProgress(Math.min(processed, totalToProcess), totalToProcess, 'Processadas ' + Math.min(processed, totalToProcess) + ' de ' + totalToProcess + ' nota(s).');
+            }
+            if (launchAllFromFilter) {
+                setLaunchProgress(0, totalToProcess, 'Carregando lista de notas do filtro...');
+                var idsFromFilter = await fetchMissingIds(totalToProcess);
+                totalToProcess = idsFromFilter.length || totalToProcess;
+                var block = 1;
+                for (var filterStart = 0; filterStart < idsFromFilter.length; filterStart += batchSize) {
+                    var batchFromFilter = idsFromFilter.slice(filterStart, filterStart + batchSize);
+                    setLaunchProgress(processed, totalToProcess, 'Enviando bloco ' + block + '...');
+                    await sendLaunchBatch(batchFromFilter);
+                    block++;
+                }
+            } else {
+                var ids = launchEntries.map(function (entry) { return entry.id; });
+                for (var start = 0; start < ids.length; start += batchSize) {
+                    var batch = ids.slice(start, start + batchSize);
+                    setLaunchProgress(start, ids.length, 'Enviando bloco ' + (Math.floor(start / batchSize) + 1) + ' de ' + Math.ceil(ids.length / batchSize) + '...');
+                    await sendLaunchBatch(batch);
+                }
             }
             if (launchFeedback) launchFeedback.textContent = 'Concluido: ' + totals.created_count + ' criada(s), ' + totals.linked_count + ' ja existente(s) vinculada(s), ' + totals.skipped_count + ' ignorada(s).';
             missingAllSelected = false;

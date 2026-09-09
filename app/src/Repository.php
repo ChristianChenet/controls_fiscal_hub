@@ -829,6 +829,39 @@ final class Repository
         return (int)$stmt->fetchColumn();
     }
 
+    public function accountingMissingGroups(?string $docType = null, string $supplier = '', string $number = ''): array
+    {
+        [$where, $params] = $this->accountingMissingWhere($docType, $supplier, $number);
+        $stmt = $this->pdo->prepare('SELECT e.doc_type, i.file_name, e.sheet_name, COUNT(*) AS total, MAX(e.raw_json) AS raw_json
+            FROM accounting_entries e
+            JOIN accounting_imports i ON i.id = e.import_id
+            WHERE ' . implode(' AND ', $where) . '
+            GROUP BY e.doc_type, i.file_name, e.sheet_name
+            ORDER BY i.file_name ASC, e.sheet_name ASC, e.doc_type ASC');
+        foreach ($params as $key => $value) {
+            $stmt->bindValue(':' . $key, $value);
+        }
+        $stmt->execute();
+        return $stmt->fetchAll();
+    }
+
+    public function accountingMissingIds(?string $docType = null, int $limit = 500, string $supplier = '', string $number = ''): array
+    {
+        [$where, $params] = $this->accountingMissingWhere($docType, $supplier, $number);
+        $stmt = $this->pdo->prepare('SELECT e.id
+            FROM accounting_entries e
+            JOIN accounting_imports i ON i.id = e.import_id
+            WHERE ' . implode(' AND ', $where) . '
+            ORDER BY i.created_at DESC, e.id DESC
+            LIMIT :limit');
+        foreach ($params as $key => $value) {
+            $stmt->bindValue(':' . $key, $value);
+        }
+        $stmt->bindValue(':limit', max(1, min(100000, $limit)), PDO::PARAM_INT);
+        $stmt->execute();
+        return array_map(static fn(array $row): int => (int)$row['id'], $stmt->fetchAll());
+    }
+
     public function accountingMissingEntries(?string $docType = null, int $limit = 500, string $supplier = '', string $number = '', int $offset = 0): array
     {
         [$where, $params] = $this->accountingMissingWhere($docType, $supplier, $number);

@@ -959,6 +959,24 @@ if ($page === 'documents_accounting_missing') {
         $pageNumber = max(1, (int)($_GET['missing_page'] ?? 1));
         $offset = ($pageNumber - 1) * $perPage;
         $total = $repo->accountingMissingCount($docType, $supplier, $number);
+        if ((string)($_GET['groups_only'] ?? '') === '1') {
+            $groups = array_map(static function (array $entry): array {
+                $raw = json_decode((string)($entry['raw_json'] ?? '{}'), true) ?: [];
+                return [
+                    'doc_type' => $entry['doc_type'] ?? '',
+                    'file_name' => $entry['file_name'] ?? '',
+                    'sheet_name' => $entry['sheet_name'] ?? '',
+                    'total' => (int)($entry['total'] ?? 0),
+                    'headers' => array_values(array_filter(array_keys($raw), static fn(string $key): bool => $key !== '_rowNumber')),
+                ];
+            }, $repo->accountingMissingGroups($docType, $supplier, $number));
+            echo json_encode(['ok' => true, 'groups' => $groups, 'total' => $total], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+            exit;
+        }
+        if ((string)($_GET['ids_only'] ?? '') === '1') {
+            echo json_encode(['ok' => true, 'ids' => $repo->accountingMissingIds($docType, min(100000, $perPage), $supplier, $number), 'total' => $total], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
+            exit;
+        }
         $entries = array_map(static function (array $entry): array {
             $entry['raw'] = json_decode((string)($entry['raw_json'] ?? '{}'), true) ?: [];
             unset($entry['raw_json']);
