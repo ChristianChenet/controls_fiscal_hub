@@ -982,7 +982,7 @@ $documentFilterKeys = [
                     return;
                 }
             }
-            var batchSize = 800;
+            var batchSize = 100;
             var batches = [];
             parsedWorkbook.sheets.forEach(function (sheet) {
                 for (var start = 0; start < sheet.rows.length; start += batchSize) {
@@ -1003,9 +1003,11 @@ $documentFilterKeys = [
                 try {
                     data = rawResponse ? JSON.parse(rawResponse) : {};
                 } catch (parseError) {
-                    throw new Error('O servidor nao devolveu uma resposta valida neste bloco. Tente novamente; se persistir, reduza o filtro ou avise o suporte.');
+                    throw new Error('O servidor nao devolveu uma resposta valida no bloco ' + (i + 1) + ': ' + rawResponse.substring(0, 300));
                 }
-                if (!response.ok || !data.ok) throw new Error((data && data.message) || 'Falha ao importar contabilidade.');
+                if (!response.ok || !data.ok) {
+                    throw new Error((data && data.message) || ('Falha ao importar contabilidade no bloco ' + (i + 1) + '. HTTP ' + response.status));
+                }
                 totals.row_count += Number(data.row_count || 0);
                 totals.matched_count += Number(data.matched_count || 0);
                 totals.missing_count += Number(data.missing_count || 0);

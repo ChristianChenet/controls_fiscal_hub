@@ -921,10 +921,11 @@ if ($page === 'documents_accounting_import') {
             !empty($payload['append_existing'])
         );
         $repo->logAction('accounting_import', 'Importacao contabilidade ' . (string)($payload['doc_type'] ?? '') . ': ' . $result['row_count'] . ' linha(s), ' . $result['matched_count'] . ' documento(s) localizado(s), ' . $result['missing_count'] . ' sem vinculo.');
-        echo json_encode(['ok' => true] + $result, JSON_UNESCAPED_UNICODE);
+        echo json_encode(['ok' => true] + $result, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
     } catch (Throwable $e) {
         http_response_code(400);
-        echo json_encode(['ok' => false, 'message' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+        @file_put_contents(__DIR__ . '/../storage/logs/accounting_import_error.log', '[' . date('c') . '] ' . $e->getMessage() . PHP_EOL . $e->getTraceAsString() . PHP_EOL, FILE_APPEND);
+        echo json_encode(['ok' => false, 'message' => $e->getMessage()], JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
     }
     exit;
 }
