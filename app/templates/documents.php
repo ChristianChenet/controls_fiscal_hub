@@ -700,11 +700,29 @@ $documentFilterKeys = [
             <label>Coluna data entrada
                 <select id="accounting-launch-map-entry-date"></select>
             </label>
+            <label>Coluna série
+                <select id="accounting-launch-map-series"></select>
+            </label>
+            <label>Coluna espécie
+                <select id="accounting-launch-map-species"></select>
+            </label>
+            <label>Coluna código
+                <select id="accounting-launch-map-code"></select>
+            </label>
             <label>Coluna valor
                 <select id="accounting-launch-map-total-value"></select>
             </label>
+            <label>Coluna inscrição estadual
+                <select id="accounting-launch-map-state-registration"></select>
+            </label>
             <label>Coluna CFOP
                 <select id="accounting-launch-map-cfop"></select>
+            </label>
+            <label>Coluna tipo
+                <select id="accounting-launch-map-operation-type"></select>
+            </label>
+            <label>Coluna UF
+                <select id="accounting-launch-map-issuer-uf"></select>
             </label>
             <label>Coluna descrição
                 <select id="accounting-launch-map-description"></select>
@@ -1024,8 +1042,14 @@ $documentFilterKeys = [
     var launchIssuerName = document.getElementById('accounting-launch-map-issuer-name');
     var launchIssueDate = document.getElementById('accounting-launch-map-issue-date');
     var launchEntryDate = document.getElementById('accounting-launch-map-entry-date');
+    var launchSeries = document.getElementById('accounting-launch-map-series');
+    var launchSpecies = document.getElementById('accounting-launch-map-species');
+    var launchCode = document.getElementById('accounting-launch-map-code');
     var launchTotalValue = document.getElementById('accounting-launch-map-total-value');
+    var launchStateRegistration = document.getElementById('accounting-launch-map-state-registration');
     var launchCfop = document.getElementById('accounting-launch-map-cfop');
+    var launchOperationType = document.getElementById('accounting-launch-map-operation-type');
+    var launchIssuerUf = document.getElementById('accounting-launch-map-issuer-uf');
     var launchDescription = document.getElementById('accounting-launch-map-description');
     var launchSheets = document.getElementById('accounting-launch-sheets');
     var launchConfirm = document.getElementById('accounting-launch-confirm');
@@ -1265,8 +1289,14 @@ $documentFilterKeys = [
         fillLaunchSelect(launchIssuerName, headers, ['FORNECEDOR', 'PRESTADOR', 'RAZAO SOCIAL', 'NOME'], true);
         fillLaunchSelect(launchIssueDate, headers, ['DATA EMISSAO', 'EMISSAO', 'DATA'], true);
         fillLaunchSelect(launchEntryDate, headers, ['DATA ENTRADA', 'ENTRADA'], true);
+        fillLaunchSelect(launchSeries, headers, ['SERIE', 'SÉRIE'], true);
+        fillLaunchSelect(launchSpecies, headers, ['ESPECIE', 'ESPÉCIE'], true);
+        fillLaunchSelect(launchCode, headers, ['CODIGO', 'CÓDIGO'], true);
         fillLaunchSelect(launchTotalValue, headers, ['VALOR CONTABIL', 'VALOR', 'TOTAL'], true);
+        fillLaunchSelect(launchStateRegistration, headers, ['INSC. EST.', 'INSCRICAO ESTADUAL', 'INSCRIÇÃO ESTADUAL', 'IE'], true);
         fillLaunchSelect(launchCfop, headers, ['CFOP'], true);
+        fillLaunchSelect(launchOperationType, headers, ['TIPO'], true);
+        fillLaunchSelect(launchIssuerUf, headers, ['UF'], true);
         fillLaunchSelect(launchDescription, headers, ['DESCRICAO', 'DISCRIMINACAO', 'SERVICO', 'HISTORICO', 'PRODUTO'], true);
         var accessField = launchModal ? launchModal.querySelector('[data-launch-field="access_key"]') : null;
         if (accessField) accessField.style.display = types[0] === 'NFSE' ? 'none' : '';
@@ -1299,8 +1329,14 @@ $documentFilterKeys = [
                     {key: 'issuer_name', label: 'Nome fornecedor', preferred: ['FORNECEDOR', 'PRESTADOR', 'RAZAO SOCIAL', 'NOME'], allowEmpty: true},
                     {key: 'issue_date', label: 'Data emissao', preferred: ['DATA EMISSAO', 'DATA EMISSÃO', 'EMISSAO', 'EMISSÃO', 'DATA'], allowEmpty: true},
                     {key: 'entry_date', label: 'Data entrada', preferred: ['DATA ENTRADA', 'ENTRADA'], allowEmpty: true},
+                    {key: 'series', label: 'Serie', preferred: ['SERIE', 'SÉRIE'], allowEmpty: true},
+                    {key: 'species', label: 'Especie', preferred: ['ESPECIE', 'ESPÉCIE'], allowEmpty: true},
+                    {key: 'code', label: 'Codigo', preferred: ['CODIGO', 'CÓDIGO'], allowEmpty: true},
                     {key: 'total_value', label: 'Valor', preferred: ['VALOR CONTABIL', 'VALOR', 'TOTAL'], allowEmpty: true},
+                    {key: 'state_registration', label: 'Inscricao estadual', preferred: ['INSC. EST.', 'INSCRICAO ESTADUAL', 'INSCRIÇÃO ESTADUAL', 'IE'], allowEmpty: true},
                     {key: 'cfop', label: 'CFOP', preferred: ['CFOP'], allowEmpty: true},
+                    {key: 'operation_type', label: 'Tipo', preferred: ['TIPO'], allowEmpty: true},
+                    {key: 'issuer_uf', label: 'UF', preferred: ['UF'], allowEmpty: true},
                     {key: 'description', label: 'Descricao', preferred: ['DESCRICAO', 'DISCRIMINACAO', 'SERVICO', 'HISTORICO', 'PRODUTO'], allowEmpty: true}
                 ];
                 var mappings = fields.map(function (field) {
@@ -1335,8 +1371,14 @@ $documentFilterKeys = [
             issuer_name: launchIssuerName ? launchIssuerName.value : '',
             issue_date: launchIssueDate ? launchIssueDate.value : '',
             entry_date: launchEntryDate ? launchEntryDate.value : '',
+            series: launchSeries ? launchSeries.value : '',
+            species: launchSpecies ? launchSpecies.value : '',
+            code: launchCode ? launchCode.value : '',
             total_value: launchTotalValue ? launchTotalValue.value : '',
+            state_registration: launchStateRegistration ? launchStateRegistration.value : '',
             cfop: launchCfop ? launchCfop.value : '',
+            operation_type: launchOperationType ? launchOperationType.value : '',
+            issuer_uf: launchIssuerUf ? launchIssuerUf.value : '',
             description: launchDescription ? launchDescription.value : ''
         };
         var mapping = Object.assign({_sheets: {}}, baseMapping);

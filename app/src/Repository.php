@@ -916,8 +916,14 @@ final class Repository
                 $issuerName = trim($this->accountingMappedValue($raw, $entryMapping, 'issuer_name'));
                 $issueDate = $this->parseAccountingDate($this->accountingMappedValue($raw, $entryMapping, 'issue_date'));
                 $entryDate = $this->parseAccountingDate($this->accountingMappedValue($raw, $entryMapping, 'entry_date'));
+                $series = trim($this->accountingMappedValue($raw, $entryMapping, 'series'));
+                $species = trim($this->accountingMappedValue($raw, $entryMapping, 'species'));
+                $code = trim($this->accountingMappedValue($raw, $entryMapping, 'code'));
                 $totalValue = $this->parseAccountingMoney($this->accountingMappedValue($raw, $entryMapping, 'total_value'));
+                $stateRegistration = trim($this->accountingMappedValue($raw, $entryMapping, 'state_registration'));
                 $cfop = $this->digits($this->accountingMappedValue($raw, $entryMapping, 'cfop'));
+                $operationType = trim($this->accountingMappedValue($raw, $entryMapping, 'operation_type'));
+                $issuerUf = trim($this->accountingMappedValue($raw, $entryMapping, 'issuer_uf'));
                 $serviceDescription = trim($this->accountingMappedValue($raw, $entryMapping, 'description'));
 
                 if ($docType === 'NFSE' && ($number === '' || $issuerDocument === '')) {
@@ -943,7 +949,7 @@ final class Repository
                         'company_name' => (string)$company['company_name'],
                         'company_cnpj' => (string)$company['cnpj'],
                         'doc_type' => $docType,
-                        'model' => $docType === 'NFE' ? '55' : ($docType === 'CTE' ? '57' : 'NFSE'),
+                        'model' => $species !== '' ? $species : ($docType === 'NFE' ? '55' : ($docType === 'CTE' ? '57' : 'NFSE')),
                         'access_key' => $accessKey !== '' ? $accessKey : null,
                         'number' => $number,
                         'posted_to_erp' => false,
@@ -957,14 +963,14 @@ final class Repository
                         'status' => 'apenas_resumo',
                         'manifestation_status' => 'not_applicable',
                         'source' => 'contabilidade_planilha',
-                        'notes' => 'Documento lancado no portal a partir da planilha da contabilidade. Arquivo: ' . (string)($entry['file_name'] ?? '') . '; aba: ' . (string)($entry['sheet_name'] ?? '') . '; linha: ' . (string)($entry['row_number'] ?? '') . ($entryDate ? '; data entrada: ' . $entryDate : '') . '.',
+                        'notes' => 'Documento lancado no portal a partir da planilha da contabilidade. Arquivo: ' . (string)($entry['file_name'] ?? '') . '; aba: ' . (string)($entry['sheet_name'] ?? '') . '; linha: ' . (string)($entry['row_number'] ?? '') . ($entryDate ? '; data entrada: ' . $entryDate : '') . ($series !== '' ? '; serie: ' . $series : '') . ($stateRegistration !== '' ? '; IE: ' . $stateRegistration : '') . ($operationType !== '' ? '; tipo: ' . $operationType : '') . ($issuerUf !== '' ? '; UF: ' . $issuerUf : '') . '.',
                         'raw_xml' => $this->buildAccountingRawXml($docType, $entry, $raw, $company, $entryMapping),
                         'digest' => $digest,
                         'schema_name' => 'accounting_spreadsheet',
                     ]);
                     $documentId = (int)($document['id'] ?? 0);
-                    if ($documentId > 0 && ($cfop !== '' || $serviceDescription !== '')) {
-                        $this->saveAccountingDocumentItem($documentId, $cfop, $serviceDescription, $totalValue);
+                    if ($documentId > 0 && ($code !== '' || $cfop !== '' || $serviceDescription !== '')) {
+                        $this->saveAccountingDocumentItem($documentId, $code, $cfop, $serviceDescription, $totalValue);
                     }
                     $created++;
                 }
@@ -1180,7 +1186,13 @@ final class Repository
             '  <linha>' . $escape((string)($entry['row_number'] ?? '')) . '</linha>',
             '  <empresa cnpj="' . $escape((string)($company['cnpj'] ?? '')) . '">' . $escape((string)($company['company_name'] ?? '')) . '</empresa>',
             '  <numero>' . $escape($this->accountingMappedValue($raw, $mapping, 'number')) . '</numero>',
+            '  <serie>' . $escape($this->accountingMappedValue($raw, $mapping, 'series')) . '</serie>',
+            '  <especie>' . $escape($this->accountingMappedValue($raw, $mapping, 'species')) . '</especie>',
+            '  <codigo>' . $escape($this->accountingMappedValue($raw, $mapping, 'code')) . '</codigo>',
             '  <emitente documento="' . $escape($this->digits($this->accountingMappedValue($raw, $mapping, 'issuer_document'))) . '">' . $escape($this->accountingMappedValue($raw, $mapping, 'issuer_name')) . '</emitente>',
+            '  <inscricaoEstadual>' . $escape($this->accountingMappedValue($raw, $mapping, 'state_registration')) . '</inscricaoEstadual>',
+            '  <tipoOperacao>' . $escape($this->accountingMappedValue($raw, $mapping, 'operation_type')) . '</tipoOperacao>',
+            '  <uf>' . $escape($this->accountingMappedValue($raw, $mapping, 'issuer_uf')) . '</uf>',
             '  <valor>' . $escape($this->accountingMappedValue($raw, $mapping, 'total_value')) . '</valor>',
             '  <dataEntrada>' . $escape($this->accountingMappedValue($raw, $mapping, 'entry_date')) . '</dataEntrada>',
             '  <cfop>' . $escape($this->accountingMappedValue($raw, $mapping, 'cfop')) . '</cfop>',
@@ -1198,7 +1210,7 @@ final class Repository
         return implode("\n", $lines);
     }
 
-    private function saveAccountingDocumentItem(int $documentId, string $cfop, string $description, float $totalValue): void
+    private function saveAccountingDocumentItem(int $documentId, string $code, string $cfop, string $description, float $totalValue): void
     {
         $delete = $this->pdo->prepare('DELETE FROM document_items WHERE document_id = :document_id');
         $delete->execute(['document_id' => $documentId]);
@@ -1207,7 +1219,7 @@ final class Repository
         $insert->execute([
             'document_id' => $documentId,
             'item_number' => 1,
-            'product_code' => '',
+            'product_code' => $code,
             'product_name' => $description !== '' ? $description : 'Lancamento importado da contabilidade',
             'ncm' => '',
             'cfop' => $cfop,
