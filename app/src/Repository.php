@@ -1768,7 +1768,7 @@ final class Repository
             $issuerDisplayName = match ($issuerGroupKey) {
                 'GOOGLE' => 'GOOGLE',
                 'MAGAZINE LUIZA' => 'MAGAZINE LUIZA',
-                'MERCADOPAGO' => 'MERCADOPAGO',
+                'MERCADO LIVRE' => 'MERCADO LIVRE',
                 default => $issuerName,
             };
             if (!isset($rows[$issuerKeyValue])) {
@@ -1790,7 +1790,7 @@ final class Repository
                 ksort($rows[$issuerKeyValue]['issuer_cnpjs']);
                 $rows[$issuerKeyValue]['issuer_cnpj'] = implode(', ', array_values($rows[$issuerKeyValue]['issuer_cnpjs']));
             }
-            if (!in_array($issuerGroupKey, ['GOOGLE', 'MAGAZINE LUIZA', 'MERCADOPAGO'], true) && strlen($issuerName) < strlen((string)$rows[$issuerKeyValue]['issuer_name'])) {
+            if (!in_array($issuerGroupKey, ['GOOGLE', 'MAGAZINE LUIZA', 'MERCADO LIVRE'], true) && strlen($issuerName) < strlen((string)$rows[$issuerKeyValue]['issuer_name'])) {
                 $rows[$issuerKeyValue]['issuer_name'] = $issuerName;
             }
             $cell = [
@@ -1835,8 +1835,8 @@ final class Repository
         if (str_starts_with($key, 'MAGALU ') || str_starts_with($key, 'MAGAZINE LUIZA ') || $key === 'MAGALU' || $key === 'MAGAZINE LUIZA') {
             return 'MAGAZINE LUIZA';
         }
-        if (str_starts_with($key, 'MERCADOPAGO ') || str_starts_with($key, 'MERCADO PAGO ') || $key === 'MERCADOPAGO' || $key === 'MERCADO PAGO') {
-            return 'MERCADOPAGO';
+        if (str_starts_with($key, 'MERCADOPAGO ') || str_starts_with($key, 'MERCADO PAGO ') || str_starts_with($key, 'EBAZAR ') || $key === 'MERCADOPAGO' || $key === 'MERCADO PAGO' || $key === 'EBAZAR') {
+            return 'MERCADO LIVRE';
         }
         return $key;
     }
@@ -1869,7 +1869,7 @@ final class Repository
         return "CASE
             WHEN {$trimmed} = 'GOOGLE' OR {$trimmed} LIKE 'GOOGLE %' THEN 'GOOGLE'
             WHEN {$trimmed} = 'MAGALU' OR {$trimmed} LIKE 'MAGALU %' OR {$trimmed} = 'MAGAZINE LUIZA' OR {$trimmed} LIKE 'MAGAZINE LUIZA %' THEN 'MAGAZINE LUIZA'
-            WHEN {$trimmed} = 'MERCADOPAGO' OR {$trimmed} LIKE 'MERCADOPAGO %' OR {$trimmed} = 'MERCADO PAGO' OR {$trimmed} LIKE 'MERCADO PAGO %' THEN 'MERCADOPAGO'
+            WHEN {$trimmed} = 'MERCADOPAGO' OR {$trimmed} LIKE 'MERCADOPAGO %' OR {$trimmed} = 'MERCADO PAGO' OR {$trimmed} LIKE 'MERCADO PAGO %' OR {$trimmed} = 'EBAZAR' OR {$trimmed} LIKE 'EBAZAR %' THEN 'MERCADO LIVRE'
             ELSE {$trimmed}
         END";
     }
