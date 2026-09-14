@@ -14,7 +14,7 @@ if (!$documentsDeferred) {
 $exportQuery = $baseQuery;
 $exportQuery['page'] = 'documents_export';
 $timelineMode = (string)($_GET['timeline_mode'] ?? 'value') === 'count' ? 'count' : 'value';
-$timeline = $documentsTimeline ?? ['months' => [], 'rows' => [], 'month_totals' => [], 'grand_total' => ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0]];
+$timeline = $documentsTimeline ?? ['months' => [], 'rows' => [], 'month_totals' => [], 'grand_total' => ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0, 'erp_value' => 0.0, 'accounting_value' => 0.0]];
 $timelineExportQuery = $baseQuery;
 $timelineExportQuery['page'] = 'documents_timeline_export';
 $timelineExportQuery['timeline_mode'] = $timelineMode;
@@ -44,6 +44,11 @@ $canShowDocumentMirror = static fn(array $doc): bool => in_array(strtoupper((str
     && (string)($doc['status'] ?? '') !== 'apenas_resumo';
 $timelineDisplayValue = static function (array $cell, string $mode): string {
     return $mode === 'count' ? (string)(int)($cell['count'] ?? 0) : format_money((float)($cell['value'] ?? 0));
+};
+$timelinePostedValue = static function (array $cell, string $mode, string $prefix): string {
+    return $mode === 'count'
+        ? (string)(int)($cell[$prefix] ?? 0)
+        : format_money((float)($cell[$prefix . '_value'] ?? 0));
 };
 ?>
 <div class="page-header split-header documents-page-header">
@@ -225,8 +230,8 @@ $timelineDisplayValue = static function (array $cell, string $mode): string {
                     </select>
                 </label>
             </form>
-            <button class="button-compact" type="button" data-timeline-fullscreen>Tela cheia</button>
-            <a class="button-link button-compact" href="<?= h(base_url('?' . http_build_query($timelineExportQuery))) ?>">Exportar Excel</a>
+            <button class="button-compact timeline-mini-action" type="button" data-timeline-fullscreen>🖥️ Tela cheia</button>
+            <a class="button-link button-compact timeline-mini-action" href="<?= h(base_url('?' . http_build_query($timelineExportQuery))) ?>">Exportar Excel</a>
         </div>
     </div>
     <?php if ($documentsDeferred): ?>
@@ -254,10 +259,10 @@ $timelineDisplayValue = static function (array $cell, string $mode): string {
                         </th>
                         <?php foreach ($timeline['months'] as $month): ?>
                             <?php
-                                $cell = $row['months'][$month['key']] ?? ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0];
+                                $cell = $row['months'][$month['key']] ?? ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0, 'erp_value' => 0.0, 'accounting_value' => 0.0];
                                 $cellQuery = $timelineCellBaseQuery;
                                 $cellQuery['page'] = 'documents_timeline_cell';
-                                $cellQuery['timeline_issuer_cnpj'] = (string)$row['issuer_cnpj'];
+                                $cellQuery['timeline_issuer_name'] = (string)($row['issuer_key'] ?? $row['issuer_name']);
                                 $cellQuery['timeline_month'] = (string)$month['key'];
                                 $cellExportQuery = $cellQuery;
                                 $cellExportQuery['page'] = 'documents_timeline_cell_export';
@@ -267,7 +272,7 @@ $timelineDisplayValue = static function (array $cell, string $mode): string {
                                 <?php if ($hasDocs): ?>
                                     <button type="button" class="timeline-cell-button" data-timeline-cell="<?= h(base_url('?' . http_build_query($cellQuery))) ?>" data-timeline-export="<?= h(base_url('?' . http_build_query($cellExportQuery))) ?>" data-timeline-title="<?= h((string)$row['issuer_name'] . ' | ' . (string)$month['label']) ?>">
                                         <strong><?= h($timelineDisplayValue($cell, $timelineMode)) ?></strong>
-                                        <small>Decis <?= h((string)(int)$cell['erp']) ?> | Contab. <?= h((string)(int)$cell['accounting']) ?></small>
+                                        <small>Decis <?= h($timelinePostedValue($cell, $timelineMode, 'erp')) ?> | Contab. <?= h($timelinePostedValue($cell, $timelineMode, 'accounting')) ?></small>
                                     </button>
                                 <?php else: ?>
                                     <span class="timeline-empty-label">Sem lançamento</span>
@@ -276,7 +281,7 @@ $timelineDisplayValue = static function (array $cell, string $mode): string {
                         <?php endforeach; ?>
                         <td class="timeline-total-col">
                             <strong><?= h($timelineDisplayValue($row['total'], $timelineMode)) ?></strong>
-                            <small>Decis <?= h((string)(int)$row['total']['erp']) ?> | Contab. <?= h((string)(int)$row['total']['accounting']) ?></small>
+                            <small>Decis <?= h($timelinePostedValue($row['total'], $timelineMode, 'erp')) ?> | Contab. <?= h($timelinePostedValue($row['total'], $timelineMode, 'accounting')) ?></small>
                         </td>
                     </tr>
                 <?php endforeach; ?>
@@ -285,15 +290,15 @@ $timelineDisplayValue = static function (array $cell, string $mode): string {
                     <tr>
                         <th class="timeline-supplier-col">Total por mês</th>
                         <?php foreach ($timeline['months'] as $month): ?>
-                            <?php $totalCell = $timeline['month_totals'][$month['key']] ?? ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0]; ?>
+                            <?php $totalCell = $timeline['month_totals'][$month['key']] ?? ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0, 'erp_value' => 0.0, 'accounting_value' => 0.0]; ?>
                             <th>
                                 <strong><?= h($timelineDisplayValue($totalCell, $timelineMode)) ?></strong>
-                                <small>Decis <?= h((string)(int)$totalCell['erp']) ?> | Contab. <?= h((string)(int)$totalCell['accounting']) ?></small>
+                                <small>Decis <?= h($timelinePostedValue($totalCell, $timelineMode, 'erp')) ?> | Contab. <?= h($timelinePostedValue($totalCell, $timelineMode, 'accounting')) ?></small>
                             </th>
                         <?php endforeach; ?>
                         <th class="timeline-total-col">
                             <strong><?= h($timelineDisplayValue($timeline['grand_total'], $timelineMode)) ?></strong>
-                            <small>Decis <?= h((string)(int)$timeline['grand_total']['erp']) ?> | Contab. <?= h((string)(int)$timeline['grand_total']['accounting']) ?></small>
+                            <small>Decis <?= h($timelinePostedValue($timeline['grand_total'], $timelineMode, 'erp')) ?> | Contab. <?= h($timelinePostedValue($timeline['grand_total'], $timelineMode, 'accounting')) ?></small>
                         </th>
                     </tr>
                 </tfoot>
@@ -1010,7 +1015,7 @@ $timelineDisplayValue = static function (array $cell, string $mode): string {
         fullscreenButton.addEventListener('click', function () {
             var active = !card.classList.contains('is-fullscreen');
             card.classList.toggle('is-fullscreen', active);
-            fullscreenButton.textContent = active ? 'Sair da tela cheia' : 'Tela cheia';
+            fullscreenButton.textContent = active ? '↩ Sair' : '🖥️ Tela cheia';
         });
     }
     if (!modal || !tbody) return;

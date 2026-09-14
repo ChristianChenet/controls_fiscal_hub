@@ -6,7 +6,7 @@
     <title><?= h($title) ?></title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="icon" href="<?= h(base_url('assets/logo-s-novo.jpg')) ?>">
-    <link rel="stylesheet" href="<?= h(base_url('assets/app.css?v=20260914-documents-timeline-tabs')) ?>">
+    <link rel="stylesheet" href="<?= h(base_url('assets/app.css?v=20260914-timeline-groups-refine')) ?>">
 </head>
 <body>
 <div class="shell">

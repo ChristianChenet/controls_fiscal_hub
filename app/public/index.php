@@ -87,6 +87,7 @@ function document_filters_from_request(array $source): array
         'ignore_cfops' => array_key_exists('ignore_cfops', $source) ? (string)$source['ignore_cfops'] : '1',
         'source_q' => $source['source_q'] ?? '',
         'timeline_issuer_cnpj' => $source['timeline_issuer_cnpj'] ?? '',
+        'timeline_issuer_name' => $source['timeline_issuer_name'] ?? '',
         'timeline_month' => $source['timeline_month'] ?? '',
         'q' => $source['q'] ?? '',
         'sort_by' => $source['sort_by'] ?? 'issue_date',
@@ -1437,6 +1438,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'page' => 'supplier_groups',
                     'doc_type' => $_POST['doc_type'] ?? '',
                     'q' => $_POST['q'] ?? '',
+                    'source_q' => $_POST['source_q'] ?? '',
+                    'date_start' => $_POST['date_start'] ?? '',
+                    'date_end' => $_POST['date_end'] ?? '',
                     'without_group' => $_POST['without_group'] ?? '',
                     'group_id' => $_POST['group_id'] ?? '',
                 ], static fn($value) => $value !== '' && $value !== null);
@@ -2158,9 +2162,11 @@ if ($page === 'documents_timeline_export') {
     foreach ($timeline['rows'] as $row) {
         echo '<tr><td>' . h((string)$row['issuer_name']) . '</td><td>' . h((string)$row['issuer_cnpj']) . '</td>';
         foreach ($timeline['months'] as $month) {
-            $cell = $row['months'][$month['key']] ?? ['value' => 0, 'count' => 0, 'erp' => 0, 'accounting' => 0];
+            $cell = $row['months'][$month['key']] ?? ['value' => 0, 'count' => 0, 'erp' => 0, 'accounting' => 0, 'erp_value' => 0, 'accounting_value' => 0];
             $value = $mode === 'count' ? (string)(int)$cell['count'] : number_format((float)$cell['value'], 2, ',', '.');
-            echo '<td>' . h($value) . '<br>Decis: ' . h((string)(int)$cell['erp']) . ' | Contab.: ' . h((string)(int)$cell['accounting']) . '</td>';
+            $erp = $mode === 'count' ? (string)(int)$cell['erp'] : number_format((float)$cell['erp_value'], 2, ',', '.');
+            $accounting = $mode === 'count' ? (string)(int)$cell['accounting'] : number_format((float)$cell['accounting_value'], 2, ',', '.');
+            echo '<td>' . h($value) . '<br>Decis: ' . h($erp) . ' | Contab.: ' . h($accounting) . '</td>';
         }
         $total = $mode === 'count' ? (string)(int)$row['total']['count'] : number_format((float)$row['total']['value'], 2, ',', '.');
         echo '<td>' . h($total) . '</td></tr>';
@@ -2467,6 +2473,9 @@ switch ($page) {
         $supplierFilters = [
             'doc_type' => $_GET['doc_type'] ?? '',
             'q' => $_GET['q'] ?? '',
+            'source_q' => $_GET['source_q'] ?? '',
+            'date_start' => $_GET['date_start'] ?? '',
+            'date_end' => $_GET['date_end'] ?? '',
             'without_group' => $_GET['without_group'] ?? '',
         ];
         $selectedSupplierGroupId = (int)($_GET['group_id'] ?? 0);
@@ -2516,7 +2525,7 @@ switch ($page) {
         $viewData['documentsDeferred'] = !$documentShouldQuery;
         $viewData['documentTotals'] = $documentShouldQuery ? $repo->documentsTotals($documentFilters) : ['total' => 0, 'total_value' => 0];
         $viewData['documents'] = $documentShouldQuery ? $repo->documentsPage($documentFilters, $documentPage, $documentPerPage) : [];
-        $viewData['documentsTimeline'] = $documentShouldQuery ? $repo->documentsTimeline($documentFilters) : ['months' => [], 'rows' => [], 'month_totals' => [], 'grand_total' => ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0]];
+        $viewData['documentsTimeline'] = $documentShouldQuery ? $repo->documentsTimeline($documentFilters) : ['months' => [], 'rows' => [], 'month_totals' => [], 'grand_total' => ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0, 'erp_value' => 0.0, 'accounting_value' => 0.0]];
         $viewData['documentIgnoredCfops'] = $repo->documentIgnoredCfops();
         $viewData['documentIgnoredDocuments'] = $repo->documentIgnoredDocuments();
         $viewData['documentCfopOptions'] = $repo->documentCfopOptions();

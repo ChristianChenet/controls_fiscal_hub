@@ -801,6 +801,12 @@ button.primary{
   flex-direction:column;
   background:#fff;
 }
+.timeline-mini-action{
+  min-height:28px;
+  padding:4px 8px;
+  font-size:12px;
+  line-height:1.15;
+}
 .documents-timeline-card.is-fullscreen .documents-timeline-wrap{
   max-height:none;
   flex:1 1 auto;
@@ -922,6 +928,9 @@ button.primary{
 .timeline-detail-panel{
   width:min(1500px,98vw);
   max-height:94vh;
+}
+#timeline-detail-modal{
+  z-index:1300;
 }
 .timeline-detail-actions{
   display:flex;
@@ -1948,6 +1957,24 @@ textarea{
   align-items:end;
   margin-bottom:12px;
 }
+.supplier-quick-filter{
+  display:grid;
+  grid-template-columns:minmax(260px,1fr) auto;
+  gap:10px;
+  align-items:end;
+  margin-bottom:12px;
+}
+.supplier-quick-actions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.supplier-quick-actions small{
+  color:var(--muted);
+  font-weight:800;
+}
 .supplier-table-wrap{max-height:58vh;overflow:auto;border:1px solid #e5ede9;border-radius:8px}
 .supplier-table th,.supplier-table td{white-space:nowrap}
 .supplier-members-card{margin-top:16px;padding:16px}
@@ -1964,7 +1991,8 @@ textarea{
 .supplier-chip span{display:grid;gap:2px}
 @media (max-width: 980px){
   .supplier-groups-layout{grid-template-columns:1fr}
-  .supplier-assign-toolbar{grid-template-columns:1fr}
+  .supplier-assign-toolbar,
+  .supplier-quick-filter{grid-template-columns:1fr}
 }
 .accounting-launch-sheets{display:grid;gap:12px;margin-top:8px}
 .accounting-launch-sheet-card{display:grid;gap:10px;padding:12px;border:1px solid #dfe8e4;border-radius:8px;background:#f8fbfa}

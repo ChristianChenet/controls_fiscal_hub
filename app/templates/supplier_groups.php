@@ -86,6 +86,15 @@ foreach ($groups as $group) {
                 <label>Fornecedor
                     <input type="text" name="q" placeholder="Nome ou CNPJ" value="<?= h((string)($filters['q'] ?? '')) ?>">
                 </label>
+                <label>Origem
+                    <input type="text" name="source_q" placeholder="Ex.: nfse_pdf" value="<?= h((string)($filters['source_q'] ?? '')) ?>">
+                </label>
+                <label>Data inicial
+                    <input type="date" name="date_start" value="<?= h((string)($filters['date_start'] ?? '')) ?>">
+                </label>
+                <label>Data final
+                    <input type="date" name="date_end" value="<?= h((string)($filters['date_end'] ?? '')) ?>">
+                </label>
                 <label class="cfop-ignore-field">Sem grupo
                     <span class="cfop-ignore-line">
                         <input type="checkbox" name="without_group" value="1" <?= !empty($filters['without_group']) ? 'checked' : '' ?>>
@@ -103,6 +112,9 @@ foreach ($groups as $group) {
             <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
             <input type="hidden" name="doc_type" value="<?= h((string)($filters['doc_type'] ?? '')) ?>">
             <input type="hidden" name="q" value="<?= h((string)($filters['q'] ?? '')) ?>">
+            <input type="hidden" name="source_q" value="<?= h((string)($filters['source_q'] ?? '')) ?>">
+            <input type="hidden" name="date_start" value="<?= h((string)($filters['date_start'] ?? '')) ?>">
+            <input type="hidden" name="date_end" value="<?= h((string)($filters['date_end'] ?? '')) ?>">
             <input type="hidden" name="without_group" value="<?= h((string)($filters['without_group'] ?? '')) ?>">
             <input type="hidden" name="group_id" value="<?= h((string)$selectedGroupId) ?>">
 
@@ -116,6 +128,16 @@ foreach ($groups as $group) {
                     </select>
                 </label>
                 <button class="primary button-compact" name="add_suppliers" value="1">Adicionar ao grupo</button>
+            </div>
+            <div class="supplier-quick-filter">
+                <label>Filtro rápido na lista
+                    <input type="text" data-supplier-quick-filter placeholder="Digite parte do nome, CNPJ ou grupo sem recarregar">
+                </label>
+                <div class="supplier-quick-actions">
+                    <button class="button-compact" type="button" data-mark-visible-suppliers>Marcar todos filtrados</button>
+                    <button class="button-compact" type="button" data-clear-visible-suppliers>Limpar marcação</button>
+                    <small data-supplier-visible-count></small>
+                </div>
             </div>
 
             <div class="supplier-table-wrap">
@@ -133,7 +155,8 @@ foreach ($groups as $group) {
                     </thead>
                     <tbody>
                     <?php foreach (($supplierOptions ?? []) as $idx => $supplier): ?>
-                        <tr>
+                        <?php $supplierSearch = trim((string)$supplier['issuer_name'] . ' ' . (string)$supplier['issuer_cnpj'] . ' ' . (string)($supplier['group_description'] ?? '')); ?>
+                        <tr data-supplier-row data-supplier-search="<?= h(mb_strtolower($supplierSearch, 'UTF-8')) ?>">
                             <td>
                                 <input type="checkbox" data-supplier-checkbox>
                                 <input type="hidden" name="supplier_cnpj[]" value="<?= h((string)$supplier['issuer_cnpj']) ?>" disabled data-supplier-cnpj>
@@ -183,20 +206,63 @@ foreach ($groups as $group) {
 <?php endif; ?>
 
 <script>
-document.querySelector('[data-select-suppliers]')?.addEventListener('change', function (event) {
-    document.querySelectorAll('[data-supplier-checkbox]').forEach(function (checkbox) {
-        checkbox.checked = event.target.checked;
-        checkbox.dispatchEvent(new Event('change'));
-    });
-});
-document.querySelectorAll('[data-supplier-checkbox]').forEach(function (checkbox) {
-    checkbox.addEventListener('change', function () {
+(function () {
+    var quickFilter = document.querySelector('[data-supplier-quick-filter]');
+    var visibleCount = document.querySelector('[data-supplier-visible-count]');
+    function normalize(value) {
+        return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    }
+    function visibleRows() {
+        return Array.from(document.querySelectorAll('[data-supplier-row]')).filter(function (row) {
+            return row.style.display !== 'none';
+        });
+    }
+    function syncHiddenInputs(checkbox) {
         var row = checkbox.closest('tr');
         row?.querySelectorAll('[data-supplier-cnpj], [data-supplier-name]').forEach(function (input) {
             input.disabled = !checkbox.checked;
         });
+    }
+    function updateVisibleCount() {
+        if (!visibleCount) return;
+        var rows = visibleRows();
+        visibleCount.textContent = rows.length + ' fornecedor(es) visível(is)';
+    }
+    function applyQuickFilter() {
+        var text = normalize(quickFilter ? quickFilter.value : '');
+        document.querySelectorAll('[data-supplier-row]').forEach(function (row) {
+            var haystack = normalize(row.getAttribute('data-supplier-search') || '');
+            row.style.display = !text || haystack.indexOf(text) >= 0 ? '' : 'none';
+        });
+        updateVisibleCount();
+    }
+    function setRowsChecked(rows, checked) {
+        rows.forEach(function (row) {
+            var checkbox = row.querySelector('[data-supplier-checkbox]');
+            if (!checkbox) return;
+            checkbox.checked = checked;
+            syncHiddenInputs(checkbox);
+        });
+    }
+    document.querySelector('[data-select-suppliers]')?.addEventListener('change', function (event) {
+        setRowsChecked(visibleRows(), event.target.checked);
     });
-});
+    document.querySelector('[data-mark-visible-suppliers]')?.addEventListener('click', function () {
+        setRowsChecked(visibleRows(), true);
+    });
+    document.querySelector('[data-clear-visible-suppliers]')?.addEventListener('click', function () {
+        setRowsChecked(visibleRows(), false);
+        var selectAll = document.querySelector('[data-select-suppliers]');
+        if (selectAll) selectAll.checked = false;
+    });
+    document.querySelectorAll('[data-supplier-checkbox]').forEach(function (checkbox) {
+        checkbox.addEventListener('change', function () {
+            syncHiddenInputs(checkbox);
+        });
+    });
+    quickFilter?.addEventListener('input', applyQuickFilter);
+    updateVisibleCount();
+})();
 </script>
 
 <?php include __DIR__ . '/layout_bottom.php'; ?>

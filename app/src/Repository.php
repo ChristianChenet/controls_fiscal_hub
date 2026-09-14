@@ -1541,6 +1541,12 @@ final class Repository
             $where[] = $this->digitsOnlySql('documents.issuer_cnpj') . ' = :timeline_issuer_cnpj';
             $params['timeline_issuer_cnpj'] = $timelineIssuerCnpj;
         }
+        $timelineIssuerName = trim((string)($filters['timeline_issuer_name'] ?? ''));
+        if ($timelineIssuerName !== '') {
+            $issuerNameKey = "UPPER(TRIM(COALESCE(NULLIF(documents.issuer_name, ''), " . $this->digitsOnlySql('documents.issuer_cnpj') . ")))";
+            $where[] = "{$issuerNameKey} = :timeline_issuer_name";
+            $params['timeline_issuer_name'] = mb_strtoupper($timelineIssuerName, 'UTF-8');
+        }
         $timelineMonth = trim((string)($filters['timeline_month'] ?? ''));
         if (preg_match('/^\d{4}-\d{2}$/', $timelineMonth) === 1) {
             $monthStart = $timelineMonth . '-01';
@@ -1697,7 +1703,7 @@ final class Repository
             }
         }
         if ($dateStart === null || $dateEnd === null) {
-            return ['months' => [], 'rows' => [], 'month_totals' => [], 'grand_total' => ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0]];
+            return ['months' => [], 'rows' => [], 'month_totals' => [], 'grand_total' => ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0, 'erp_value' => 0.0, 'accounting_value' => 0.0]];
         }
 
         $start = (new \DateTimeImmutable($dateStart))->modify('first day of this month');
@@ -1712,40 +1718,45 @@ final class Repository
         }
 
         $issuerDigits = $this->digitsOnlySql('documents.issuer_cnpj');
+        $issuerKey = "UPPER(TRIM(COALESCE(NULLIF(documents.issuer_name, ''), {$issuerDigits})))";
         $stmt = $this->pdo->prepare("SELECT
-                {$issuerDigits} AS issuer_cnpj,
-                COALESCE(NULLIF(MAX(issuer_name), ''), {$issuerDigits}) AS issuer_name,
+                {$issuerKey} AS issuer_key,
+                STRING_AGG(DISTINCT NULLIF({$issuerDigits}, ''), ', ' ORDER BY NULLIF({$issuerDigits}, '')) AS issuer_cnpjs,
+                COALESCE(NULLIF(MAX(issuer_name), ''), {$issuerKey}) AS issuer_name,
                 TO_CHAR(DATE_TRUNC('month', issue_date), 'YYYY-MM') AS month_key,
                 COUNT(*) AS doc_count,
                 COALESCE(SUM(total_value), 0) AS total_value,
                 COUNT(*) FILTER (WHERE COALESCE(posted_to_erp, FALSE)) AS erp_count,
-                COUNT(*) FILTER (WHERE COALESCE(accounting_posted, 'N') = 'S') AS accounting_count
+                COUNT(*) FILTER (WHERE COALESCE(accounting_posted, 'N') = 'S') AS accounting_count,
+                COALESCE(SUM(CASE WHEN COALESCE(posted_to_erp, FALSE) THEN total_value ELSE 0 END), 0) AS erp_value,
+                COALESCE(SUM(CASE WHEN COALESCE(accounting_posted, 'N') = 'S' THEN total_value ELSE 0 END), 0) AS accounting_value
             FROM documents{$whereSql}
-            GROUP BY {$issuerDigits}, DATE_TRUNC('month', issue_date)
-            ORDER BY COALESCE(NULLIF(MAX(issuer_name), ''), {$issuerDigits}) ASC, month_key ASC");
+            GROUP BY {$issuerKey}, DATE_TRUNC('month', issue_date)
+            ORDER BY COALESCE(NULLIF(MAX(issuer_name), ''), {$issuerKey}) ASC, month_key ASC");
         $stmt->execute($params);
 
         $rows = [];
         $monthTotals = [];
         foreach (array_keys($months) as $monthKey) {
-            $monthTotals[$monthKey] = ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0];
+            $monthTotals[$monthKey] = ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0, 'erp_value' => 0.0, 'accounting_value' => 0.0];
         }
-        $grand = ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0];
+        $grand = ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0, 'erp_value' => 0.0, 'accounting_value' => 0.0];
         foreach ($stmt->fetchAll() as $item) {
             $monthKey = (string)($item['month_key'] ?? '');
             if (!isset($months[$monthKey])) {
                 continue;
             }
-            $cnpj = (string)($item['issuer_cnpj'] ?? '');
-            if (!isset($rows[$cnpj])) {
-                $rows[$cnpj] = [
-                    'issuer_cnpj' => $cnpj,
+            $issuerKeyValue = (string)($item['issuer_key'] ?? '');
+            if (!isset($rows[$issuerKeyValue])) {
+                $rows[$issuerKeyValue] = [
+                    'issuer_key' => $issuerKeyValue,
+                    'issuer_cnpj' => (string)($item['issuer_cnpjs'] ?? ''),
                     'issuer_name' => (string)($item['issuer_name'] ?? ''),
                     'months' => [],
-                    'total' => ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0],
+                    'total' => ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0, 'erp_value' => 0.0, 'accounting_value' => 0.0],
                 ];
                 foreach (array_keys($months) as $emptyMonth) {
-                    $rows[$cnpj]['months'][$emptyMonth] = ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0];
+                    $rows[$issuerKeyValue]['months'][$emptyMonth] = ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0, 'erp_value' => 0.0, 'accounting_value' => 0.0];
                 }
             }
             $cell = [
@@ -1753,10 +1764,12 @@ final class Repository
                 'count' => (int)($item['doc_count'] ?? 0),
                 'erp' => (int)($item['erp_count'] ?? 0),
                 'accounting' => (int)($item['accounting_count'] ?? 0),
+                'erp_value' => (float)($item['erp_value'] ?? 0),
+                'accounting_value' => (float)($item['accounting_value'] ?? 0),
             ];
-            $rows[$cnpj]['months'][$monthKey] = $cell;
-            foreach (['value', 'count', 'erp', 'accounting'] as $key) {
-                $rows[$cnpj]['total'][$key] += $cell[$key];
+            $rows[$issuerKeyValue]['months'][$monthKey] = $cell;
+            foreach (['value', 'count', 'erp', 'accounting', 'erp_value', 'accounting_value'] as $key) {
+                $rows[$issuerKeyValue]['total'][$key] += $cell[$key];
                 $monthTotals[$monthKey][$key] += $cell[$key];
                 $grand[$key] += $cell[$key];
             }
@@ -2063,6 +2076,21 @@ final class Repository
         if (in_array($docType, ['NFE', 'CTE', 'NFSE'], true)) {
             $where[] = 'documents.doc_type = :doc_type';
             $params['doc_type'] = $docType;
+        }
+        $dateStart = $this->normalizeFilterDate((string)($filters['date_start'] ?? ''));
+        if ($dateStart !== null) {
+            $where[] = 'documents.issue_date >= :supplier_date_start';
+            $params['supplier_date_start'] = $dateStart . ' 00:00:00';
+        }
+        $dateEnd = $this->normalizeFilterDate((string)($filters['date_end'] ?? ''));
+        if ($dateEnd !== null) {
+            $where[] = 'documents.issue_date <= :supplier_date_end';
+            $params['supplier_date_end'] = $dateEnd . ' 23:59:59';
+        }
+        $sourceQuery = trim((string)($filters['source_q'] ?? ''));
+        if ($sourceQuery !== '') {
+            $where[] = 'documents.source ILIKE :supplier_source_q';
+            $params['supplier_source_q'] = '%' . $sourceQuery . '%';
         }
         $query = trim((string)($filters['q'] ?? ''));
         if ($query !== '') {
