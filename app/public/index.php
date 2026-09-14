@@ -69,6 +69,7 @@ function document_filters_from_request(array $source): array
         'manifestation_status' => $source['manifestation_status'] ?? '',
         'posted_to_erp' => $source['posted_to_erp'] ?? '',
         'accounting_posted' => $source['accounting_posted'] ?? '',
+        'supplier_group_id' => request_values($source, 'supplier_group_id'),
         'without_referenced_nfe' => $source['without_referenced_nfe'] ?? '',
         'entry_only' => '1',
         'date_start' => $source['date_start'] ?? '',
@@ -85,6 +86,8 @@ function document_filters_from_request(array $source): array
         'cte_taker_only' => $source['cte_taker_only'] ?? '',
         'ignore_cfops' => array_key_exists('ignore_cfops', $source) ? (string)$source['ignore_cfops'] : '1',
         'source_q' => $source['source_q'] ?? '',
+        'timeline_issuer_cnpj' => $source['timeline_issuer_cnpj'] ?? '',
+        'timeline_month' => $source['timeline_month'] ?? '',
         'q' => $source['q'] ?? '',
         'sort_by' => $source['sort_by'] ?? 'issue_date',
         'sort_dir' => $source['sort_dir'] ?? 'desc',
@@ -858,7 +861,7 @@ if ($page !== 'login') {
     if ($page === 'dashboard' && !$auth->canAccess('dashboard')) {
         redirect_to(page_url(first_allowed_page_for_user($auth)));
     }
-    $permissionPage = in_array($page, ['documents_check_cancel', 'documents_filter_ids', 'documents_accounting_check_file', 'documents_accounting_import', 'documents_accounting_entries', 'documents_accounting_missing', 'documents_accounting_missing_export', 'documents_accounting_launch', 'robot_logs'], true) ? 'documents' : $page;
+    $permissionPage = in_array($page, ['documents_check_cancel', 'documents_filter_ids', 'documents_timeline_cell', 'documents_timeline_export', 'documents_timeline_cell_export', 'documents_accounting_check_file', 'documents_accounting_import', 'documents_accounting_entries', 'documents_accounting_missing', 'documents_accounting_missing_export', 'documents_accounting_launch', 'robot_logs', 'supplier_groups'], true) ? 'documents' : $page;
     if (!$auth->canAccess($permissionPage)) {
         flash_set('danger', 'Seu perfil nao tem permissao para acessar este modulo.');
         redirect_to(page_url(first_allowed_page_for_user($auth)));
@@ -1429,6 +1432,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 break;
 
+            case 'supplier_groups':
+                $supplierQuery = array_filter([
+                    'page' => 'supplier_groups',
+                    'doc_type' => $_POST['doc_type'] ?? '',
+                    'q' => $_POST['q'] ?? '',
+                    'without_group' => $_POST['without_group'] ?? '',
+                    'group_id' => $_POST['group_id'] ?? '',
+                ], static fn($value) => $value !== '' && $value !== null);
+                $return = base_url('?' . http_build_query($supplierQuery));
+
+                if (isset($_POST['save_group'])) {
+                    $id = $repo->saveSupplierGroup((int)($_POST['edit_group_id'] ?? 0), (string)($_POST['description'] ?? ''));
+                    $repo->logAction('supplier_group_save', 'Grupo de fornecedores salvo ID ' . $id . ': ' . (string)($_POST['description'] ?? ''));
+                    flash_set('success', 'Grupo salvo.');
+                    redirect_to($return);
+                }
+                if (isset($_POST['delete_group'])) {
+                    $repo->deleteSupplierGroup((int)($_POST['delete_group_id'] ?? 0));
+                    $repo->logAction('supplier_group_delete', 'Grupo de fornecedores removido ID ' . (int)($_POST['delete_group_id'] ?? 0));
+                    flash_set('success', 'Grupo removido.');
+                    redirect_to(base_url('?page=supplier_groups'));
+                }
+                if (isset($_POST['add_suppliers'])) {
+                    $suppliers = [];
+                    foreach ((array)($_POST['supplier_cnpj'] ?? []) as $idx => $cnpj) {
+                        $suppliers[] = [
+                            'issuer_cnpj' => (string)$cnpj,
+                            'issuer_name' => (string)(($_POST['supplier_name'] ?? [])[$idx] ?? ''),
+                        ];
+                    }
+                    $count = $repo->addSuppliersToGroup((int)($_POST['target_group_id'] ?? 0), $suppliers);
+                    $repo->logAction('supplier_group_members', $count . ' fornecedor(es) adicionados ao grupo ID ' . (int)($_POST['target_group_id'] ?? 0));
+                    flash_set($count > 0 ? 'success' : 'warning', $count . ' fornecedor(es) adicionados ao grupo.');
+                    redirect_to($return);
+                }
+                if (isset($_POST['remove_supplier'])) {
+                    $repo->removeSupplierFromGroup((string)($_POST['remove_issuer_cnpj'] ?? ''));
+                    $repo->logAction('supplier_group_remove_member', 'Fornecedor removido do grupo: ' . (string)($_POST['remove_issuer_cnpj'] ?? ''));
+                    flash_set('success', 'Fornecedor removido do grupo.');
+                    redirect_to($return);
+                }
+                break;
+
             case 'documents':
                 $ids = array_map('intval', $_POST['ids'] ?? []);
                 $documentFilterKeys = [
@@ -1438,6 +1484,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'manifestation_status',
                     'posted_to_erp',
                     'accounting_posted',
+                    'supplier_group_id',
                     'without_referenced_nfe',
                     'date_start',
                     'date_end',
@@ -1994,7 +2041,7 @@ if ($page === 'documents_export') {
     header('Content-Disposition: attachment; filename="' . $filename . '"');
     echo "\xEF\xBB\xBF";
     echo '<table border="1">';
-    echo '<tr><th>Empresa</th><th>CNPJ</th><th>Tipo</th><th>N&uacute;mero</th><th>Pedido</th><th>Emissor</th><th>CNPJ emissor</th><th>Destinat&aacute;rio</th><th>Documento destinat&aacute;rio</th><th>Chave</th><th>NF-e vinculada</th><th>N&uacute;mero doc. referenciado</th><th>Nota lan&ccedil;ada no ERP</th><th>Lan&ccedil;ada contabilidade</th><th>Eventos informativos</th><th>Emiss&atilde;o</th><th>Valor</th><th>Status</th><th>Manifesta&ccedil;&atilde;o</th><th>Origem</th><th>Link espelho</th><th>Pasta</th></tr>';
+    echo '<tr><th>Empresa</th><th>CNPJ</th><th>Tipo</th><th>N&uacute;mero</th><th>Pedido</th><th>Emissor</th><th>CNPJ emissor</th><th>Grupo</th><th>Destinat&aacute;rio</th><th>Documento destinat&aacute;rio</th><th>Chave</th><th>NF-e vinculada</th><th>N&uacute;mero doc. referenciado</th><th>Nota lan&ccedil;ada no ERP</th><th>Lan&ccedil;ada contabilidade</th><th>Eventos informativos</th><th>Emiss&atilde;o</th><th>Valor</th><th>Status</th><th>Manifesta&ccedil;&atilde;o</th><th>Origem</th><th>Link espelho</th><th>Pasta</th></tr>';
     foreach ($docs as $doc) {
         $hasMirror = in_array(strtoupper((string)($doc['doc_type'] ?? '')), ['NFE', 'CTE', 'NFSE'], true)
             && (string)($doc['status'] ?? '') !== 'apenas_resumo';
@@ -2008,6 +2055,7 @@ if ($page === 'documents_export') {
             $doc['order_number'] ?? '',
             $doc['issuer_name'] ?? '',
             $doc['issuer_cnpj'] ?? '',
+            $doc['supplier_group'] ?? '',
             $doc['recipient_name'] ?? '',
             $doc['recipient_cnpj'] ?? '',
             $doc['access_key'] ?? '',
@@ -2028,6 +2076,101 @@ if ($page === 'documents_export') {
         }
         echo '</tr>';
     }
+    echo '</table>';
+    exit;
+}
+
+if ($page === 'documents_timeline_cell') {
+    header('Content-Type: application/json; charset=utf-8');
+    try {
+        $filters = document_filters_from_request($_GET);
+        $docs = $repo->documents($filters);
+        $rows = array_map(static function (array $doc): array {
+            return [
+                'id' => (int)($doc['id'] ?? 0),
+                'company_name' => (string)($doc['company_name'] ?? ''),
+                'doc_type' => (string)($doc['doc_type'] ?? ''),
+                'number' => (string)($doc['number'] ?? ''),
+                'issuer_name' => (string)($doc['issuer_name'] ?? ''),
+                'issuer_cnpj' => (string)($doc['issuer_cnpj'] ?? ''),
+                'recipient_name' => (string)($doc['recipient_name'] ?? ''),
+                'issue_date' => format_date($doc['issue_date'] ?? null),
+                'total_value' => format_money((float)($doc['total_value'] ?? 0)),
+                'posted_to_erp' => !empty($doc['posted_to_erp']) ? 'Sim' : 'Nao',
+                'accounting_posted' => (($doc['accounting_posted'] ?? 'N') === 'S') ? 'Sim' : 'Nao',
+                'status' => document_status_label((string)($doc['status'] ?? '')),
+                'source' => (string)($doc['source'] ?? ''),
+            ];
+        }, $docs);
+        echo json_encode(['ok' => true, 'documents' => $rows], JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $e) {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'message' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+}
+
+if ($page === 'documents_timeline_cell_export') {
+    $filters = document_filters_from_request($_GET);
+    $docs = $repo->documents($filters);
+    header('Content-Type: application/vnd.ms-excel; charset=utf-8');
+    header('Content-Disposition: attachment; filename="entradas_linha_tempo_detalhe_' . date('Ymd_His') . '.xls"');
+    echo "\xEF\xBB\xBF";
+    echo '<table border="1">';
+    echo '<tr><th>Empresa</th><th>Tipo</th><th>Numero</th><th>Emissor</th><th>CNPJ emissor</th><th>Tomador</th><th>Emissao</th><th>Valor</th><th>Decis</th><th>Contabilidade</th><th>Status</th><th>Origem</th></tr>';
+    foreach ($docs as $doc) {
+        echo '<tr>';
+        foreach ([
+            $doc['company_name'] ?? '',
+            $doc['doc_type'] ?? '',
+            $doc['number'] ?? '',
+            $doc['issuer_name'] ?? '',
+            $doc['issuer_cnpj'] ?? '',
+            $doc['recipient_name'] ?? '',
+            format_date($doc['issue_date'] ?? null),
+            number_format((float)($doc['total_value'] ?? 0), 2, ',', '.'),
+            !empty($doc['posted_to_erp']) ? 'Sim' : 'Nao',
+            (($doc['accounting_posted'] ?? 'N') === 'S') ? 'Sim' : 'Nao',
+            document_status_label((string)($doc['status'] ?? '')),
+            $doc['source'] ?? '',
+        ] as $value) {
+            echo '<td>' . h((string)$value) . '</td>';
+        }
+        echo '</tr>';
+    }
+    echo '</table>';
+    exit;
+}
+
+if ($page === 'documents_timeline_export') {
+    $filters = document_filters_from_request($_GET);
+    $mode = (string)($_GET['timeline_mode'] ?? 'value') === 'count' ? 'count' : 'value';
+    $timeline = $repo->documentsTimeline($filters);
+    header('Content-Type: application/vnd.ms-excel; charset=utf-8');
+    header('Content-Disposition: attachment; filename="entradas_linha_tempo_' . date('Ymd_His') . '.xls"');
+    echo "\xEF\xBB\xBF";
+    echo '<table border="1">';
+    echo '<tr><th>Fornecedor</th><th>CNPJ</th>';
+    foreach ($timeline['months'] as $month) {
+        echo '<th>' . h((string)$month['label']) . '</th>';
+    }
+    echo '<th>Total</th></tr>';
+    foreach ($timeline['rows'] as $row) {
+        echo '<tr><td>' . h((string)$row['issuer_name']) . '</td><td>' . h((string)$row['issuer_cnpj']) . '</td>';
+        foreach ($timeline['months'] as $month) {
+            $cell = $row['months'][$month['key']] ?? ['value' => 0, 'count' => 0, 'erp' => 0, 'accounting' => 0];
+            $value = $mode === 'count' ? (string)(int)$cell['count'] : number_format((float)$cell['value'], 2, ',', '.');
+            echo '<td>' . h($value) . '<br>Decis: ' . h((string)(int)$cell['erp']) . ' | Contab.: ' . h((string)(int)$cell['accounting']) . '</td>';
+        }
+        $total = $mode === 'count' ? (string)(int)$row['total']['count'] : number_format((float)$row['total']['value'], 2, ',', '.');
+        echo '<td>' . h($total) . '</td></tr>';
+    }
+    echo '<tr><th>Total</th><th></th>';
+    foreach ($timeline['months'] as $month) {
+        $cell = $timeline['month_totals'][$month['key']] ?? ['value' => 0, 'count' => 0];
+        echo '<th>' . h($mode === 'count' ? (string)(int)$cell['count'] : number_format((float)$cell['value'], 2, ',', '.')) . '</th>';
+    }
+    echo '<th>' . h($mode === 'count' ? (string)(int)$timeline['grand_total']['count'] : number_format((float)$timeline['grand_total']['value'], 2, ',', '.')) . '</th></tr>';
     echo '</table>';
     exit;
 }
@@ -2320,6 +2463,22 @@ switch ($page) {
         $viewData['editCompany'] = !empty($_GET['edit_company_id']) ? $repo->findCompany((int)$_GET['edit_company_id']) : null;
         include __DIR__ . '/../templates/companies.php';
         break;
+    case 'supplier_groups':
+        $supplierFilters = [
+            'doc_type' => $_GET['doc_type'] ?? '',
+            'q' => $_GET['q'] ?? '',
+            'without_group' => $_GET['without_group'] ?? '',
+        ];
+        $selectedSupplierGroupId = (int)($_GET['group_id'] ?? 0);
+        $viewData['supplierGroupFilters'] = $supplierFilters;
+        $viewData['supplierGroups'] = $repo->supplierGroups();
+        $viewData['selectedSupplierGroupId'] = $selectedSupplierGroupId;
+        $viewData['selectedSupplierGroupMembers'] = $selectedSupplierGroupId > 0 ? $repo->supplierGroupMembers($selectedSupplierGroupId) : [];
+        $viewData['supplierOptions'] = $repo->supplierOptions($supplierFilters);
+        $viewData['moduleTitle'] = 'Grupos de fornecedores';
+        $viewData['moduleSubtitle'] = 'Organize emissores de entradas por grupos operacionais.';
+        include __DIR__ . '/../templates/supplier_groups.php';
+        break;
     case 'users':
         if (!$auth->isAdmin()) {
             http_response_code(403);
@@ -2357,10 +2516,12 @@ switch ($page) {
         $viewData['documentsDeferred'] = !$documentShouldQuery;
         $viewData['documentTotals'] = $documentShouldQuery ? $repo->documentsTotals($documentFilters) : ['total' => 0, 'total_value' => 0];
         $viewData['documents'] = $documentShouldQuery ? $repo->documentsPage($documentFilters, $documentPage, $documentPerPage) : [];
+        $viewData['documentsTimeline'] = $documentShouldQuery ? $repo->documentsTimeline($documentFilters) : ['months' => [], 'rows' => [], 'month_totals' => [], 'grand_total' => ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0]];
         $viewData['documentIgnoredCfops'] = $repo->documentIgnoredCfops();
         $viewData['documentIgnoredDocuments'] = $repo->documentIgnoredDocuments();
         $viewData['documentCfopOptions'] = $repo->documentCfopOptions();
         $viewData['documentStatusOptions'] = $repo->documentStatusOptions();
+        $viewData['supplierGroups'] = $repo->supplierGroups();
         include __DIR__ . '/../templates/documents.php';
         break;
     case 'period_closure':

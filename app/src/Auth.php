@@ -84,7 +84,7 @@ final class Auth
         if (in_array($page, ['revenue', 'revenue_export', 'revenue_xml'], true) && !$this->canViewRevenue()) {
             return false;
         }
-        return in_array($page, ['revenue', 'revenue_export', 'revenue_xml', 'documents', 'view_xml', 'document_items', 'documents_export', 'documents_xml_zip', 'documents_danfe', 'documents_danfe_zip', 'cancellation_tracking', 'logout', 'login'], true);
+        return in_array($page, ['revenue', 'revenue_export', 'revenue_xml', 'documents', 'supplier_groups', 'view_xml', 'document_items', 'documents_export', 'documents_xml_zip', 'documents_danfe', 'documents_danfe_zip', 'cancellation_tracking', 'logout', 'login'], true);
     }
 
     public function logout(): void

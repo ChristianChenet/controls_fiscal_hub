@@ -13,10 +13,23 @@ if (!$documentsDeferred) {
 }
 $exportQuery = $baseQuery;
 $exportQuery['page'] = 'documents_export';
+$timelineMode = (string)($_GET['timeline_mode'] ?? 'value') === 'count' ? 'count' : 'value';
+$timeline = $documentsTimeline ?? ['months' => [], 'rows' => [], 'month_totals' => [], 'grand_total' => ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0]];
+$timelineExportQuery = $baseQuery;
+$timelineExportQuery['page'] = 'documents_timeline_export';
+$timelineExportQuery['timeline_mode'] = $timelineMode;
+$timelineModeQuery = $baseQuery;
+$timelineModeQuery['page'] = 'documents';
+$timelineCellBaseQuery = $baseQuery;
+unset($timelineCellBaseQuery['p']);
 $companyOptions = array_map(static fn(array $co): array => [
     'value' => (string)$co['id'],
     'label' => (string)$co['company_name'] . ' - ' . (string)$co['cnpj'],
 ], $companies ?? []);
+$supplierGroupOptions = array_map(static fn(array $group): array => [
+    'value' => (string)$group['id'],
+    'label' => (string)$group['description'] . ' (' . (string)($group['supplier_count'] ?? 0) . ')',
+], $supplierGroups ?? []);
 $statusOptions = array_map(static fn(array $row): string => (string)($row['status'] ?? ''), $documentStatusOptions ?? []);
 $selectedStatus = (string)($filters['status'] ?? '');
 if ($selectedStatus !== '' && $selectedStatus !== 'not_cancelled' && !in_array($selectedStatus, $statusOptions, true)) {
@@ -24,11 +37,14 @@ if ($selectedStatus !== '' && $selectedStatus !== 'not_cancelled' && !in_array($
 }
 $filteredTotal = (int)($totals['total'] ?? 0);
 $documentFilterKeys = [
-    'company_id','doc_type','status','manifestation_status','posted_to_erp','accounting_posted','without_referenced_nfe','cte_taker_only','ignore_cfops','entry_only','date_start','date_end',
+    'company_id','doc_type','status','manifestation_status','posted_to_erp','accounting_posted','supplier_group_id','without_referenced_nfe','cte_taker_only','ignore_cfops','entry_only','date_start','date_end',
     'company_q','number_q','issuer_q','recipient_q','access_key_q','referenced_nfe_q','referenced_number_q','product_q','cfop_q','source_q','q','sort_by','sort_dir',
 ];
 $canShowDocumentMirror = static fn(array $doc): bool => in_array(strtoupper((string)($doc['doc_type'] ?? '')), ['NFE', 'CTE', 'NFSE'], true)
     && (string)($doc['status'] ?? '') !== 'apenas_resumo';
+$timelineDisplayValue = static function (array $cell, string $mode): string {
+    return $mode === 'count' ? (string)(int)($cell['count'] ?? 0) : format_money((float)($cell['value'] ?? 0));
+};
 ?>
 <div class="page-header split-header documents-page-header">
     <div>
@@ -101,6 +117,7 @@ $canShowDocumentMirror = static fn(array $doc): bool => in_array(strtoupper((str
                 <option value="N" <?= (($filters['accounting_posted'] ?? '') === 'N') ? 'selected' : '' ?>>Não</option>
             </select>
         </label>
+        <?= compact_multi_picker('Grupo', 'supplier_group_id', $supplierGroupOptions, $filters['supplier_group_id'] ?? []) ?>
         <label>Vinculo NF-e
             <select name="without_referenced_nfe">
                 <option value="">Todos</option>
@@ -156,6 +173,7 @@ $canShowDocumentMirror = static fn(array $doc): bool => in_array(strtoupper((str
             'tipo' => 'Tipo',
             'numero' => 'Número',
             'emissor' => 'Emissor',
+            'grupo' => 'Grupo',
             'tomador' => 'Tomador',
             'chave' => 'Chave',
             'nfe_vinculada' => 'NF-e vinculada',
@@ -184,7 +202,145 @@ $canShowDocumentMirror = static fn(array $doc): bool => in_array(strtoupper((str
     <div class="card stat ok"><strong id="selected-value">R$ 0,00</strong><span>Soma selecionada</span></div>
 </div>
 
-<form method="post" class="card documents-card">
+<div class="documents-tabs" data-documents-tabs>
+    <button class="documents-tab is-active" type="button" data-documents-tab="grid">Grid de entradas</button>
+    <button class="documents-tab" type="button" data-documents-tab="timeline">Linha do tempo</button>
+</div>
+
+<section class="card documents-timeline-card is-hidden" data-documents-tab-panel="timeline">
+    <div class="grid-toolbar documents-grid-toolbar">
+        <div>
+            <h2>Linha do tempo</h2>
+            <small>Valores por fornecedor e mês respeitando os filtros aplicados em Entradas.</small>
+        </div>
+        <div class="documents-action-bar">
+            <form method="get" class="inline timeline-mode-form">
+                <input type="hidden" name="page" value="documents">
+                <input type="hidden" name="load_documents" value="1">
+                <?= hidden_filter_inputs($documentFilterKeys, $filters) ?>
+                <label>Visualizar
+                    <select name="timeline_mode" onchange="this.form.submit()">
+                        <option value="value" <?= $timelineMode === 'value' ? 'selected' : '' ?>>Valor</option>
+                        <option value="count" <?= $timelineMode === 'count' ? 'selected' : '' ?>>Qtde de documentos</option>
+                    </select>
+                </label>
+            </form>
+            <button class="button-compact" type="button" data-timeline-fullscreen>Tela cheia</button>
+            <a class="button-link button-compact" href="<?= h(base_url('?' . http_build_query($timelineExportQuery))) ?>">Exportar Excel</a>
+        </div>
+    </div>
+    <?php if ($documentsDeferred): ?>
+        <div class="empty-state">Use os filtros acima e clique em Filtrar entradas para carregar a linha do tempo.</div>
+    <?php elseif (empty($timeline['months']) || empty($timeline['rows'])): ?>
+        <div class="empty-state">Nenhum lançamento encontrado para montar a linha do tempo.</div>
+    <?php else: ?>
+        <div class="documents-timeline-wrap">
+            <table class="documents-timeline-table">
+                <thead>
+                    <tr>
+                        <th class="timeline-supplier-col">Fornecedor - Emissor</th>
+                        <?php foreach ($timeline['months'] as $month): ?>
+                            <th><?= h((string)$month['label']) ?></th>
+                        <?php endforeach; ?>
+                        <th class="timeline-total-col">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($timeline['rows'] as $row): ?>
+                    <tr>
+                        <th class="timeline-supplier-col">
+                            <strong><?= h((string)$row['issuer_name']) ?></strong>
+                            <small><?= h((string)$row['issuer_cnpj']) ?></small>
+                        </th>
+                        <?php foreach ($timeline['months'] as $month): ?>
+                            <?php
+                                $cell = $row['months'][$month['key']] ?? ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0];
+                                $cellQuery = $timelineCellBaseQuery;
+                                $cellQuery['page'] = 'documents_timeline_cell';
+                                $cellQuery['timeline_issuer_cnpj'] = (string)$row['issuer_cnpj'];
+                                $cellQuery['timeline_month'] = (string)$month['key'];
+                                $cellExportQuery = $cellQuery;
+                                $cellExportQuery['page'] = 'documents_timeline_cell_export';
+                                $hasDocs = (int)($cell['count'] ?? 0) > 0;
+                            ?>
+                            <td class="<?= $hasDocs ? 'timeline-has-docs' : 'timeline-empty-month' ?>">
+                                <?php if ($hasDocs): ?>
+                                    <button type="button" class="timeline-cell-button" data-timeline-cell="<?= h(base_url('?' . http_build_query($cellQuery))) ?>" data-timeline-export="<?= h(base_url('?' . http_build_query($cellExportQuery))) ?>" data-timeline-title="<?= h((string)$row['issuer_name'] . ' | ' . (string)$month['label']) ?>">
+                                        <strong><?= h($timelineDisplayValue($cell, $timelineMode)) ?></strong>
+                                        <small>Decis <?= h((string)(int)$cell['erp']) ?> | Contab. <?= h((string)(int)$cell['accounting']) ?></small>
+                                    </button>
+                                <?php else: ?>
+                                    <span class="timeline-empty-label">Sem lançamento</span>
+                                <?php endif; ?>
+                            </td>
+                        <?php endforeach; ?>
+                        <td class="timeline-total-col">
+                            <strong><?= h($timelineDisplayValue($row['total'], $timelineMode)) ?></strong>
+                            <small>Decis <?= h((string)(int)$row['total']['erp']) ?> | Contab. <?= h((string)(int)$row['total']['accounting']) ?></small>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+                <tfoot>
+                    <tr>
+                        <th class="timeline-supplier-col">Total por mês</th>
+                        <?php foreach ($timeline['months'] as $month): ?>
+                            <?php $totalCell = $timeline['month_totals'][$month['key']] ?? ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0]; ?>
+                            <th>
+                                <strong><?= h($timelineDisplayValue($totalCell, $timelineMode)) ?></strong>
+                                <small>Decis <?= h((string)(int)$totalCell['erp']) ?> | Contab. <?= h((string)(int)$totalCell['accounting']) ?></small>
+                            </th>
+                        <?php endforeach; ?>
+                        <th class="timeline-total-col">
+                            <strong><?= h($timelineDisplayValue($timeline['grand_total'], $timelineMode)) ?></strong>
+                            <small>Decis <?= h((string)(int)$timeline['grand_total']['erp']) ?> | Contab. <?= h((string)(int)$timeline['grand_total']['accounting']) ?></small>
+                        </th>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+    <?php endif; ?>
+</section>
+
+<div class="modal-backdrop action-modal is-hidden" id="timeline-detail-modal" role="dialog" aria-modal="true" aria-labelledby="timeline-detail-title">
+    <div class="modal-panel action-modal-panel timeline-detail-panel">
+        <div class="modal-header">
+            <div>
+                <h2 id="timeline-detail-title">Notas da linha do tempo</h2>
+                <small id="timeline-detail-subtitle">Detalhes do fornecedor e mês selecionados.</small>
+            </div>
+            <button type="button" class="modal-close" data-close-timeline-detail>&times;</button>
+        </div>
+        <div class="timeline-detail-actions">
+            <a class="button-link button-compact" id="timeline-detail-export" href="#">Exportar Excel</a>
+        </div>
+        <div class="table-wrap timeline-detail-wrap">
+            <table class="table documents-items-table timeline-detail-table">
+                <thead>
+                    <tr>
+                        <th>Empresa</th>
+                        <th>Tipo</th>
+                        <th>Número</th>
+                        <th>Emissor</th>
+                        <th>Tomador</th>
+                        <th>Emissão</th>
+                        <th>Valor</th>
+                        <th>Decis</th>
+                        <th>Contabilidade</th>
+                        <th>Status</th>
+                        <th>Origem</th>
+                    </tr>
+                </thead>
+                <tbody id="timeline-detail-body">
+                    <tr><td colspan="11">Selecione um mês da linha do tempo.</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div id="timeline-detail-feedback" class="export-feedback" aria-live="polite"></div>
+    </div>
+</div>
+
+<form method="post" class="card documents-card" data-documents-tab-panel="grid">
     <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
     <?= hidden_filter_inputs($documentFilterKeys, $filters) ?>
     <input type="hidden" name="p" value="<?= h((string)$currentPage) ?>">
@@ -245,6 +401,7 @@ $canShowDocumentMirror = static fn(array $doc): bool => in_array(strtoupper((str
                     <th class="resizable" data-column="tipo">Tipo</th>
                     <th class="resizable" data-column="numero">Número</th>
                     <th class="resizable" data-column="emissor">Emissor</th>
+                    <th class="resizable" data-column="grupo">Grupo</th>
                     <th class="resizable" data-column="tomador">Tomador</th>
                     <th class="resizable" data-column="chave">Chave</th>
                     <th class="resizable" data-column="nfe_vinculada">NF-e vinculada</th>
@@ -266,6 +423,7 @@ $canShowDocumentMirror = static fn(array $doc): bool => in_array(strtoupper((str
                     <th data-column="tipo"></th>
                     <th data-column="numero"><input form="column-filter-form" name="number_q" value="<?= h((string)($filters['number_q'] ?? '')) ?>" placeholder="Filtrar"></th>
                     <th data-column="emissor"><input form="column-filter-form" name="issuer_q" value="<?= h((string)($filters['issuer_q'] ?? '')) ?>" placeholder="Filtrar"></th>
+                    <th data-column="grupo"></th>
                     <th data-column="tomador"><input form="column-filter-form" name="recipient_q" value="<?= h((string)($filters['recipient_q'] ?? '')) ?>" placeholder="Filtrar"></th>
                     <th data-column="chave"><input form="column-filter-form" name="access_key_q" value="<?= h((string)($filters['access_key_q'] ?? '')) ?>" placeholder="Filtrar"></th>
                     <th data-column="nfe_vinculada"><input form="column-filter-form" name="referenced_nfe_q" value="<?= h((string)($filters['referenced_nfe_q'] ?? '')) ?>" placeholder="Filtrar"></th>
@@ -303,6 +461,7 @@ $canShowDocumentMirror = static fn(array $doc): bool => in_array(strtoupper((str
                     <td data-column="tipo"><span class="pill"><?= h((string)$doc['doc_type']) ?></span></td>
                     <td data-column="numero"><button type="button" class="link-button doc-products-link" data-document-items="<?= h((string)$doc['id']) ?>"><?= h((string)$doc['number']) ?></button></td>
                     <td data-column="emissor"><strong><?= h((string)$doc['issuer_name']) ?></strong><br><small><?= h((string)$doc['issuer_cnpj']) ?></small></td>
+                    <td data-column="grupo"><?= h((string)($doc['supplier_group'] ?? '')) ?></td>
                     <td data-column="tomador"><strong><?= h((string)($doc['recipient_name'] ?? '')) ?></strong><br><small><?= h((string)($doc['recipient_cnpj'] ?? '')) ?></small></td>
                     <td data-column="chave"><small><?= h((string)$doc['access_key']) ?></small></td>
                     <td data-column="nfe_vinculada"><small><?= h((string)($doc['referenced_nfe_keys'] ?? '')) ?></small></td>
@@ -343,7 +502,7 @@ $canShowDocumentMirror = static fn(array $doc): bool => in_array(strtoupper((str
                 </tr>
             <?php endforeach; ?>
             <?php if (!$documents): ?>
-                <tr><td colspan="19">Nenhuma entrada encontrada.</td></tr>
+                <tr><td colspan="20">Nenhuma entrada encontrada.</td></tr>
             <?php endif; ?>
             </tbody>
         </table>
@@ -784,6 +943,10 @@ $canShowDocumentMirror = static fn(array $doc): bool => in_array(strtoupper((str
     <?php foreach ($companyFilterValues as $companyFilterValue): ?>
         <input type="hidden" name="company_id[]" value="<?= h((string)$companyFilterValue) ?>">
     <?php endforeach; ?>
+    <?php $supplierGroupFilterValues = is_array($filters['supplier_group_id'] ?? '') ? ($filters['supplier_group_id'] ?? []) : array_filter([(string)($filters['supplier_group_id'] ?? '')]); ?>
+    <?php foreach ($supplierGroupFilterValues as $supplierGroupFilterValue): ?>
+        <input type="hidden" name="supplier_group_id[]" value="<?= h((string)$supplierGroupFilterValue) ?>">
+    <?php endforeach; ?>
     <input type="hidden" name="doc_type" value="<?= h((string)($filters['doc_type'] ?? '')) ?>">
     <input type="hidden" name="status" value="<?= h((string)($filters['status'] ?? '')) ?>">
     <input type="hidden" name="posted_to_erp" value="<?= h((string)($filters['posted_to_erp'] ?? '')) ?>">
@@ -801,6 +964,113 @@ $canShowDocumentMirror = static fn(array $doc): bool => in_array(strtoupper((str
 </form>
 
 <script src="<?= h(base_url('assets/vendor/xlsx.full.min.js?v=20260902-accounting-import')) ?>"></script>
+<script>
+(function () {
+    var tabKey = 'controls.documents.activeTab';
+    var tabs = document.querySelectorAll('[data-documents-tab]');
+    var panels = document.querySelectorAll('[data-documents-tab-panel]');
+    if (!tabs.length || !panels.length) return;
+    function setTab(name) {
+        tabs.forEach(function (tab) {
+            tab.classList.toggle('is-active', tab.getAttribute('data-documents-tab') === name);
+        });
+        panels.forEach(function (panel) {
+            panel.classList.toggle('is-hidden', panel.getAttribute('data-documents-tab-panel') !== name);
+        });
+        try { localStorage.setItem(tabKey, name); } catch (e) {}
+    }
+    tabs.forEach(function (tab) {
+        tab.addEventListener('click', function () {
+            setTab(tab.getAttribute('data-documents-tab') || 'grid');
+        });
+    });
+    var params = new URLSearchParams(window.location.search);
+    var initial = params.has('timeline_mode') ? 'timeline' : 'grid';
+    try { initial = localStorage.getItem(tabKey) || initial; } catch (e) {}
+    if (initial !== 'timeline') initial = 'grid';
+    setTab(initial);
+})();
+</script>
+<script>
+(function () {
+    var card = document.querySelector('.documents-timeline-card');
+    var fullscreenButton = document.querySelector('[data-timeline-fullscreen]');
+    var modal = document.getElementById('timeline-detail-modal');
+    var title = document.getElementById('timeline-detail-title');
+    var subtitle = document.getElementById('timeline-detail-subtitle');
+    var tbody = document.getElementById('timeline-detail-body');
+    var exportLink = document.getElementById('timeline-detail-export');
+    var feedback = document.getElementById('timeline-detail-feedback');
+    function escapeHtml(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, function (char) {
+            return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char] || char;
+        });
+    }
+    if (card && fullscreenButton) {
+        fullscreenButton.addEventListener('click', function () {
+            var active = !card.classList.contains('is-fullscreen');
+            card.classList.toggle('is-fullscreen', active);
+            fullscreenButton.textContent = active ? 'Sair da tela cheia' : 'Tela cheia';
+        });
+    }
+    if (!modal || !tbody) return;
+    function closeModal() {
+        modal.classList.add('is-hidden');
+    }
+    document.querySelectorAll('[data-close-timeline-detail]').forEach(function (button) {
+        button.addEventListener('click', closeModal);
+    });
+    modal.addEventListener('click', function (event) {
+        if (event.target === modal) closeModal();
+    });
+    document.querySelectorAll('[data-timeline-cell]').forEach(function (button) {
+        button.addEventListener('click', function () {
+            var url = button.getAttribute('data-timeline-cell');
+            var exportUrl = button.getAttribute('data-timeline-export') || '#';
+            var cellTitle = button.getAttribute('data-timeline-title') || 'Notas da linha do tempo';
+            if (!url) return;
+            if (title) title.textContent = cellTitle;
+            if (subtitle) subtitle.textContent = 'Notas encontradas para o fornecedor e mês selecionados.';
+            if (exportLink) exportLink.href = exportUrl;
+            if (feedback) feedback.textContent = 'Carregando notas...';
+            tbody.innerHTML = '<tr><td colspan="11">Carregando...</td></tr>';
+            modal.classList.remove('is-hidden');
+            fetch(url, {headers: {'Accept': 'application/json'}})
+                .then(function (response) {
+                    if (!response.ok) throw new Error('Falha ao carregar as notas.');
+                    return response.json();
+                })
+                .then(function (payload) {
+                    var docs = payload && payload.documents ? payload.documents : [];
+                    if (feedback) feedback.textContent = docs.length + ' nota(s) encontrada(s).';
+                    if (!docs.length) {
+                        tbody.innerHTML = '<tr><td colspan="11">Nenhuma nota encontrada para este recorte.</td></tr>';
+                        return;
+                    }
+                    tbody.innerHTML = docs.map(function (doc) {
+                        return '<tr>' +
+                            '<td>' + escapeHtml(doc.company_name) + '</td>' +
+                            '<td>' + escapeHtml(doc.doc_type) + '</td>' +
+                            '<td>' + escapeHtml(doc.number) + '</td>' +
+                            '<td><strong>' + escapeHtml(doc.issuer_name) + '</strong><small>' + escapeHtml(doc.issuer_cnpj) + '</small></td>' +
+                            '<td>' + escapeHtml(doc.recipient_name) + '</td>' +
+                            '<td>' + escapeHtml(doc.issue_date) + '</td>' +
+                            '<td>' + escapeHtml(doc.total_value) + '</td>' +
+                            '<td>' + escapeHtml(doc.posted_to_erp) + '</td>' +
+                            '<td>' + escapeHtml(doc.accounting_posted) + '</td>' +
+                            '<td>' + escapeHtml(doc.status) + '</td>' +
+                            '<td>' + escapeHtml(doc.source) + '</td>' +
+                        '</tr>';
+                    }).join('');
+                })
+                .catch(function (error) {
+                    if (feedback) feedback.textContent = error.message || 'Falha ao carregar as notas.';
+                    tbody.innerHTML = '<tr><td colspan="11">Nao foi possivel carregar este detalhe.</td></tr>';
+                });
+        });
+    });
+})();
+</script>
 <script>
 (function () {
     var modal = document.getElementById('accounting-import-modal');
@@ -1729,7 +1999,7 @@ $canShowDocumentMirror = static fn(array $doc): bool => in_array(strtoupper((str
     function syncGridFilters() {
         var gridForm = document.getElementById('column-filter-form');
         if (!gridForm) return;
-        var fields = ['company_q', 'number_q', 'issuer_q', 'recipient_q', 'access_key_q', 'referenced_nfe_q', 'referenced_number_q', 'manifestation_status', 'source_q', 'accounting_posted'];
+        var fields = ['company_q', 'number_q', 'issuer_q', 'recipient_q', 'access_key_q', 'referenced_nfe_q', 'referenced_number_q', 'manifestation_status', 'source_q', 'accounting_posted', 'supplier_group_id'];
         fields.forEach(function (name) {
             var source = gridForm.querySelector('[name="' + name + '"]');
             if (!source || source.value === '') return;
@@ -2158,6 +2428,14 @@ $canShowDocumentMirror = static fn(array $doc): bool => in_array(strtoupper((str
         } else if (newIndex < 0) {
             var issuerIndex = order.indexOf('emissor');
             if (issuerIndex >= 0) order.splice(issuerIndex + 1, 0, 'tomador');
+        }
+        if (order.indexOf('grupo') < 0) {
+            var currentIssuerIndex = order.indexOf('emissor');
+            if (currentIssuerIndex >= 0) {
+                order.splice(currentIssuerIndex + 1, 0, 'grupo');
+            } else {
+                order.push('grupo');
+            }
         }
         localStorage.setItem(key, JSON.stringify(order));
         return order;

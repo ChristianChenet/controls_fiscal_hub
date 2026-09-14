@@ -6,7 +6,7 @@
     <title><?= h($title) ?></title>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <link rel="icon" href="<?= h(base_url('assets/logo-s-novo.jpg')) ?>">
-    <link rel="stylesheet" href="<?= h(base_url('assets/app.css?v=20260908-accounting-row-align')) ?>">
+    <link rel="stylesheet" href="<?= h(base_url('assets/app.css?v=20260914-documents-timeline')) ?>">
 </head>
 <body>
 <div class="shell">
@@ -31,6 +31,7 @@
             <a class="<?= $page === 'import' ? 'active' : '' ?>" href="<?= h(base_url('?page=import')) ?>" title="Importar XML"><span class="nav-icon">&#8679;</span><span class="nav-label">Importar XML</span></a>
             <?php endif; ?>
             <a class="<?= $page === 'documents' ? 'active' : '' ?>" href="<?= h(base_url('?page=documents')) ?>" title="Entradas"><span class="nav-icon">&#9776;</span><span class="nav-label">Entradas</span></a>
+            <a class="<?= $page === 'supplier_groups' ? 'active' : '' ?>" href="<?= h(base_url('?page=supplier_groups')) ?>" title="Grupos"><span class="nav-icon">&#9638;</span><span class="nav-label">Grupos</span></a>
             <?php if (!empty($isAdmin)): ?>
             <a class="<?= $page === 'jobs' ? 'active' : '' ?>" href="<?= h(base_url('?page=jobs')) ?>" title="Execução de Robôs"><span class="nav-icon">&#129302;</span><span class="nav-label">Execução de Robôs</span></a>
             <a class="<?= $page === 'nfe_keys' ? 'active' : '' ?>" href="<?= h(base_url('?page=nfe_keys')) ?>" title="Busca por Chave"><span class="nav-icon">#</span><span class="nav-label">Busca por Chave</span></a>

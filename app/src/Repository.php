@@ -1350,7 +1350,7 @@ final class Repository
         }
         $this->ensureDocumentItemsForFilters($filters);
         [$where, $params] = $this->documentWhere($filters);
-        $sql = 'SELECT * FROM documents';
+        $sql = 'SELECT documents.*, ' . $this->supplierGroupNameSql('documents') . ' AS supplier_group FROM documents';
         if ($where) $sql .= ' WHERE ' . implode(' AND ', $where);
         $sql .= ' ' . $this->documentOrderBy($filters);
         if ((string)$this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
@@ -1451,7 +1451,8 @@ final class Repository
         // Evitar raw_xml na pagina melhora o tempo de resposta em bases grandes.
         $sql = 'SELECT id, company_id, company_name, company_cnpj, doc_type, model, access_key, referenced_nfe_keys, referenced_document_numbers, number, order_number, posted_to_erp, accounting_posted,
                 issuer_cnpj, issuer_name, recipient_cnpj, recipient_name, issue_date, total_value, status, manifestation_status,
-                source, xml_path, storage_dir, notes, NULL AS raw_xml, digest, schema_name, imported_at, updated_at FROM documents';
+                source, xml_path, storage_dir, notes, NULL AS raw_xml, digest, schema_name, imported_at, updated_at,
+                ' . $this->supplierGroupNameSql('documents') . ' AS supplier_group FROM documents';
         if ($where) $sql .= ' WHERE ' . implode(' AND ', $where);
         $sql .= ' ' . $this->documentOrderBy($filters) . ' LIMIT :limit OFFSET :offset';
         if ((string)$this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
@@ -1535,6 +1536,38 @@ final class Repository
             $where[] = 'company_id IN (' . implode(',', $placeholders) . ')';
         }
         if (!empty($filters['doc_type'])) { $where[] = 'doc_type = :doc_type'; $params['doc_type'] = $filters['doc_type']; }
+        $timelineIssuerCnpj = preg_replace('/\D+/', '', (string)($filters['timeline_issuer_cnpj'] ?? '')) ?: '';
+        if ($timelineIssuerCnpj !== '') {
+            $where[] = $this->digitsOnlySql('documents.issuer_cnpj') . ' = :timeline_issuer_cnpj';
+            $params['timeline_issuer_cnpj'] = $timelineIssuerCnpj;
+        }
+        $timelineMonth = trim((string)($filters['timeline_month'] ?? ''));
+        if (preg_match('/^\d{4}-\d{2}$/', $timelineMonth) === 1) {
+            $monthStart = $timelineMonth . '-01';
+            $monthEnd = (new \DateTimeImmutable($monthStart))->modify('last day of this month')->format('Y-m-d');
+            $where[] = 'issue_date >= :timeline_month_start';
+            $where[] = 'issue_date <= :timeline_month_end';
+            $params['timeline_month_start'] = $monthStart . ' 00:00:00';
+            $params['timeline_month_end'] = $monthEnd . ' 23:59:59';
+        }
+        $supplierGroupIds = $this->filterIntValues($filters['supplier_group_id'] ?? '');
+        if ($supplierGroupIds) {
+            $groupPlaceholders = [];
+            foreach ($supplierGroupIds as $idx => $groupId) {
+                $key = 'supplier_group_id_' . $idx;
+                $groupPlaceholders[] = ':' . $key;
+                $params[$key] = $groupId;
+            }
+            $issuerDigits = $this->digitsOnlySql('documents.issuer_cnpj');
+            $memberDigits = $this->digitsOnlySql('sgm_filter.issuer_cnpj');
+            $where[] = "EXISTS (
+                SELECT 1
+                FROM supplier_group_members sgm_filter
+                WHERE sgm_filter.group_id IN (" . implode(',', $groupPlaceholders) . ")
+                  AND {$issuerDigits} <> ''
+                  AND {$issuerDigits} = {$memberDigits}
+            )";
+        }
         $statusFilter = (string)($filters['status'] ?? '');
         if ($statusFilter === 'not_cancelled') {
             $where[] = "status <> 'cancelado'";
@@ -1644,6 +1677,100 @@ final class Repository
         return [$where, $params];
     }
 
+    public function documentsTimeline(array $filters = []): array
+    {
+        [$where, $params] = $this->documentWhere($filters);
+        $where[] = 'issue_date IS NOT NULL';
+        $whereSql = ' WHERE ' . implode(' AND ', $where);
+
+        $dateStart = $this->normalizeFilterDate((string)($filters['date_start'] ?? ''));
+        $dateEnd = $this->normalizeFilterDate((string)($filters['date_end'] ?? ''));
+        if ($dateStart === null || $dateEnd === null) {
+            $rangeStmt = $this->pdo->prepare("SELECT MIN(issue_date) AS min_date, MAX(issue_date) AS max_date FROM documents{$whereSql}");
+            $rangeStmt->execute($params);
+            $range = $rangeStmt->fetch() ?: [];
+            if ($dateStart === null && !empty($range['min_date'])) {
+                $dateStart = (new \DateTimeImmutable((string)$range['min_date']))->format('Y-m-d');
+            }
+            if ($dateEnd === null && !empty($range['max_date'])) {
+                $dateEnd = (new \DateTimeImmutable((string)$range['max_date']))->format('Y-m-d');
+            }
+        }
+        if ($dateStart === null || $dateEnd === null) {
+            return ['months' => [], 'rows' => [], 'month_totals' => [], 'grand_total' => ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0]];
+        }
+
+        $start = (new \DateTimeImmutable($dateStart))->modify('first day of this month');
+        $end = (new \DateTimeImmutable($dateEnd))->modify('first day of this month');
+        if ($end < $start) {
+            [$start, $end] = [$end, $start];
+        }
+        $months = [];
+        for ($cursor = $start; $cursor <= $end; $cursor = $cursor->modify('+1 month')) {
+            $key = $cursor->format('Y-m');
+            $months[$key] = ['key' => $key, 'label' => $cursor->format('Y-m')];
+        }
+
+        $issuerDigits = $this->digitsOnlySql('documents.issuer_cnpj');
+        $stmt = $this->pdo->prepare("SELECT
+                {$issuerDigits} AS issuer_cnpj,
+                COALESCE(NULLIF(MAX(issuer_name), ''), {$issuerDigits}) AS issuer_name,
+                TO_CHAR(DATE_TRUNC('month', issue_date), 'YYYY-MM') AS month_key,
+                COUNT(*) AS doc_count,
+                COALESCE(SUM(total_value), 0) AS total_value,
+                COUNT(*) FILTER (WHERE COALESCE(posted_to_erp, FALSE)) AS erp_count,
+                COUNT(*) FILTER (WHERE COALESCE(accounting_posted, 'N') = 'S') AS accounting_count
+            FROM documents{$whereSql}
+            GROUP BY {$issuerDigits}, DATE_TRUNC('month', issue_date)
+            ORDER BY COALESCE(NULLIF(MAX(issuer_name), ''), {$issuerDigits}) ASC, month_key ASC");
+        $stmt->execute($params);
+
+        $rows = [];
+        $monthTotals = [];
+        foreach (array_keys($months) as $monthKey) {
+            $monthTotals[$monthKey] = ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0];
+        }
+        $grand = ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0];
+        foreach ($stmt->fetchAll() as $item) {
+            $monthKey = (string)($item['month_key'] ?? '');
+            if (!isset($months[$monthKey])) {
+                continue;
+            }
+            $cnpj = (string)($item['issuer_cnpj'] ?? '');
+            if (!isset($rows[$cnpj])) {
+                $rows[$cnpj] = [
+                    'issuer_cnpj' => $cnpj,
+                    'issuer_name' => (string)($item['issuer_name'] ?? ''),
+                    'months' => [],
+                    'total' => ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0],
+                ];
+                foreach (array_keys($months) as $emptyMonth) {
+                    $rows[$cnpj]['months'][$emptyMonth] = ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0];
+                }
+            }
+            $cell = [
+                'value' => (float)($item['total_value'] ?? 0),
+                'count' => (int)($item['doc_count'] ?? 0),
+                'erp' => (int)($item['erp_count'] ?? 0),
+                'accounting' => (int)($item['accounting_count'] ?? 0),
+            ];
+            $rows[$cnpj]['months'][$monthKey] = $cell;
+            foreach (['value', 'count', 'erp', 'accounting'] as $key) {
+                $rows[$cnpj]['total'][$key] += $cell[$key];
+                $monthTotals[$monthKey][$key] += $cell[$key];
+                $grand[$key] += $cell[$key];
+            }
+        }
+
+        uasort($rows, static fn(array $a, array $b): int => strcasecmp((string)$a['issuer_name'], (string)$b['issuer_name']));
+        return [
+            'months' => array_values($months),
+            'rows' => array_values($rows),
+            'month_totals' => $monthTotals,
+            'grand_total' => $grand,
+        ];
+    }
+
     private function ensureDocumentItemsForFilters(array $filters): void
     {
         $hasProductOrCfopFilter = trim((string)($filters['product_q'] ?? '')) !== '' || trim((string)($filters['cfop_q'] ?? '')) !== '';
@@ -1661,6 +1788,19 @@ final class Repository
         // O filtro de CFOP ignorado tambem depende dos itens indexados.
         // Reprocessa somente documentos com XML e marcador ausente/vazio.
         $this->indexMissingDocumentItems(10000);
+    }
+
+    private function supplierGroupNameSql(string $documentAlias): string
+    {
+        $issuerDigits = $this->digitsOnlySql($documentAlias . '.issuer_cnpj');
+        $memberDigits = $this->digitsOnlySql('sgm_name.issuer_cnpj');
+        return "(SELECT sg.description
+            FROM supplier_group_members sgm_name
+            JOIN supplier_groups sg ON sg.id = sgm_name.group_id
+            WHERE {$issuerDigits} <> ''
+              AND {$issuerDigits} = {$memberDigits}
+            ORDER BY sg.description ASC
+            LIMIT 1)";
     }
 
     private function refreshCteTakersForFilter(array $filters, int $limit = 1200): void
@@ -1855,6 +1995,170 @@ final class Repository
             GROUP BY status
             ORDER BY status ASC");
         return $stmt->fetchAll();
+    }
+
+    public function supplierGroups(): array
+    {
+        $stmt = $this->pdo->query("SELECT sg.*,
+                COUNT(sgm.id) AS supplier_count
+            FROM supplier_groups sg
+            LEFT JOIN supplier_group_members sgm ON sgm.group_id = sg.id
+            GROUP BY sg.id, sg.description, sg.created_at, sg.updated_at
+            ORDER BY sg.description ASC");
+        return $stmt->fetchAll();
+    }
+
+    public function findSupplierGroup(int $id): ?array
+    {
+        $stmt = $this->pdo->prepare('SELECT * FROM supplier_groups WHERE id = :id');
+        $stmt->execute(['id' => $id]);
+        $row = $stmt->fetch();
+        return $row ?: null;
+    }
+
+    public function saveSupplierGroup(int $id, string $description): int
+    {
+        $description = trim($description);
+        if ($description === '') {
+            throw new \RuntimeException('Informe a descricao do grupo.');
+        }
+        $now = date('c');
+        if ($id > 0) {
+            $stmt = $this->pdo->prepare('UPDATE supplier_groups SET description = :description, updated_at = :updated_at WHERE id = :id');
+            $stmt->execute(['description' => $description, 'updated_at' => $now, 'id' => $id]);
+            if ($stmt->rowCount() === 0 && !$this->findSupplierGroup($id)) {
+                throw new \RuntimeException('Grupo nao encontrado.');
+            }
+            return $id;
+        }
+        $stmt = $this->pdo->prepare('INSERT INTO supplier_groups(description, created_at, updated_at) VALUES(:description, :created_at, :updated_at)');
+        $stmt->execute(['description' => $description, 'created_at' => $now, 'updated_at' => $now]);
+        return (int)$this->pdo->lastInsertId();
+    }
+
+    public function deleteSupplierGroup(int $id): void
+    {
+        $deleteMembers = $this->pdo->prepare('DELETE FROM supplier_group_members WHERE group_id = :id');
+        $deleteMembers->execute(['id' => $id]);
+        $stmt = $this->pdo->prepare('DELETE FROM supplier_groups WHERE id = :id');
+        $stmt->execute(['id' => $id]);
+    }
+
+    public function supplierGroupMembers(int $groupId): array
+    {
+        $stmt = $this->pdo->prepare("SELECT sgm.*, sg.description AS group_description
+            FROM supplier_group_members sgm
+            JOIN supplier_groups sg ON sg.id = sgm.group_id
+            WHERE sgm.group_id = :group_id
+            ORDER BY sgm.issuer_name ASC, sgm.issuer_cnpj ASC");
+        $stmt->execute(['group_id' => $groupId]);
+        return $stmt->fetchAll();
+    }
+
+    public function supplierOptions(array $filters = []): array
+    {
+        $where = ["COALESCE(documents.issuer_cnpj, '') <> ''"];
+        $params = [];
+        $docType = strtoupper((string)($filters['doc_type'] ?? ''));
+        if (in_array($docType, ['NFE', 'CTE', 'NFSE'], true)) {
+            $where[] = 'documents.doc_type = :doc_type';
+            $params['doc_type'] = $docType;
+        }
+        $query = trim((string)($filters['q'] ?? ''));
+        if ($query !== '') {
+            $where[] = '(documents.issuer_name ILIKE :supplier_q OR documents.issuer_cnpj ILIKE :supplier_q)';
+            $params['supplier_q'] = '%' . $query . '%';
+        }
+        if (!empty($filters['without_group'])) {
+            $issuerDigits = $this->digitsOnlySql('documents.issuer_cnpj');
+            $memberDigits = $this->digitsOnlySql('sgm_missing.issuer_cnpj');
+            $where[] = "NOT EXISTS (
+                SELECT 1
+                FROM supplier_group_members sgm_missing
+                WHERE {$issuerDigits} <> ''
+                  AND {$issuerDigits} = {$memberDigits}
+            )";
+        }
+        $issuerDigits = $this->digitsOnlySql('documents.issuer_cnpj');
+        $memberDigits = $this->digitsOnlySql('sgm.issuer_cnpj');
+        $sql = "SELECT
+                {$issuerDigits} AS issuer_cnpj,
+                COALESCE(NULLIF(MAX(documents.issuer_name), ''), '') AS issuer_name,
+                COUNT(*) AS documents_count,
+                COUNT(*) FILTER (WHERE documents.doc_type = 'NFE') AS nfe_count,
+                COUNT(*) FILTER (WHERE documents.doc_type = 'CTE') AS cte_count,
+                COUNT(*) FILTER (WHERE documents.doc_type = 'NFSE') AS nfse_count,
+                MAX(sg.id) AS group_id,
+                MAX(sg.description) AS group_description
+            FROM documents
+            LEFT JOIN supplier_group_members sgm ON {$issuerDigits} = {$memberDigits}
+            LEFT JOIN supplier_groups sg ON sg.id = sgm.group_id
+            WHERE " . implode(' AND ', $where) . "
+            GROUP BY {$issuerDigits}
+            ORDER BY COALESCE(NULLIF(MAX(documents.issuer_name), ''), {$issuerDigits}) ASC
+            LIMIT 1200";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll();
+    }
+
+    public function addSuppliersToGroup(int $groupId, array $suppliers): int
+    {
+        $group = $this->findSupplierGroup($groupId);
+        if (!$group) {
+            throw new \RuntimeException('Grupo nao encontrado.');
+        }
+        $now = date('c');
+        $stmt = $this->pdo->prepare('INSERT INTO supplier_group_members(group_id, issuer_cnpj, issuer_name, created_at, updated_at)
+            VALUES(:group_id, :issuer_cnpj, :issuer_name, :created_at, :updated_at)
+            ON CONFLICT(issuer_cnpj) DO UPDATE SET group_id = excluded.group_id, issuer_name = excluded.issuer_name, updated_at = excluded.updated_at');
+        $count = 0;
+        foreach ($suppliers as $supplier) {
+            $cnpj = preg_replace('/\D+/', '', (string)($supplier['issuer_cnpj'] ?? '')) ?: '';
+            if ($cnpj === '') {
+                continue;
+            }
+            $name = trim((string)($supplier['issuer_name'] ?? ''));
+            if ($name === '') {
+                $name = $this->supplierNameByCnpj($cnpj);
+            }
+            $stmt->execute([
+                'group_id' => $groupId,
+                'issuer_cnpj' => $cnpj,
+                'issuer_name' => $name,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]);
+            $count++;
+        }
+        return $count;
+    }
+
+    public function removeSupplierFromGroup(string $issuerCnpj): void
+    {
+        $cnpj = preg_replace('/\D+/', '', $issuerCnpj) ?: '';
+        if ($cnpj === '') {
+            return;
+        }
+        $stmt = $this->pdo->prepare('DELETE FROM supplier_group_members WHERE issuer_cnpj = :issuer_cnpj');
+        $stmt->execute(['issuer_cnpj' => $cnpj]);
+    }
+
+    private function supplierNameByCnpj(string $issuerCnpj): string
+    {
+        $digits = preg_replace('/\D+/', '', $issuerCnpj) ?: '';
+        if ($digits === '') {
+            return '';
+        }
+        $stmt = $this->pdo->prepare("SELECT issuer_name
+            FROM documents
+            WHERE {$this->digitsOnlySql('issuer_cnpj')} = :issuer_cnpj
+              AND COALESCE(issuer_name, '') <> ''
+            GROUP BY issuer_name
+            ORDER BY COUNT(*) DESC, LENGTH(issuer_name) DESC, issuer_name ASC
+            LIMIT 1");
+        $stmt->execute(['issuer_cnpj' => $digits]);
+        return (string)($stmt->fetchColumn() ?: '');
     }
 
     public function documentCancellationEventXmls(array $documents): array

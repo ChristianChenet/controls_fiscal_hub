@@ -48,6 +48,7 @@ final class Database
         }
         $this->ensurePortableColumns($driver);
         $this->ensureAccountingImportSchema($driver);
+        $this->ensureSupplierGroupSchema($driver);
     }
 
     private function ensurePortableColumns(string $driver): void
@@ -141,6 +142,46 @@ final class Database
         $this->pdo()->exec("CREATE INDEX IF NOT EXISTS idx_accounting_entries_import ON accounting_entries(import_id)");
         $this->pdo()->exec("CREATE INDEX IF NOT EXISTS idx_accounting_entries_match ON accounting_entries(doc_type, access_key, document_number, party_document)");
         $this->pdo()->exec("CREATE INDEX IF NOT EXISTS idx_accounting_entries_document ON accounting_entries(matched_document_id)");
+    }
+
+    private function ensureSupplierGroupSchema(string $driver): void
+    {
+        if ($driver === 'sqlite') {
+            $this->pdo()->exec("CREATE TABLE IF NOT EXISTS supplier_groups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                description TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )");
+            $this->pdo()->exec("CREATE TABLE IF NOT EXISTS supplier_group_members (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                group_id INTEGER NOT NULL,
+                issuer_cnpj TEXT NOT NULL UNIQUE,
+                issuer_name TEXT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )");
+            $this->pdo()->exec("CREATE INDEX IF NOT EXISTS idx_supplier_group_members_group ON supplier_group_members(group_id)");
+            $this->pdo()->exec("CREATE INDEX IF NOT EXISTS idx_supplier_group_members_cnpj ON supplier_group_members(issuer_cnpj)");
+            return;
+        }
+
+        $this->pdo()->exec("CREATE TABLE IF NOT EXISTS supplier_groups (
+            id SERIAL PRIMARY KEY,
+            description TEXT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )");
+        $this->pdo()->exec("CREATE TABLE IF NOT EXISTS supplier_group_members (
+            id SERIAL PRIMARY KEY,
+            group_id INTEGER NOT NULL REFERENCES supplier_groups(id) ON DELETE CASCADE,
+            issuer_cnpj VARCHAR(20) NOT NULL UNIQUE,
+            issuer_name TEXT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )");
+        $this->pdo()->exec("CREATE INDEX IF NOT EXISTS idx_supplier_group_members_group ON supplier_group_members(group_id)");
+        $this->pdo()->exec("CREATE INDEX IF NOT EXISTS idx_supplier_group_members_cnpj ON supplier_group_members(issuer_cnpj)");
     }
 
     private function sqliteSchema(): array
