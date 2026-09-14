@@ -176,15 +176,24 @@ final class NFSeNationalConnector extends AbstractFiscalCollector
                     throw new \RuntimeException('NFS-e Nacional bloqueada temporariamente pelo ADN por excesso de requisicoes. O portal pausou novas tentativas ate ' . date('H:i', strtotime($until)) . '.');
                 }
                 if (str_contains($e->getMessage(), 'HTTP 404')) {
-                    // No ADN Nacional a consulta é pontual por NSU; muitos NSUs simplesmente não têm DFe para o CNPJ.
-                    // Tratamos 404 como lacuna normal, avançando o cursor para permitir busca retroativa/contínua sem travar.
+                    // O ADN informa 404/E2220 quando nao ha documentos a partir do ultNSU consultado.
+                    // Nesse caso o cursor precisa permanecer no mesmo NSU para pegar notas emitidas depois.
                     $checked++;
-                    $currentNsu = $this->incrementNsu($requestNsu);
+                    $fallback = $this->collectByRecentDpsSequences($company, $companyCnpj, $headers, $useCertificate);
+                    $created += $fallback['created'];
+                    $updated += $fallback['updated'];
+                    $itemsCount += $fallback['items'];
                     $emptyResponses++;
                     if (count($notes) < 3) {
-                        $notes[] = 'NSU ' . $requestNsu . ' sem NFS-e no ADN.';
+                        $notes[] = 'NSU ' . $requestNsu . ' sem novos documentos no ADN; cursor mantido para a proxima busca.';
                     }
-                    continue;
+                    foreach ($fallback['notes'] as $fallbackNote) {
+                        if (count($notes) >= 3) {
+                            break;
+                        }
+                        $notes[] = $fallbackNote;
+                    }
+                    break;
                 }
                 throw $e;
             }
@@ -302,6 +311,221 @@ final class NFSeNationalConnector extends AbstractFiscalCollector
         $separator = str_contains($url, '?') ? '&' : '?';
 
         return $url . $separator . 'cnpj=' . urlencode($companyCnpj);
+    }
+
+    private function collectByRecentDpsSequences(array $company, string $companyCnpj, array $headers, bool $useCertificate): array
+    {
+        if ((string)$this->repo->getSetting('nfse_dps_fallback_enabled', '1') !== '1') {
+            return ['created' => 0, 'updated' => 0, 'items' => 0, 'notes' => []];
+        }
+
+        $candidates = $this->recentDpsCandidates((int)$company['id']);
+        if (!$candidates) {
+            return ['created' => 0, 'updated' => 0, 'items' => 0, 'notes' => []];
+        }
+
+        $created = 0;
+        $updated = 0;
+        $items = 0;
+        $notes = [];
+        $timeout = (int)($this->config['sefaz_timeout'] ?? 60);
+        $bases = $this->eventBaseUrls((string)($this->config['nfse_event_base_url'] ?? 'https://sefin.nfse.gov.br/SefinNacional'));
+        $perSequenceLimit = max(1, min(12, (int)$this->repo->getSetting('nfse_dps_fallback_next_limit', '3')));
+
+        foreach ($candidates as $candidate) {
+            for ($next = ((int)$candidate['last_number']) + 1; $next <= ((int)$candidate['last_number']) + $perSequenceLimit; $next++) {
+                $dpsId = (string)$candidate['prefix'] . str_pad((string)$next, 15, '0', STR_PAD_LEFT);
+                $accessKey = $this->lookupAccessKeyByDps($dpsId, $bases, $headers, $useCertificate, (int)$company['id'], $timeout);
+                if ($accessKey === '') {
+                    continue;
+                }
+                $saved = $this->saveNfseByAccessKey($accessKey, $bases, $headers, $useCertificate, $timeout, $company, $companyCnpj);
+                $created += $saved['created'];
+                $updated += $saved['updated'];
+                $items += $saved['items'];
+                if (count($notes) < 3) {
+                    $notes[] = 'DPS ' . $dpsId . ' recuperada pela chave ' . $accessKey . '.';
+                }
+            }
+        }
+
+        return ['created' => $created, 'updated' => $updated, 'items' => $items, 'notes' => $notes];
+    }
+
+    private function recentDpsCandidates(int $companyId): array
+    {
+        $stmt = $this->repo->pdo()->prepare("
+            SELECT raw_xml
+            FROM documents
+            WHERE company_id = :company_id
+              AND doc_type = 'NFSE'
+              AND raw_xml IS NOT NULL
+              AND raw_xml LIKE '%infDPS%'
+              AND issue_date >= (CURRENT_DATE - INTERVAL '180 days')
+            ORDER BY issue_date DESC NULLS LAST, id DESC
+            LIMIT 300
+        ");
+        $stmt->execute(['company_id' => $companyId]);
+        $candidates = [];
+        foreach ($stmt->fetchAll() as $row) {
+            $candidate = $this->dpsCandidateFromXml((string)($row['raw_xml'] ?? ''));
+            if (!$candidate) {
+                continue;
+            }
+            $key = $candidate['prefix'];
+            if (!isset($candidates[$key]) || (int)$candidate['last_number'] > (int)$candidates[$key]['last_number']) {
+                $candidates[$key] = $candidate;
+            }
+        }
+
+        return array_slice(array_values($candidates), 0, 100);
+    }
+
+    private function dpsCandidateFromXml(string $xml): ?array
+    {
+        if (trim($xml) === '') {
+            return null;
+        }
+        $dom = new \DOMDocument();
+        if (!@$dom->loadXML($xml)) {
+            return null;
+        }
+        $xp = new \DOMXPath($dom);
+        $id = $this->firstXPathValue($xp, '//*[local-name()="infDPS"]/@Id');
+        $id = preg_replace('/^DPS/i', '', preg_replace('/\D+/', '', $id));
+        $number = preg_replace('/\D+/', '', $this->firstXPathValue($xp, '//*[local-name()="infDPS"]/*[local-name()="nDPS"]'));
+        if ($id === '' || strlen($id) <= 15 || $number === '') {
+            return null;
+        }
+
+        return [
+            'prefix' => substr($id, 0, -15),
+            'last_number' => (int)$number,
+        ];
+    }
+
+    private function lookupAccessKeyByDps(string $dpsId, array $bases, array $headers, bool $useCertificate, int $companyId, int $timeout): string
+    {
+        foreach ($bases as $baseUrl) {
+            try {
+                $response = $this->getWithRetry(rtrim($baseUrl, '/') . '/dps/' . rawurlencode($dpsId), $headers, $useCertificate, $timeout, $companyId);
+                $accessKey = $this->accessKeyFromResponse($response);
+                if ($accessKey !== '') {
+                    return $accessKey;
+                }
+            } catch (\RuntimeException $e) {
+                if (!$this->canIgnoreEventLookupError($e)) {
+                    throw $e;
+                }
+            }
+        }
+
+        return '';
+    }
+
+    private function saveNfseByAccessKey(string $accessKey, array $bases, array $headers, bool $useCertificate, int $timeout, array $company, string $companyCnpj): array
+    {
+        foreach ($bases as $baseUrl) {
+            try {
+                $response = $this->getWithRetry(rtrim($baseUrl, '/') . '/nfse/' . rawurlencode($accessKey), $headers, $useCertificate, $timeout, (int)$company['id']);
+                $parsedResponse = $this->parseResponse($response);
+                $items = $parsedResponse['items'];
+                if (!$items) {
+                    $xml = $this->decodeXmlPayload($response);
+                    if ($xml !== '') {
+                        $items = [['xml' => $xml]];
+                    }
+                }
+                foreach ($items as $item) {
+                    $xml = $this->xmlFromItem($item);
+                    if ($xml === '') {
+                        continue;
+                    }
+                    $parsed = $this->parser->parse($xml);
+                    if (empty($parsed['access_key'])) {
+                        $parsed['access_key'] = $accessKey;
+                    }
+                    $recipientCnpj = preg_replace('/\D+/', '', (string)($parsed['recipient_cnpj'] ?? ''));
+                    if ($recipientCnpj !== '' && $recipientCnpj !== $companyCnpj) {
+                        return ['created' => 0, 'updated' => 0, 'items' => 0];
+                    }
+                    $parsed['source'] = 'nfse_nacional_api';
+                    $parsed['schema_name'] = 'nfse_api';
+                    $downloadDir = (string)$this->repo->getSetting('xml_download_dir_nfse', '');
+                    $saved = $this->storage->saveXml(
+                        'NFSE',
+                        (string)($parsed['issue_date'] ?? date('c')),
+                        $xml,
+                        $this->guessFileName($parsed, 'nfse_api_dps', $accessKey),
+                        $companyCnpj,
+                        $downloadDir !== '' ? $downloadDir : (string)($company['default_download_dir'] ?? '')
+                    );
+                    $existing = $this->repo->findDocumentByAccessKey($parsed['doc_type'], (string)$parsed['access_key'], (int)$company['id']);
+                    $this->repo->saveDocument($parsed + $saved + [
+                        'company_id' => (int)$company['id'],
+                        'company_name' => (string)$company['company_name'],
+                        'company_cnpj' => (string)$company['cnpj'],
+                        'raw_xml' => $xml,
+                        'imported_at' => $existing ? ($existing['imported_at'] ?? date('c')) : date('c'),
+                        'updated_at' => date('c'),
+                    ]);
+
+                    return [
+                        'created' => $existing ? 0 : 1,
+                        'updated' => $existing ? 1 : 0,
+                        'items' => 1,
+                    ];
+                }
+            } catch (\RuntimeException $e) {
+                if (!$this->canIgnoreEventLookupError($e)) {
+                    throw $e;
+                }
+            }
+        }
+
+        return ['created' => 0, 'updated' => 0, 'items' => 0];
+    }
+
+    private function accessKeyFromResponse(string $response): string
+    {
+        $body = trim($response);
+        if ($body === '') {
+            return '';
+        }
+        $data = json_decode($body, true);
+        if (is_array($data)) {
+            $stack = [$data];
+            while ($stack) {
+                $item = array_pop($stack);
+                if (!is_array($item)) {
+                    continue;
+                }
+                foreach ($item as $key => $value) {
+                    if (is_array($value)) {
+                        $stack[] = $value;
+                        continue;
+                    }
+                    if (preg_match('/chave|acesso|nfse/i', (string)$key) && preg_match('/\d{40,60}/', (string)$value, $match)) {
+                        return $match[0];
+                    }
+                }
+            }
+        }
+        if (preg_match('/\d{40,60}/', $body, $match)) {
+            return $match[0];
+        }
+
+        return '';
+    }
+
+    private function firstXPathValue(\DOMXPath $xp, string $expr): string
+    {
+        $nodes = $xp->query($expr);
+        if (!$nodes || $nodes->length === 0) {
+            return '';
+        }
+
+        return trim((string)$nodes->item(0)?->nodeValue);
     }
 
     private function getWithRetry(string $url, array $headers, bool $useCertificate, int $timeout, int $companyId): string
