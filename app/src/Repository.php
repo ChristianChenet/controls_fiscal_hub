@@ -1708,7 +1708,7 @@ final class Repository
         $months = [];
         for ($cursor = $start; $cursor <= $end; $cursor = $cursor->modify('+1 month')) {
             $key = $cursor->format('Y-m');
-            $months[$key] = ['key' => $key, 'label' => $cursor->format('Y-m')];
+            $months[$key] = ['key' => $key, 'label' => $cursor->format('m/Y')];
         }
 
         $issuerDigits = $this->digitsOnlySql('documents.issuer_cnpj');

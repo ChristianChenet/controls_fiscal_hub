@@ -767,6 +767,9 @@ button.primary{
   margin:0 0 12px;
   border-bottom:1px solid #dbe7e2;
 }
+[data-documents-tab-panel].is-hidden{
+  display:none!important;
+}
 .documents-tab{
   min-height:38px;
   border:1px solid transparent;
@@ -848,6 +851,13 @@ button.primary{
   color:#12311e;
   padding:10px 8px;
 }
+.documents-timeline-table tbody tr:nth-child(even) td,
+.documents-timeline-table tbody tr:nth-child(even) .timeline-supplier-col{
+  background:#fbfdfc!important;
+}
+.documents-timeline-table tbody tr:nth-child(even) .timeline-cell-button{
+  background:#fbfdfc;
+}
 .documents-timeline-table small{
   display:block;
   margin-top:4px;
@@ -884,7 +894,7 @@ button.primary{
   place-items:center;
   gap:2px;
   border:0;
-  background:#fff;
+  background:transparent;
   color:#162238;
   cursor:pointer;
   padding:8px;
@@ -898,8 +908,8 @@ button.primary{
   font-size:13px;
 }
 .timeline-empty-month{
-  background:#ffe5e5;
-  color:#9b1c1c;
+  background:#fff3f3!important;
+  color:#8f2323;
 }
 .timeline-empty-label{
   display:grid;
@@ -910,7 +920,8 @@ button.primary{
   font-weight:850;
 }
 .timeline-detail-panel{
-  width:min(1180px,96vw);
+  width:min(1500px,98vw);
+  max-height:94vh;
 }
 .timeline-detail-actions{
   display:flex;
@@ -918,12 +929,12 @@ button.primary{
   margin-bottom:10px;
 }
 .timeline-detail-wrap{
-  max-height:62vh;
+  max-height:72vh;
   border:1px solid #e6efeb;
   border-radius:8px;
 }
 .timeline-detail-table{
-  min-width:1120px;
+  min-width:1380px;
 }
 .timeline-detail-table td strong,
 .timeline-detail-table td small{
