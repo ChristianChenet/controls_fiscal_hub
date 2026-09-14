@@ -262,7 +262,8 @@ $timelinePostedValue = static function (array $cell, string $mode, string $prefi
                                 $cell = $row['months'][$month['key']] ?? ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0, 'erp_value' => 0.0, 'accounting_value' => 0.0];
                                 $cellQuery = $timelineCellBaseQuery;
                                 $cellQuery['page'] = 'documents_timeline_cell';
-                                $cellQuery['timeline_issuer_name'] = (string)($row['issuer_key'] ?? $row['issuer_name']);
+                                $cellQuery['timeline_issuer_group_key'] = (string)($row['issuer_key'] ?? $row['issuer_name']);
+                                $cellQuery['timeline_issuer_cnpjs'] = (string)($row['issuer_cnpj'] ?? '');
                                 $cellQuery['timeline_month'] = (string)$month['key'];
                                 $cellExportQuery = $cellQuery;
                                 $cellExportQuery['page'] = 'documents_timeline_cell_export';

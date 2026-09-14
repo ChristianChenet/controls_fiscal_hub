@@ -1536,16 +1536,29 @@ final class Repository
             $where[] = 'company_id IN (' . implode(',', $placeholders) . ')';
         }
         if (!empty($filters['doc_type'])) { $where[] = 'doc_type = :doc_type'; $params['doc_type'] = $filters['doc_type']; }
+        $timelineIssuerCnpjsSource = $filters['timeline_issuer_cnpjs'] ?? '';
+        $timelineIssuerCnpjs = $this->filterDigitValues(is_array($timelineIssuerCnpjsSource) ? $timelineIssuerCnpjsSource : preg_split('/[,\s;]+/', (string)$timelineIssuerCnpjsSource));
+        if ($timelineIssuerCnpjs) {
+            $placeholders = [];
+            foreach ($timelineIssuerCnpjs as $idx => $issuerCnpj) {
+                $key = 'timeline_issuer_cnpj_' . $idx;
+                $placeholders[] = ':' . $key;
+                $params[$key] = $issuerCnpj;
+            }
+            $where[] = $this->digitsOnlySql('documents.issuer_cnpj') . ' IN (' . implode(',', $placeholders) . ')';
+        }
         $timelineIssuerCnpj = preg_replace('/\D+/', '', (string)($filters['timeline_issuer_cnpj'] ?? '')) ?: '';
         if ($timelineIssuerCnpj !== '') {
             $where[] = $this->digitsOnlySql('documents.issuer_cnpj') . ' = :timeline_issuer_cnpj';
             $params['timeline_issuer_cnpj'] = $timelineIssuerCnpj;
         }
-        $timelineIssuerName = trim((string)($filters['timeline_issuer_name'] ?? ''));
-        if ($timelineIssuerName !== '') {
-            $issuerNameKey = "UPPER(TRIM(COALESCE(NULLIF(documents.issuer_name, ''), " . $this->digitsOnlySql('documents.issuer_cnpj') . ")))";
-            $where[] = "{$issuerNameKey} = :timeline_issuer_name";
-            $params['timeline_issuer_name'] = mb_strtoupper($timelineIssuerName, 'UTF-8');
+        $timelineIssuerGroupKey = trim((string)($filters['timeline_issuer_group_key'] ?? ''));
+        if ($timelineIssuerGroupKey !== '' && !$timelineIssuerCnpjs) {
+            $where[] = $this->timelineIssuerNameKeySql() . ' = :timeline_issuer_group_key';
+            $params['timeline_issuer_group_key'] = $timelineIssuerGroupKey;
+        } elseif (trim((string)($filters['timeline_issuer_name'] ?? '')) !== '') {
+            $where[] = $this->timelineIssuerNameKeySql() . ' = :timeline_issuer_name';
+            $params['timeline_issuer_name'] = $this->timelineIssuerGroupKey((string)$filters['timeline_issuer_name']);
         }
         $timelineMonth = trim((string)($filters['timeline_month'] ?? ''));
         if (preg_match('/^\d{4}-\d{2}$/', $timelineMonth) === 1) {
@@ -1718,10 +1731,10 @@ final class Repository
         }
 
         $issuerDigits = $this->digitsOnlySql('documents.issuer_cnpj');
-        $issuerKey = "UPPER(TRIM(COALESCE(NULLIF(documents.issuer_name, ''), {$issuerDigits})))";
+        $issuerKey = "COALESCE(NULLIF({$issuerDigits}, ''), UPPER(TRIM(COALESCE(NULLIF(documents.issuer_name, ''), 'SEM EMISSOR'))))";
         $stmt = $this->pdo->prepare("SELECT
                 {$issuerKey} AS issuer_key,
-                STRING_AGG(DISTINCT NULLIF({$issuerDigits}, ''), ', ' ORDER BY NULLIF({$issuerDigits}, '')) AS issuer_cnpjs,
+                NULLIF({$issuerDigits}, '') AS issuer_cnpj,
                 COALESCE(NULLIF(MAX(issuer_name), ''), {$issuerKey}) AS issuer_name,
                 TO_CHAR(DATE_TRUNC('month', issue_date), 'YYYY-MM') AS month_key,
                 COUNT(*) AS doc_count,
@@ -1731,7 +1744,7 @@ final class Repository
                 COALESCE(SUM(CASE WHEN COALESCE(posted_to_erp, FALSE) THEN total_value ELSE 0 END), 0) AS erp_value,
                 COALESCE(SUM(CASE WHEN COALESCE(accounting_posted, 'N') = 'S' THEN total_value ELSE 0 END), 0) AS accounting_value
             FROM documents{$whereSql}
-            GROUP BY {$issuerKey}, DATE_TRUNC('month', issue_date)
+            GROUP BY {$issuerKey}, NULLIF({$issuerDigits}, ''), DATE_TRUNC('month', issue_date)
             ORDER BY COALESCE(NULLIF(MAX(issuer_name), ''), {$issuerKey}) ASC, month_key ASC");
         $stmt->execute($params);
 
@@ -1746,18 +1759,39 @@ final class Repository
             if (!isset($months[$monthKey])) {
                 continue;
             }
-            $issuerKeyValue = (string)($item['issuer_key'] ?? '');
+            $issuerName = (string)($item['issuer_name'] ?? '');
+            $issuerGroupKey = $this->timelineIssuerGroupKey($issuerName);
+            if ($issuerGroupKey === '') {
+                $issuerGroupKey = (string)($item['issuer_key'] ?? '');
+            }
+            $issuerKeyValue = $issuerGroupKey;
+            $issuerDisplayName = match ($issuerGroupKey) {
+                'GOOGLE' => 'GOOGLE',
+                'MAGAZINE LUIZA' => 'MAGAZINE LUIZA',
+                'MERCADOPAGO' => 'MERCADOPAGO',
+                default => $issuerName,
+            };
             if (!isset($rows[$issuerKeyValue])) {
                 $rows[$issuerKeyValue] = [
                     'issuer_key' => $issuerKeyValue,
-                    'issuer_cnpj' => (string)($item['issuer_cnpjs'] ?? ''),
-                    'issuer_name' => (string)($item['issuer_name'] ?? ''),
+                    'issuer_cnpj' => '',
+                    'issuer_cnpjs' => [],
+                    'issuer_name' => $issuerDisplayName,
                     'months' => [],
                     'total' => ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0, 'erp_value' => 0.0, 'accounting_value' => 0.0],
                 ];
                 foreach (array_keys($months) as $emptyMonth) {
                     $rows[$issuerKeyValue]['months'][$emptyMonth] = ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0, 'erp_value' => 0.0, 'accounting_value' => 0.0];
                 }
+            }
+            $issuerCnpj = (string)($item['issuer_cnpj'] ?? '');
+            if ($issuerCnpj !== '') {
+                $rows[$issuerKeyValue]['issuer_cnpjs'][$issuerCnpj] = $issuerCnpj;
+                ksort($rows[$issuerKeyValue]['issuer_cnpjs']);
+                $rows[$issuerKeyValue]['issuer_cnpj'] = implode(', ', array_values($rows[$issuerKeyValue]['issuer_cnpjs']));
+            }
+            if (!in_array($issuerGroupKey, ['GOOGLE', 'MAGAZINE LUIZA', 'MERCADOPAGO'], true) && strlen($issuerName) < strlen((string)$rows[$issuerKeyValue]['issuer_name'])) {
+                $rows[$issuerKeyValue]['issuer_name'] = $issuerName;
             }
             $cell = [
                 'value' => (float)($item['total_value'] ?? 0),
@@ -1767,7 +1801,9 @@ final class Repository
                 'erp_value' => (float)($item['erp_value'] ?? 0),
                 'accounting_value' => (float)($item['accounting_value'] ?? 0),
             ];
-            $rows[$issuerKeyValue]['months'][$monthKey] = $cell;
+            foreach (['value', 'count', 'erp', 'accounting', 'erp_value', 'accounting_value'] as $key) {
+                $rows[$issuerKeyValue]['months'][$monthKey][$key] += $cell[$key];
+            }
             foreach (['value', 'count', 'erp', 'accounting', 'erp_value', 'accounting_value'] as $key) {
                 $rows[$issuerKeyValue]['total'][$key] += $cell[$key];
                 $monthTotals[$monthKey][$key] += $cell[$key];
@@ -1782,6 +1818,60 @@ final class Repository
             'month_totals' => $monthTotals,
             'grand_total' => $grand,
         ];
+    }
+
+    private function timelineIssuerGroupKey(string $name): string
+    {
+        $key = $this->normalizeSupplierName($name);
+        if ($key === '') {
+            return '';
+        }
+        if (str_starts_with($key, 'GOOGLE ')) {
+            return 'GOOGLE';
+        }
+        if ($key === 'GOOGLE') {
+            return 'GOOGLE';
+        }
+        if (str_starts_with($key, 'MAGALU ') || str_starts_with($key, 'MAGAZINE LUIZA ') || $key === 'MAGALU' || $key === 'MAGAZINE LUIZA') {
+            return 'MAGAZINE LUIZA';
+        }
+        if (str_starts_with($key, 'MERCADOPAGO ') || str_starts_with($key, 'MERCADO PAGO ') || $key === 'MERCADOPAGO' || $key === 'MERCADO PAGO') {
+            return 'MERCADOPAGO';
+        }
+        return $key;
+    }
+
+    private function normalizeSupplierName(string $name): string
+    {
+        $name = trim(mb_strtoupper($name, 'UTF-8'));
+        if ($name === '') {
+            return '';
+        }
+        $translit = iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $name);
+        if ($translit !== false) {
+            $name = $translit;
+        }
+        $name = preg_replace('/[^A-Z0-9]+/', ' ', $name) ?: '';
+        $tokens = preg_split('/\s+/', trim($name)) ?: [];
+        $drop = array_flip(['A', 'A.', 'E', 'O', 'OS', 'AS', 'DA', 'DAS', 'DE', 'DO', 'DOS', 'S', 'SA', 'S A', 'LTDA', 'ME', 'EPP', 'EIRELI', 'SERVICOS', 'SERVICO', 'COMERCIO', 'INDUSTRIA']);
+        $tokens = array_values(array_filter($tokens, static fn(string $token): bool => $token !== '' && !isset($drop[$token])));
+        return trim(implode(' ', $tokens));
+    }
+
+    private function timelineIssuerNameKeySql(): string
+    {
+        $issuerName = "UPPER(TRIM(COALESCE(NULLIF(documents.issuer_name, ''), " . $this->digitsOnlySql('documents.issuer_cnpj') . ")))";
+        $key = "regexp_replace(translate({$issuerName}, 'ÁÀÂÃÄÉÈÊËÍÌÎÏÓÒÔÕÖÚÙÛÜÇáàâãäéèêëíìîïóòôõöúùûüç', 'AAAAAEEEEIIIIOOOOOUUUUCaaaaaeeeeiiiiooooouuuuc'), '[^A-Z0-9]+', ' ', 'g')";
+        foreach ([' A ', ' E ', ' O ', ' OS ', ' AS ', ' DA ', ' DAS ', ' DE ', ' DO ', ' DOS ', ' S ', ' SA ', ' LTDA ', ' ME ', ' EPP ', ' EIRELI ', ' SERVICOS ', ' SERVICO ', ' COMERCIO ', ' INDUSTRIA '] as $word) {
+            $key = "replace(' ' || {$key} || ' ', '{$word}', ' ')";
+        }
+        $trimmed = "trim({$key})";
+        return "CASE
+            WHEN {$trimmed} = 'GOOGLE' OR {$trimmed} LIKE 'GOOGLE %' THEN 'GOOGLE'
+            WHEN {$trimmed} = 'MAGALU' OR {$trimmed} LIKE 'MAGALU %' OR {$trimmed} = 'MAGAZINE LUIZA' OR {$trimmed} LIKE 'MAGAZINE LUIZA %' THEN 'MAGAZINE LUIZA'
+            WHEN {$trimmed} = 'MERCADOPAGO' OR {$trimmed} LIKE 'MERCADOPAGO %' OR {$trimmed} = 'MERCADO PAGO' OR {$trimmed} LIKE 'MERCADO PAGO %' THEN 'MERCADOPAGO'
+            ELSE {$trimmed}
+        END";
     }
 
     private function ensureDocumentItemsForFilters(array $filters): void

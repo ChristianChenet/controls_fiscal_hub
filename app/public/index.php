@@ -87,6 +87,8 @@ function document_filters_from_request(array $source): array
         'ignore_cfops' => array_key_exists('ignore_cfops', $source) ? (string)$source['ignore_cfops'] : '1',
         'source_q' => $source['source_q'] ?? '',
         'timeline_issuer_cnpj' => $source['timeline_issuer_cnpj'] ?? '',
+        'timeline_issuer_cnpjs' => request_values($source, 'timeline_issuer_cnpjs'),
+        'timeline_issuer_group_key' => $source['timeline_issuer_group_key'] ?? '',
         'timeline_issuer_name' => $source['timeline_issuer_name'] ?? '',
         'timeline_month' => $source['timeline_month'] ?? '',
         'q' => $source['q'] ?? '',
