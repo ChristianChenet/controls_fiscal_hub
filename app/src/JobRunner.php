@@ -309,8 +309,16 @@ final class JobRunner
         if ($currentNsuLimit < 100) {
             $this->repo->setSetting('auto_nfse_nsu_limit', '100');
         }
-        $maxCycles = max(80, (int)$this->repo->getSetting('nfse_robot_max_cycles', (string)($this->config['nfse_robot_max_cycles'] ?? 80)));
-        $timeLimit = max(1800, (int)$this->repo->getSetting('nfse_robot_time_limit_seconds', (string)($this->config['nfse_robot_time_limit_seconds'] ?? 1800)));
+        $currentMaxCycles = (int)$this->repo->getSetting('nfse_robot_max_cycles', (string)($this->config['nfse_robot_max_cycles'] ?? 80));
+        if ($currentMaxCycles < 80) {
+            $this->repo->setSetting('nfse_robot_max_cycles', '80');
+        }
+        $currentTimeLimit = (int)$this->repo->getSetting('nfse_robot_time_limit_seconds', (string)($this->config['nfse_robot_time_limit_seconds'] ?? 1800));
+        if ($currentTimeLimit < 1800) {
+            $this->repo->setSetting('nfse_robot_time_limit_seconds', '1800');
+        }
+        $maxCycles = max(80, $currentMaxCycles);
+        $timeLimit = max(1800, $currentTimeLimit);
         $startedAt = time();
         $created = 0;
         $updated = 0;
