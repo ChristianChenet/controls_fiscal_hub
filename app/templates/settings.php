@@ -190,7 +190,7 @@ $autoNfseAll = ($settings['auto_nfse_all_companies'] ?? '0') === '1' || ($active
             <input type="password" name="nfse_token" value="<?= h($settings['nfse_token']) ?>">
         </label>
         <label>NSUs por execucao NFS-e
-            <input type="text" name="auto_nfse_nsu_limit" value="<?= h((string)($settings['auto_nfse_nsu_limit'] ?? '10')) ?>">
+            <input type="text" name="auto_nfse_nsu_limit" value="<?= h((string)($settings['auto_nfse_nsu_limit'] ?? '100')) ?>">
             <small>Limite conservador. O ADN pode bloquear excesso de requisicoes com HTTP 429.</small>
         </label>
         <label>Recuar NSU NFS-e na próxima execução
@@ -219,11 +219,11 @@ $autoNfseAll = ($settings['auto_nfse_all_companies'] ?? '0') === '1' || ($active
             <small>Minimo operacional aplicado pelo worker: 60 minutos.</small>
         </label>
         <label>Ciclos máximos NFS-e por execução
-            <input type="text" name="nfse_robot_max_cycles" value="<?= h((string)($settings['nfse_robot_max_cycles'] ?? '6')) ?>">
+            <input type="text" name="nfse_robot_max_cycles" value="<?= h((string)($settings['nfse_robot_max_cycles'] ?? '80')) ?>">
             <small>Cada ciclo consulta um bloco de NSUs e grava log individual da empresa.</small>
         </label>
         <label>Tempo máximo NFS-e por execução (segundos)
-            <input type="text" name="nfse_robot_time_limit_seconds" value="<?= h((string)($settings['nfse_robot_time_limit_seconds'] ?? '240')) ?>">
+            <input type="text" name="nfse_robot_time_limit_seconds" value="<?= h((string)($settings['nfse_robot_time_limit_seconds'] ?? '1800')) ?>">
         </label>
         <div class="notice subtle">
             A busca usa o padrão nacional ADN por NSU contra o CNPJ da empresa. Municípios que ainda não disponibilizam NFS-e no padrão nacional exigem conector municipal próprio.

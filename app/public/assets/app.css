@@ -925,25 +925,32 @@ button.primary{
   font-size:11px;
   font-weight:850;
 }
-.timeline-detail-panel{
-  width:min(1500px,98vw);
-  max-height:94vh;
-}
 #timeline-detail-modal{
   z-index:1300;
+}
+#timeline-detail-modal .timeline-detail-panel{
+  width:min(1800px,99vw);
+  max-width:99vw;
+  height:min(980px,94vh);
+  max-height:96vh;
+  display:flex;
+  flex-direction:column;
 }
 .timeline-detail-actions{
   display:flex;
   justify-content:flex-end;
   margin-bottom:10px;
+  flex:0 0 auto;
 }
 .timeline-detail-wrap{
-  max-height:72vh;
+  flex:1 1 auto;
+  min-height:420px;
+  max-height:none;
   border:1px solid #e6efeb;
   border-radius:8px;
 }
 .timeline-detail-table{
-  min-width:1380px;
+  min-width:1720px;
 }
 .timeline-detail-table td strong,
 .timeline-detail-table td small{
@@ -1759,6 +1766,49 @@ textarea{
 .modal-close{border:0;background:#eef3f1;border-radius:6px;width:34px;height:34px;font-size:22px;line-height:1;cursor:pointer}
 .documents-items-table th,.documents-items-table td{white-space:nowrap}
 .documents-items-table td:nth-child(3){min-width:280px;white-space:normal}
+.documents-context-menu{
+  position:fixed;
+  z-index:1600;
+  width:min(340px,calc(100vw - 24px));
+  max-height:min(460px,calc(100vh - 24px));
+  overflow:auto;
+  padding:12px;
+  border:1px solid #cfe0d8;
+  border-radius:8px;
+  background:#fff;
+  box-shadow:0 18px 48px rgba(11,30,45,.22);
+}
+.documents-context-menu strong,
+.documents-context-menu small{
+  display:block;
+}
+.documents-context-menu small{
+  margin:4px 0 10px;
+  color:var(--muted);
+  line-height:1.3;
+}
+.documents-context-menu button{
+  width:100%;
+  display:flex;
+  justify-content:flex-start;
+  margin-top:6px;
+  padding:9px 10px;
+  border:1px solid #d8e6df;
+  border-radius:7px;
+  background:#f8fbfa;
+  color:#142135;
+  font-weight:800;
+  text-align:left;
+  cursor:pointer;
+}
+.documents-context-menu button:hover{
+  border-color:#1fc65a;
+  background:#effbf3;
+}
+.documents-context-menu button:disabled{
+  cursor:wait;
+  opacity:.75;
+}
 .cfop-ignore-field{
   min-width:260px;
   grid-column:span 2;

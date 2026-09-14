@@ -862,7 +862,7 @@ if ($page !== 'login') {
     if ($page === 'dashboard' && !$auth->canAccess('dashboard')) {
         redirect_to(page_url(first_allowed_page_for_user($auth)));
     }
-    $permissionPage = in_array($page, ['documents_check_cancel', 'documents_filter_ids', 'documents_timeline_cell', 'documents_timeline_export', 'documents_timeline_cell_export', 'documents_accounting_check_file', 'documents_accounting_import', 'documents_accounting_entries', 'documents_accounting_missing', 'documents_accounting_missing_export', 'documents_accounting_launch', 'robot_logs', 'supplier_groups'], true) ? 'documents' : $page;
+    $permissionPage = in_array($page, ['documents_check_cancel', 'documents_filter_ids', 'documents_timeline_cell', 'documents_timeline_export', 'documents_timeline_cell_export', 'documents_supplier_group_assign', 'documents_accounting_check_file', 'documents_accounting_import', 'documents_accounting_entries', 'documents_accounting_missing', 'documents_accounting_missing_export', 'documents_accounting_launch', 'robot_logs', 'supplier_groups'], true) ? 'documents' : $page;
     if (!$auth->canAccess($permissionPage)) {
         flash_set('danger', 'Seu perfil nao tem permissao para acessar este modulo.');
         redirect_to(page_url(first_allowed_page_for_user($auth)));
@@ -900,6 +900,39 @@ if ($page === 'documents_accounting_check_file') {
         $docType = strtoupper((string)($_GET['doc_type'] ?? ''));
         $fileName = (string)($_GET['file_name'] ?? '');
         echo json_encode(['ok' => true, 'exists' => $repo->accountingImportExists($docType, $fileName)], JSON_UNESCAPED_UNICODE);
+    } catch (Throwable $e) {
+        http_response_code(400);
+        echo json_encode(['ok' => false, 'message' => $e->getMessage()], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+}
+
+if ($page === 'documents_supplier_group_assign') {
+    header('Content-Type: application/json; charset=utf-8');
+    try {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') { throw new RuntimeException('Metodo invalido.'); }
+        if (!$auth->canAccess('documents')) { throw new RuntimeException('Sem permissao para vincular fornecedores a grupos.'); }
+        $payload = json_decode((string)file_get_contents('php://input'), true);
+        if (!is_array($payload)) { throw new RuntimeException('Dados invalidos para vinculo de grupo.'); }
+        if (!csrf_validate($payload['_csrf'] ?? null)) { throw new RuntimeException('Token CSRF invalido.'); }
+        $doc = $repo->findDocument((int)($payload['document_id'] ?? 0));
+        if (!$doc) { throw new RuntimeException('Documento nao encontrado.'); }
+        $groupId = (int)($payload['group_id'] ?? 0);
+        $group = $repo->findSupplierGroup($groupId);
+        if (!$group) { throw new RuntimeException('Grupo nao encontrado.'); }
+        $issuerCnpj = preg_replace('/\D+/', '', (string)($doc['issuer_cnpj'] ?? '')) ?: '';
+        if ($issuerCnpj === '') { throw new RuntimeException('Esta nota nao tem CNPJ/CPF de emissor para vincular.'); }
+        $repo->addSuppliersToGroup($groupId, [[
+            'issuer_cnpj' => $issuerCnpj,
+            'issuer_name' => (string)($doc['issuer_name'] ?? ''),
+        ]]);
+        $repo->logAction('supplier_group_quick_assign', 'Fornecedor ' . $issuerCnpj . ' vinculado ao grupo ID ' . $groupId . ' pelo grid de entradas.');
+        echo json_encode([
+            'ok' => true,
+            'group_id' => $groupId,
+            'group_description' => (string)($group['description'] ?? ''),
+            'issuer_cnpj' => $issuerCnpj,
+        ], JSON_UNESCAPED_UNICODE);
     } catch (Throwable $e) {
         http_response_code(400);
         echo json_encode(['ok' => false, 'message' => $e->getMessage()], JSON_UNESCAPED_UNICODE);

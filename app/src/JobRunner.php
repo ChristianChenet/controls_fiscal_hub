@@ -306,11 +306,11 @@ final class JobRunner
         $collector->setCompanyContext($company);
         $settingPrefix = 'nfse_' . (int)$company['id'] . '_';
         $currentNsuLimit = (int)$this->repo->getSetting('auto_nfse_nsu_limit', (string)($this->config['auto_nfse_nsu_limit'] ?? 50));
-        if ($currentNsuLimit < 50) {
-            $this->repo->setSetting('auto_nfse_nsu_limit', '50');
+        if ($currentNsuLimit < 100) {
+            $this->repo->setSetting('auto_nfse_nsu_limit', '100');
         }
-        $maxCycles = max(20, (int)$this->repo->getSetting('nfse_robot_max_cycles', (string)($this->config['nfse_robot_max_cycles'] ?? 20)));
-        $timeLimit = max(900, (int)$this->repo->getSetting('nfse_robot_time_limit_seconds', (string)($this->config['nfse_robot_time_limit_seconds'] ?? 900)));
+        $maxCycles = max(80, (int)$this->repo->getSetting('nfse_robot_max_cycles', (string)($this->config['nfse_robot_max_cycles'] ?? 80)));
+        $timeLimit = max(1800, (int)$this->repo->getSetting('nfse_robot_time_limit_seconds', (string)($this->config['nfse_robot_time_limit_seconds'] ?? 1800)));
         $startedAt = time();
         $created = 0;
         $updated = 0;

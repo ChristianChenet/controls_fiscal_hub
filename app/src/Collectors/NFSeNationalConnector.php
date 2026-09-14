@@ -140,7 +140,7 @@ final class NFSeNationalConnector extends AbstractFiscalCollector
         $path = trim((string) $this->config['nfse_distribution_path']);
         $lastNsu = preg_replace('/\D+/', '', (string) $this->repo->getSetting($settingPrefix . 'ult_nsu', '0'));
         $lastNsu = $lastNsu === '' ? '0' : $lastNsu;
-        $limit = max(1, min(50, (int)($this->repo->getSetting('auto_nfse_nsu_limit', (string)($this->config['auto_nfse_nsu_limit'] ?? 50)))));
+        $limit = max(1, min(200, (int)($this->repo->getSetting('auto_nfse_nsu_limit', (string)($this->config['auto_nfse_nsu_limit'] ?? 100)))));
         $headers = [
             'Accept' => 'application/json, application/xml, text/xml',
             'User-Agent' => $this->config['sefaz_user_agent'] ?? 'ControlSPortalFiscal/3.0',
@@ -192,7 +192,8 @@ final class NFSeNationalConnector extends AbstractFiscalCollector
             $items = $parsedResponse['items'];
             $checked++;
             $maxReturnedNsu = $this->maxReturnedNsu($items);
-            $currentNsu = $maxReturnedNsu !== '' ? $maxReturnedNsu : $this->incrementNsu($requestNsu);
+            $nextResponseNsu = preg_replace('/\D+/', '', (string)($parsedResponse['next_nsu'] ?? ''));
+            $currentNsu = $this->nextCursorNsu($requestNsu, $maxReturnedNsu, $nextResponseNsu);
 
             if (!$items) {
                 $emptyResponses++;
@@ -553,6 +554,29 @@ final class NFSeNationalConnector extends AbstractFiscalCollector
     {
         $next = (string)(((int)$nsu) + 1);
         return str_pad($next, max(strlen($nsu), strlen($next)), '0', STR_PAD_LEFT);
+    }
+
+    private function nextCursorNsu(string $requestNsu, string $maxReturnedNsu, string $nextResponseNsu): string
+    {
+        $candidate = $maxReturnedNsu !== '' ? $maxReturnedNsu : $nextResponseNsu;
+        if ($candidate === '' || $this->compareNsu($candidate, $requestNsu) <= 0) {
+            return $this->incrementNsu($requestNsu);
+        }
+
+        return str_pad($candidate, max(strlen($requestNsu), strlen($candidate), 15), '0', STR_PAD_LEFT);
+    }
+
+    private function compareNsu(string $left, string $right): int
+    {
+        $left = ltrim(preg_replace('/\D+/', '', $left), '0');
+        $right = ltrim(preg_replace('/\D+/', '', $right), '0');
+        $left = $left === '' ? '0' : $left;
+        $right = $right === '' ? '0' : $right;
+        if (strlen($left) !== strlen($right)) {
+            return strlen($left) <=> strlen($right);
+        }
+
+        return strcmp($left, $right);
     }
 
     private function maxReturnedNsu(array $items): string

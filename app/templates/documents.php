@@ -460,13 +460,13 @@ $timelinePostedValue = static function (array $cell, string $mode, string $prefi
             </thead>
             <tbody>
             <?php foreach ($documents as $doc): ?>
-                <tr>
+                <tr data-document-row="<?= h((string)$doc['id']) ?>" data-issuer-cnpj="<?= h((string)($doc['issuer_cnpj'] ?? '')) ?>" data-issuer-name="<?= h((string)($doc['issuer_name'] ?? '')) ?>">
                     <td><input type="checkbox" name="ids[]" value="<?= h((string)$doc['id']) ?>" data-doc-checkbox data-doc-type="<?= h(strtoupper((string)($doc['doc_type'] ?? ''))) ?>" data-doc-value="<?= h((string)((float)($doc['total_value'] ?? 0))) ?>"></td>
                     <td data-column="empresa"><strong><?= h((string)$doc['company_name']) ?></strong><br><small><?= h((string)$doc['company_cnpj']) ?></small></td>
                     <td data-column="tipo"><span class="pill"><?= h((string)$doc['doc_type']) ?></span></td>
                     <td data-column="numero"><button type="button" class="link-button doc-products-link" data-document-items="<?= h((string)$doc['id']) ?>"><?= h((string)$doc['number']) ?></button></td>
                     <td data-column="emissor"><strong><?= h((string)$doc['issuer_name']) ?></strong><br><small><?= h((string)$doc['issuer_cnpj']) ?></small></td>
-                    <td data-column="grupo"><?= h((string)($doc['supplier_group'] ?? '')) ?></td>
+                    <td data-column="grupo" data-supplier-group-cell><?= h((string)($doc['supplier_group'] ?? '')) ?></td>
                     <td data-column="tomador"><strong><?= h((string)($doc['recipient_name'] ?? '')) ?></strong><br><small><?= h((string)($doc['recipient_cnpj'] ?? '')) ?></small></td>
                     <td data-column="chave"><small><?= h((string)$doc['access_key']) ?></small></td>
                     <td data-column="nfe_vinculada"><small><?= h((string)($doc['referenced_nfe_keys'] ?? '')) ?></small></td>
@@ -573,6 +573,12 @@ $timelinePostedValue = static function (array $cell, string $mode, string $prefi
         </div>
     </div>
 </form>
+
+<div class="documents-context-menu is-hidden" id="documents-supplier-group-menu" role="menu" aria-live="polite">
+    <strong>Vincular fornecedor ao grupo</strong>
+    <small id="documents-supplier-group-menu-title"></small>
+    <div id="documents-supplier-group-menu-options"></div>
+</div>
 
 <div class="modal-backdrop loading-modal is-hidden" id="documents-loading-modal" role="dialog" aria-modal="true" aria-labelledby="documents-loading-title">
     <div class="modal-panel loading-modal-panel">
@@ -1074,6 +1080,91 @@ $timelinePostedValue = static function (array $cell, string $mode, string $prefi
                 });
         });
     });
+})();
+</script>
+<script>
+(function () {
+    var menu = document.getElementById('documents-supplier-group-menu');
+    var title = document.getElementById('documents-supplier-group-menu-title');
+    var optionsBox = document.getElementById('documents-supplier-group-menu-options');
+    var csrf = document.querySelector('form.documents-card input[name="_csrf"]');
+    var groups = <?= json_encode($supplierGroupOptions, JSON_UNESCAPED_UNICODE) ?>;
+    var activeRow = null;
+    if (!menu || !optionsBox || !csrf) return;
+    function escapeHtml(value) {
+        return String(value == null ? '' : value).replace(/[&<>"']/g, function (char) {
+            return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[char] || char;
+        });
+    }
+    function hideMenu() {
+        menu.classList.add('is-hidden');
+        activeRow = null;
+    }
+    function positionMenu(x, y) {
+        menu.classList.remove('is-hidden');
+        var rect = menu.getBoundingClientRect();
+        var left = Math.min(x, window.innerWidth - rect.width - 12);
+        var top = Math.min(y, window.innerHeight - rect.height - 12);
+        menu.style.left = Math.max(12, left) + 'px';
+        menu.style.top = Math.max(12, top) + 'px';
+    }
+    function renderOptions() {
+        if (!groups.length) {
+            optionsBox.innerHTML = '<a class="button-link button-compact" href="?page=supplier_groups">Cadastrar grupo</a>';
+            return;
+        }
+        optionsBox.innerHTML = groups.map(function (group) {
+            return '<button type="button" data-quick-supplier-group="' + escapeHtml(group.value) + '">' + escapeHtml(group.label) + '</button>';
+        }).join('');
+    }
+    document.querySelectorAll('tr[data-document-row]').forEach(function (row) {
+        row.addEventListener('contextmenu', function (event) {
+            var issuerCnpj = row.getAttribute('data-issuer-cnpj') || '';
+            if (!issuerCnpj.trim()) return;
+            event.preventDefault();
+            activeRow = row;
+            if (title) {
+                title.textContent = (row.getAttribute('data-issuer-name') || 'Fornecedor') + ' | ' + issuerCnpj;
+            }
+            renderOptions();
+            positionMenu(event.clientX, event.clientY);
+        });
+    });
+    optionsBox.addEventListener('click', async function (event) {
+        var button = event.target.closest('[data-quick-supplier-group]');
+        if (!button || !activeRow) return;
+        var previous = button.textContent;
+        button.disabled = true;
+        button.textContent = 'Salvando...';
+        try {
+            var response = await fetch('?page=documents_supplier_group_assign', {
+                method: 'POST',
+                headers: {'Accept': 'application/json', 'Content-Type': 'application/json;charset=UTF-8'},
+                body: JSON.stringify({
+                    _csrf: csrf.value,
+                    document_id: activeRow.getAttribute('data-document-row') || '',
+                    group_id: button.getAttribute('data-quick-supplier-group') || ''
+                })
+            });
+            var data = await response.json();
+            if (!response.ok || !data.ok) throw new Error((data && data.message) || 'Falha ao vincular grupo.');
+            var groupCell = activeRow.querySelector('[data-supplier-group-cell]');
+            if (groupCell) groupCell.textContent = data.group_description || '';
+            hideMenu();
+        } catch (error) {
+            button.disabled = false;
+            button.textContent = previous;
+            if (title) title.textContent = error.message || 'Falha ao vincular grupo.';
+        }
+    });
+    document.addEventListener('click', function (event) {
+        if (!menu.contains(event.target)) hideMenu();
+    });
+    document.addEventListener('keydown', function (event) {
+        if (event.key === 'Escape') hideMenu();
+    });
+    window.addEventListener('scroll', hideMenu, true);
+    window.addEventListener('resize', hideMenu);
 })();
 </script>
 <script>
