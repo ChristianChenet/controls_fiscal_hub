@@ -952,9 +952,25 @@ button.primary{
 .timeline-detail-table{
   min-width:1720px;
 }
+.timeline-detail-table td{
+  white-space:normal;
+  overflow-wrap:anywhere;
+  word-break:break-word;
+  font-size:13px;
+  line-height:1.35;
+}
+.timeline-detail-table th:nth-child(6),
+.timeline-detail-table td:nth-child(6){
+  min-width:300px;
+  max-width:360px;
+}
 .timeline-detail-table td strong,
 .timeline-detail-table td small{
   display:block;
+}
+.timeline-posted-diff{
+  color:#b42318;
+  font-weight:900;
 }
 .export-panel{
   display:grid;

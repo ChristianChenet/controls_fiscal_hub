@@ -50,6 +50,12 @@ $timelinePostedValue = static function (array $cell, string $mode, string $prefi
         ? (string)(int)($cell[$prefix] ?? 0)
         : format_money((float)($cell[$prefix . '_value'] ?? 0));
 };
+$timelinePostedDiffClass = static function (array $cell, string $mode, string $prefix): string {
+    if ($mode === 'count') {
+        return (int)($cell[$prefix] ?? 0) !== (int)($cell['count'] ?? 0) ? 'timeline-posted-diff' : '';
+    }
+    return abs((float)($cell[$prefix . '_value'] ?? 0) - (float)($cell['value'] ?? 0)) > 0.009 ? 'timeline-posted-diff' : '';
+};
 ?>
 <div class="page-header split-header documents-page-header">
     <div>
@@ -273,7 +279,7 @@ $timelinePostedValue = static function (array $cell, string $mode, string $prefi
                                 <?php if ($hasDocs): ?>
                                     <button type="button" class="timeline-cell-button" data-timeline-cell="<?= h(base_url('?' . http_build_query($cellQuery))) ?>" data-timeline-export="<?= h(base_url('?' . http_build_query($cellExportQuery))) ?>" data-timeline-title="<?= h((string)$row['issuer_name'] . ' | ' . (string)$month['label']) ?>">
                                         <strong><?= h($timelineDisplayValue($cell, $timelineMode)) ?></strong>
-                                        <small>Decis <?= h($timelinePostedValue($cell, $timelineMode, 'erp')) ?> | Contab. <?= h($timelinePostedValue($cell, $timelineMode, 'accounting')) ?></small>
+                                        <small><span class="<?= h($timelinePostedDiffClass($cell, $timelineMode, 'erp')) ?>">Decis <?= h($timelinePostedValue($cell, $timelineMode, 'erp')) ?></span> | <span class="<?= h($timelinePostedDiffClass($cell, $timelineMode, 'accounting')) ?>">Contab. <?= h($timelinePostedValue($cell, $timelineMode, 'accounting')) ?></span></small>
                                     </button>
                                 <?php else: ?>
                                     <span class="timeline-empty-label">Sem lançamento</span>
@@ -282,7 +288,7 @@ $timelinePostedValue = static function (array $cell, string $mode, string $prefi
                         <?php endforeach; ?>
                         <td class="timeline-total-col">
                             <strong><?= h($timelineDisplayValue($row['total'], $timelineMode)) ?></strong>
-                            <small>Decis <?= h($timelinePostedValue($row['total'], $timelineMode, 'erp')) ?> | Contab. <?= h($timelinePostedValue($row['total'], $timelineMode, 'accounting')) ?></small>
+                            <small><span class="<?= h($timelinePostedDiffClass($row['total'], $timelineMode, 'erp')) ?>">Decis <?= h($timelinePostedValue($row['total'], $timelineMode, 'erp')) ?></span> | <span class="<?= h($timelinePostedDiffClass($row['total'], $timelineMode, 'accounting')) ?>">Contab. <?= h($timelinePostedValue($row['total'], $timelineMode, 'accounting')) ?></span></small>
                         </td>
                     </tr>
                 <?php endforeach; ?>
@@ -294,12 +300,12 @@ $timelinePostedValue = static function (array $cell, string $mode, string $prefi
                             <?php $totalCell = $timeline['month_totals'][$month['key']] ?? ['value' => 0.0, 'count' => 0, 'erp' => 0, 'accounting' => 0, 'erp_value' => 0.0, 'accounting_value' => 0.0]; ?>
                             <th>
                                 <strong><?= h($timelineDisplayValue($totalCell, $timelineMode)) ?></strong>
-                                <small>Decis <?= h($timelinePostedValue($totalCell, $timelineMode, 'erp')) ?> | Contab. <?= h($timelinePostedValue($totalCell, $timelineMode, 'accounting')) ?></small>
+                                <small><span class="<?= h($timelinePostedDiffClass($totalCell, $timelineMode, 'erp')) ?>">Decis <?= h($timelinePostedValue($totalCell, $timelineMode, 'erp')) ?></span> | <span class="<?= h($timelinePostedDiffClass($totalCell, $timelineMode, 'accounting')) ?>">Contab. <?= h($timelinePostedValue($totalCell, $timelineMode, 'accounting')) ?></span></small>
                             </th>
                         <?php endforeach; ?>
                         <th class="timeline-total-col">
                             <strong><?= h($timelineDisplayValue($timeline['grand_total'], $timelineMode)) ?></strong>
-                            <small>Decis <?= h($timelinePostedValue($timeline['grand_total'], $timelineMode, 'erp')) ?> | Contab. <?= h($timelinePostedValue($timeline['grand_total'], $timelineMode, 'accounting')) ?></small>
+                            <small><span class="<?= h($timelinePostedDiffClass($timeline['grand_total'], $timelineMode, 'erp')) ?>">Decis <?= h($timelinePostedValue($timeline['grand_total'], $timelineMode, 'erp')) ?></span> | <span class="<?= h($timelinePostedDiffClass($timeline['grand_total'], $timelineMode, 'accounting')) ?>">Contab. <?= h($timelinePostedValue($timeline['grand_total'], $timelineMode, 'accounting')) ?></span></small>
                         </th>
                     </tr>
                 </tfoot>

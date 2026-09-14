@@ -50,6 +50,7 @@ foreach ($groups as $group) {
                         <strong><?= h((string)$group['description']) ?></strong>
                         <span><?= h((string)($group['supplier_count'] ?? 0)) ?> fornecedor(es)</span>
                     </a>
+                    <a class="row-action" href="<?= h(base_url('?page=supplier_groups&group_id=' . (int)$group['id'])) ?>">Editar nome</a>
                     <form method="post" onsubmit="return confirm('Remover este grupo? Os fornecedores ficarão sem grupo.');">
                         <input type="hidden" name="_csrf" value="<?= h(csrf_token()) ?>">
                         <input type="hidden" name="delete_group_id" value="<?= h((string)$group['id']) ?>">
