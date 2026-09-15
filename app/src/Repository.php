@@ -362,6 +362,9 @@ final class Repository
         $row = $this->normalizeDocumentRow($data);
         $this->applyNfeRecipientCompanyToDocumentRow($row);
         $this->applyCteTakerCompanyToDocumentRow($row);
+        if (!$existing && strtoupper((string)($row['doc_type'] ?? '')) === 'NFSE') {
+            $existing = $this->findEquivalentNFSeDocumentForSave($row);
+        }
         if ($existing) {
             foreach (['access_key', 'referenced_nfe_keys', 'referenced_document_numbers', 'xml_path', 'storage_dir', 'notes', 'raw_xml', 'schema_name'] as $key) {
                 if (trim((string)($row[$key] ?? '')) === '' && trim((string)($existing[$key] ?? '')) !== '') {
@@ -404,6 +407,80 @@ final class Repository
         }
         $this->linkEventsToDocument($id);
         return $this->findDocument($id);
+    }
+
+    private function findEquivalentNFSeDocumentForSave(array $row): ?array
+    {
+        $issuerCnpj = $this->digits((string)($row['issuer_cnpj'] ?? ''));
+        $numberDigits = $this->digits((string)($row['number'] ?? ''));
+        if ($issuerCnpj === '' || $numberDigits === '') {
+            return null;
+        }
+
+        $numberVariants = $this->accountingNumberVariants((string)$row['number'], (string)($row['issue_date'] ?? ''));
+        if (!$numberVariants) {
+            return null;
+        }
+
+        $variantPlaceholders = [];
+        $params = [
+            'issuer_cnpj' => $issuerCnpj,
+            'number_digits' => $numberDigits,
+            'company_cnpj' => $this->digits((string)($row['company_cnpj'] ?? '')),
+            'recipient_cnpj' => $this->digits((string)($row['recipient_cnpj'] ?? '')),
+        ];
+        foreach ($numberVariants as $idx => $variant) {
+            $key = 'number_variant_' . $idx;
+            $variantPlaceholders[] = ':' . $key;
+            $params[$key] = $variant;
+        }
+
+        $driver = (string)$this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME);
+        $numberDigitsSql = $this->digitsOnlySql('number');
+        $comparableNumberSql = $this->nfseNumberComparableSql($numberDigitsSql);
+        $companyDigitsSql = $this->digitsOnlySql('company_cnpj');
+        $recipientDigitsSql = $this->digitsOnlySql('recipient_cnpj');
+
+        $where = [
+            "doc_type = 'NFSE'",
+            $this->digitsOnlySql('issuer_cnpj') . ' = :issuer_cnpj',
+            "(
+                {$numberDigitsSql} = :number_digits
+                OR COALESCE(NULLIF(LTRIM({$numberDigitsSql}, '0'), ''), '0') IN (" . implode(',', $variantPlaceholders) . ")
+                OR {$comparableNumberSql} IN (" . implode(',', $variantPlaceholders) . ")
+            )",
+        ];
+
+        $totalValue = round((float)($row['total_value'] ?? 0), 2);
+        if ($totalValue > 0) {
+            $where[] = $driver === 'sqlite'
+                ? 'ROUND(COALESCE(total_value, 0), 2) = :total_value'
+                : 'ROUND(COALESCE(total_value, 0)::numeric, 2) = :total_value';
+            $params['total_value'] = $totalValue;
+        }
+
+        $issueDate = trim((string)($row['issue_date'] ?? ''));
+        if ($issueDate !== '') {
+            if ($driver === 'sqlite') {
+                $where[] = "(issue_date IS NULL OR ABS(julianday(date(issue_date)) - julianday(date(:issue_date))) <= 3)";
+            } else {
+                $where[] = "(issue_date IS NULL OR ABS(issue_date::date - CAST(:issue_date AS date)) <= 3)";
+            }
+            $params['issue_date'] = $issueDate;
+        }
+
+        $sql = "SELECT * FROM documents
+            WHERE " . implode(' AND ', $where) . "
+            ORDER BY
+                CASE WHEN {$companyDigitsSql} = :company_cnpj AND :company_cnpj <> '' THEN 0 ELSE 1 END,
+                CASE WHEN {$recipientDigitsSql} = :recipient_cnpj AND :recipient_cnpj <> '' THEN 0 ELSE 1 END,
+                CASE WHEN COALESCE(access_key, '') <> '' THEN 0 ELSE 1 END,
+                id DESC
+            LIMIT 1";
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($params);
+        $existing = $stmt->fetch();
+        return $existing ?: null;
     }
 
     private function linkEventsToDocument(int $documentId): void
