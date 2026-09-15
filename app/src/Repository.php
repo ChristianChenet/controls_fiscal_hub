@@ -768,6 +768,7 @@ final class Repository
                 $params = array_merge(['S', date('c')], $ids);
                 $stmt = $this->pdo->prepare("UPDATE documents SET accounting_posted = ?, updated_at = ? WHERE id IN ($placeholders)");
                 $stmt->execute($params);
+                $this->propagateAccountingPostedToEquivalentNFSeDocuments($ids);
             }
             $matchedCount = count($matchedIds);
             $updateImport = $this->pdo->prepare('UPDATE accounting_imports SET matched_count = :matched_count, missing_count = :missing_count WHERE id = :id');
@@ -1050,6 +1051,7 @@ final class Repository
                 $documentPlaceholders = implode(',', array_fill(0, count($ids), '?'));
                 $mark = $this->pdo->prepare("UPDATE documents SET accounting_posted = 'S', updated_at = ? WHERE id IN ($documentPlaceholders)");
                 $mark->execute(array_merge([date('c')], $ids));
+                $this->propagateAccountingPostedToEquivalentNFSeDocuments($ids);
             }
             if ($importIds) {
                 $ids = array_map('intval', array_keys($importIds));
@@ -1118,6 +1120,46 @@ final class Repository
         $reset->execute(array_merge([date('c')], $documentIds));
         $mark = $this->pdo->prepare("UPDATE documents SET accounting_posted = 'S', updated_at = ? WHERE id IN ($placeholders) AND EXISTS (SELECT 1 FROM accounting_entries e WHERE e.matched_document_id = documents.id)");
         $mark->execute(array_merge([date('c')], $documentIds));
+        $this->propagateAccountingPostedToEquivalentNFSeDocuments($documentIds);
+    }
+
+    private function propagateAccountingPostedToEquivalentNFSeDocuments(array $documentIds): int
+    {
+        $documentIds = array_values(array_unique(array_filter(array_map('intval', $documentIds))));
+        if (!$documentIds || (string)$this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
+            return 0;
+        }
+        $placeholders = implode(',', array_fill(0, count($documentIds), '?'));
+        $seedIssuer = $this->digitsOnlySql('s.issuer_cnpj');
+        $docIssuer = $this->digitsOnlySql('d.issuer_cnpj');
+        $seedNumber = $this->nfseNumberComparableSqlFor($this->digitsOnlySql('s.number'), 's.issue_date');
+        $docNumber = $this->nfseNumberComparableSqlFor($this->digitsOnlySql('d.number'), 'd.issue_date');
+        $stmt = $this->pdo->prepare("WITH seeds AS (
+                SELECT id, issuer_cnpj, number, issue_date, ROUND(COALESCE(total_value, 0)::numeric, 2) AS total_value
+                FROM documents
+                WHERE id IN ($placeholders)
+                  AND doc_type = 'NFSE'
+                  AND COALESCE(accounting_posted, 'N') = 'S'
+            ), equivalent AS (
+                SELECT DISTINCT d.id
+                FROM documents d
+                JOIN seeds s ON {$docIssuer} <> ''
+                    AND {$docIssuer} = {$seedIssuer}
+                    AND {$docNumber} = {$seedNumber}
+                    AND ROUND(COALESCE(d.total_value, 0)::numeric, 2) = s.total_value
+                    AND (
+                        d.issue_date IS NULL
+                        OR s.issue_date IS NULL
+                        OR ABS(d.issue_date::date - s.issue_date::date) <= 3
+                    )
+                WHERE d.doc_type = 'NFSE'
+                  AND COALESCE(d.accounting_posted, 'N') <> 'S'
+            )
+            UPDATE documents
+            SET accounting_posted = 'S', updated_at = ?
+            WHERE id IN (SELECT id FROM equivalent)");
+        $stmt->execute(array_merge($documentIds, [date('c')]));
+        return $stmt->rowCount();
     }
 
     private function accountingRowHasValue(array $row): bool
@@ -1171,20 +1213,25 @@ final class Repository
 
     private function nfseNumberComparableSql(string $digitsExpression): string
     {
+        return $this->nfseNumberComparableSqlFor($digitsExpression, 'issue_date');
+    }
+
+    private function nfseNumberComparableSqlFor(string $digitsExpression, string $issueDateExpression): string
+    {
         if ((string)$this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
-            $year = "strftime('%Y', issue_date)";
-            $shortYear = "substr(strftime('%Y', issue_date), 3, 2)";
+            $year = "strftime('%Y', {$issueDateExpression})";
+            $shortYear = "substr(strftime('%Y', {$issueDateExpression}), 3, 2)";
             return "CASE
-                WHEN issue_date IS NOT NULL AND substr({$digitsExpression}, 1, 4) = {$year} THEN COALESCE(NULLIF(LTRIM(substr({$digitsExpression}, 5), '0'), ''), '0')
-                WHEN issue_date IS NOT NULL AND substr({$digitsExpression}, 1, 2) = {$shortYear} THEN COALESCE(NULLIF(LTRIM(substr({$digitsExpression}, 3), '0'), ''), '0')
+                WHEN {$issueDateExpression} IS NOT NULL AND substr({$digitsExpression}, 1, 4) = {$year} THEN COALESCE(NULLIF(LTRIM(substr({$digitsExpression}, 5), '0'), ''), '0')
+                WHEN {$issueDateExpression} IS NOT NULL AND substr({$digitsExpression}, 1, 2) = {$shortYear} THEN COALESCE(NULLIF(LTRIM(substr({$digitsExpression}, 3), '0'), ''), '0')
                 ELSE COALESCE(NULLIF(LTRIM({$digitsExpression}, '0'), ''), '0')
             END";
         }
-        $year = "EXTRACT(YEAR FROM issue_date)::TEXT";
-        $shortYear = "RIGHT(EXTRACT(YEAR FROM issue_date)::TEXT, 2)";
+        $year = "EXTRACT(YEAR FROM {$issueDateExpression})::TEXT";
+        $shortYear = "RIGHT(EXTRACT(YEAR FROM {$issueDateExpression})::TEXT, 2)";
         return "CASE
-            WHEN issue_date IS NOT NULL AND LEFT({$digitsExpression}, 4) = {$year} THEN COALESCE(NULLIF(LTRIM(SUBSTRING({$digitsExpression} FROM 5), '0'), ''), '0')
-            WHEN issue_date IS NOT NULL AND LEFT({$digitsExpression}, 2) = {$shortYear} THEN COALESCE(NULLIF(LTRIM(SUBSTRING({$digitsExpression} FROM 3), '0'), ''), '0')
+            WHEN {$issueDateExpression} IS NOT NULL AND LEFT({$digitsExpression}, 4) = {$year} THEN COALESCE(NULLIF(LTRIM(SUBSTRING({$digitsExpression} FROM 5), '0'), ''), '0')
+            WHEN {$issueDateExpression} IS NOT NULL AND LEFT({$digitsExpression}, 2) = {$shortYear} THEN COALESCE(NULLIF(LTRIM(SUBSTRING({$digitsExpression} FROM 3), '0'), ''), '0')
             ELSE COALESCE(NULLIF(LTRIM({$digitsExpression}, '0'), ''), '0')
         END";
     }
