@@ -617,7 +617,22 @@ final class Repository
         $row['posted_to_erp'] = $this->normalizeBoolean($row['posted_to_erp'] ?? false);
         $row['referenced_nfe_keys'] = $this->normalizeReferencedKeys((string)($row['referenced_nfe_keys'] ?? ''), (string)($row['access_key'] ?? '')) ?: null;
         $row['referenced_document_numbers'] = $this->normalizeReferencedNumbers((string)($row['referenced_document_numbers'] ?? ''), (string)($row['access_key'] ?? '')) ?: null;
+        if ($this->isBlankRecipientName((string)($row['recipient_name'] ?? ''))) {
+            $row['recipient_name'] = $row['company_name'] ?? null;
+        }
+        if (trim((string)($row['recipient_cnpj'] ?? '')) === '') {
+            $row['recipient_cnpj'] = $row['company_cnpj'] ?? null;
+        }
         return $row;
+    }
+
+    private function isBlankRecipientName(string $value): bool
+    {
+        $normalized = mb_strtolower(trim($this->normalizeUtf8String($value)));
+        return $normalized === ''
+            || $normalized === 'nao informado'
+            || $normalized === 'não informado'
+            || $normalized === 'nao informado.';
     }
 
     private function normalizeUtf8String(string $value): string
