@@ -58,11 +58,48 @@ final class Database
             $this->ensureSqliteColumn('users', 'can_view_cost', 'INTEGER DEFAULT 0');
             $this->ensureSqliteColumn('documents', 'referenced_document_numbers', 'TEXT NULL');
             $this->ensureSqliteColumn('documents', 'accounting_posted', "TEXT DEFAULT 'N'");
+            $this->ensureSqliteColumn('documents', 'issuer_city', 'TEXT NULL');
+            $this->ensureSqliteColumn('documents', 'issuer_uf', 'TEXT NULL');
+            $this->ensureSqliteColumn('documents', 'service_series', 'TEXT NULL');
+            $this->ensureSqliteColumn('documents', 'service_dps_number', 'TEXT NULL');
+            $this->ensureSqliteColumn('documents', 'service_dps_series', 'TEXT NULL');
+            $this->ensureSqliteColumn('documents', 'service_verification_code', 'TEXT NULL');
+            $this->ensureSqliteColumn('documents', 'service_code', 'TEXT NULL');
+            $this->ensureSqliteColumn('documents', 'service_description', 'TEXT NULL');
+            $this->ensureSqliteColumn('documents', 'service_city', 'TEXT NULL');
+            $this->ensureSqliteColumn('documents', 'service_uf', 'TEXT NULL');
+            $this->ensureSqliteColumn('documents', 'iss_rate', 'REAL DEFAULT 0');
+            $this->ensureSqliteColumn('documents', 'iss_amount', 'REAL DEFAULT 0');
+            $this->ensureSqliteColumn('documents', 'pis_amount', 'REAL DEFAULT 0');
+            $this->ensureSqliteColumn('documents', 'cofins_amount', 'REAL DEFAULT 0');
+            $this->ensureSqliteColumn('documents', 'deductions_amount', 'REAL DEFAULT 0');
+            $this->ensureSqliteColumn('documents', 'discount_amount', 'REAL DEFAULT 0');
+            $this->ensureSqliteColumn('documents', 'net_amount', 'REAL DEFAULT 0');
+            $this->ensureSqliteColumn('documents', 'fiscal_observation', 'TEXT NULL');
             $this->ensureSqliteColumn('revenue_items', 'cost_amount', 'REAL DEFAULT 0');
             return;
         }
 
         $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS accounting_posted CHAR(1) DEFAULT 'N'");
+        $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS issuer_city TEXT NULL");
+        $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS issuer_uf VARCHAR(2) NULL");
+        $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS service_series VARCHAR(40) NULL");
+        $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS service_dps_number VARCHAR(80) NULL");
+        $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS service_dps_series VARCHAR(40) NULL");
+        $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS service_verification_code VARCHAR(120) NULL");
+        $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS service_code TEXT NULL");
+        $this->pdo()->exec("ALTER TABLE documents ALTER COLUMN service_code TYPE TEXT");
+        $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS service_description TEXT NULL");
+        $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS service_city TEXT NULL");
+        $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS service_uf VARCHAR(2) NULL");
+        $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS iss_rate NUMERIC(9,4) DEFAULT 0");
+        $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS iss_amount NUMERIC(15,2) DEFAULT 0");
+        $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS pis_amount NUMERIC(15,2) DEFAULT 0");
+        $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS cofins_amount NUMERIC(15,2) DEFAULT 0");
+        $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS deductions_amount NUMERIC(15,2) DEFAULT 0");
+        $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(15,2) DEFAULT 0");
+        $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS net_amount NUMERIC(15,2) DEFAULT 0");
+        $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS fiscal_observation TEXT NULL");
         $this->pdo()->exec("UPDATE documents SET accounting_posted = 'N' WHERE accounting_posted IS NULL OR accounting_posted = ''");
         $this->pdo()->exec("CREATE INDEX IF NOT EXISTS idx_documents_accounting_posted ON documents(accounting_posted)");
     }
@@ -237,8 +274,26 @@ final class Database
                 order_number TEXT NULL,
                 issuer_cnpj TEXT,
                 issuer_name TEXT,
+                issuer_city TEXT NULL,
+                issuer_uf TEXT NULL,
                 recipient_cnpj TEXT,
                 recipient_name TEXT,
+                service_series TEXT NULL,
+                service_dps_number TEXT NULL,
+                service_dps_series TEXT NULL,
+                service_verification_code TEXT NULL,
+                service_code TEXT NULL,
+                service_description TEXT NULL,
+                service_city TEXT NULL,
+                service_uf TEXT NULL,
+                iss_rate REAL DEFAULT 0,
+                iss_amount REAL DEFAULT 0,
+                pis_amount REAL DEFAULT 0,
+                cofins_amount REAL DEFAULT 0,
+                deductions_amount REAL DEFAULT 0,
+                discount_amount REAL DEFAULT 0,
+                net_amount REAL DEFAULT 0,
+                fiscal_observation TEXT NULL,
                 issue_date TEXT,
                 total_value REAL DEFAULT 0,
                 status TEXT DEFAULT 'imported',
@@ -567,8 +622,26 @@ final class Database
                 order_number VARCHAR(80) NULL,
                 issuer_cnpj VARCHAR(20) NULL,
                 issuer_name TEXT NULL,
+                issuer_city TEXT NULL,
+                issuer_uf VARCHAR(2) NULL,
                 recipient_cnpj VARCHAR(20) NULL,
                 recipient_name TEXT NULL,
+                service_series VARCHAR(40) NULL,
+                service_dps_number VARCHAR(80) NULL,
+                service_dps_series VARCHAR(40) NULL,
+                service_verification_code VARCHAR(120) NULL,
+                service_code VARCHAR(80) NULL,
+                service_description TEXT NULL,
+                service_city TEXT NULL,
+                service_uf VARCHAR(2) NULL,
+                iss_rate NUMERIC(9,4) DEFAULT 0,
+                iss_amount NUMERIC(15,2) DEFAULT 0,
+                pis_amount NUMERIC(15,2) DEFAULT 0,
+                cofins_amount NUMERIC(15,2) DEFAULT 0,
+                deductions_amount NUMERIC(15,2) DEFAULT 0,
+                discount_amount NUMERIC(15,2) DEFAULT 0,
+                net_amount NUMERIC(15,2) DEFAULT 0,
+                fiscal_observation TEXT NULL,
                 issue_date TIMESTAMP NULL,
                 total_value NUMERIC(15,2) DEFAULT 0,
                 status VARCHAR(40) DEFAULT 'imported',
@@ -591,6 +664,24 @@ final class Database
             "ALTER TABLE documents ADD COLUMN IF NOT EXISTS referenced_document_numbers TEXT NULL",
             "ALTER TABLE documents ADD COLUMN IF NOT EXISTS order_number VARCHAR(80) NULL",
             "ALTER TABLE documents ADD COLUMN IF NOT EXISTS posted_to_erp BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS issuer_city TEXT NULL",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS issuer_uf VARCHAR(2) NULL",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS service_series VARCHAR(40) NULL",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS service_dps_number VARCHAR(80) NULL",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS service_dps_series VARCHAR(40) NULL",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS service_verification_code VARCHAR(120) NULL",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS service_code VARCHAR(80) NULL",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS service_description TEXT NULL",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS service_city TEXT NULL",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS service_uf VARCHAR(2) NULL",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS iss_rate NUMERIC(9,4) DEFAULT 0",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS iss_amount NUMERIC(15,2) DEFAULT 0",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS pis_amount NUMERIC(15,2) DEFAULT 0",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS cofins_amount NUMERIC(15,2) DEFAULT 0",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS deductions_amount NUMERIC(15,2) DEFAULT 0",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS discount_amount NUMERIC(15,2) DEFAULT 0",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS net_amount NUMERIC(15,2) DEFAULT 0",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS fiscal_observation TEXT NULL",
             "CREATE INDEX IF NOT EXISTS idx_documents_order_number ON documents(order_number)",
             "CREATE INDEX IF NOT EXISTS idx_documents_posted_to_erp ON documents(posted_to_erp)",
             "CREATE TABLE IF NOT EXISTS document_items (

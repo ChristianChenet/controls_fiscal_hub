@@ -121,6 +121,14 @@ final class XmlParser
             '//*[local-name()="prest" or local-name()="Prestador" or local-name()="prestador" or local-name()="emit"]//*[local-name()="xNome" or local-name()="RazaoSocial" or local-name()="Nome" or local-name()="nome"]',
             '//*[local-name()="RazaoSocialPrestador"]',
         ]);
+        $issuerCity = $this->firstAny($xp, [
+            '//*[local-name()="prest" or local-name()="Prestador" or local-name()="prestador" or local-name()="emit"]//*[local-name()="xMun" or local-name()="Municipio" or local-name()="NomeMunicipio"]',
+            '//*[local-name()="MunicipioPrestador"]',
+        ]);
+        $issuerUf = $this->firstAny($xp, [
+            '//*[local-name()="prest" or local-name()="Prestador" or local-name()="prestador" or local-name()="emit"]//*[local-name()="UF" or local-name()="Uf"]',
+            '//*[local-name()="UfPrestador"]',
+        ]);
         $recipient = $this->firstAny($xp, [
             '//*[local-name()="toma" or local-name()="Tomador" or local-name()="tomador" or local-name()="dest"]//*[local-name()="CNPJ" or local-name()="Cnpj" or local-name()="cnpj" or local-name()="CPF" or local-name()="Cpf" or local-name()="cpf"]',
             '//*[local-name()="CNPJTomador" or local-name()="CnpjTomador" or local-name()="CpfCnpjTomador"]',
@@ -132,6 +140,18 @@ final class XmlParser
         $value = $this->firstAny($xp, [
             '//*[local-name()="vLiq" or local-name()="vServ" or local-name()="ValorServicos" or local-name()="ValorLiquidoNfse" or local-name()="ValorLiquido" or local-name()="vNF"]',
         ]);
+        $serviceValue = $this->firstAny($xp, [
+            '//*[local-name()="vServPrest"]/*[local-name()="vServ"]',
+            '//*[local-name()="ValoresNfse"]/*[local-name()="BaseCalculo"]',
+            '//*[local-name()="Valores"]/*[local-name()="ValorServicos"]',
+            '//*[local-name()="vServ"]',
+        ]);
+        $serviceDescription = $this->firstAny($xp, [
+            '//*[local-name()="serv"]//*[local-name()="xDescServ"]',
+            '//*[local-name()="Servico"]//*[local-name()="Discriminacao"]',
+            '//*[local-name()="Discriminacao"]',
+            '//*[local-name()="DescricaoServico"]',
+        ]);
 
         return [
             'doc_type' => 'NFSE',
@@ -141,10 +161,27 @@ final class XmlParser
             'order_number' => $this->firstAny($xp, ['//*[local-name()="xPed"]', '//*[contains(local-name(),"Pedido")]', '//*[contains(local-name(),"pedido")]']),
             'issuer_cnpj' => $issuer,
             'issuer_name' => $issuerName,
+            'issuer_city' => $issuerCity,
+            'issuer_uf' => $issuerUf,
             'recipient_cnpj' => $recipient,
             'recipient_name' => $recipientName,
+            'service_series' => $this->firstAny($xp, ['//*[local-name()="serie"]', '//*[local-name()="Serie"]']),
+            'service_dps_number' => $this->firstAny($xp, ['//*[local-name()="nDPS"]', '//*[local-name()="NumeroDps"]']),
+            'service_dps_series' => $this->firstAny($xp, ['//*[local-name()="serieDPS"]', '//*[local-name()="SerieDps"]']),
+            'service_verification_code' => $this->firstAny($xp, ['//*[local-name()="cVerif"]', '//*[local-name()="CodigoVerificacao"]']),
+            'service_code' => $this->firstAny($xp, ['//*[local-name()="serv"]//*[local-name()="cServ"]', '//*[local-name()="CodigoServico"]', '//*[local-name()="ItemListaServico"]']),
+            'service_description' => $serviceDescription,
+            'service_city' => $this->firstAny($xp, ['//*[local-name()="cLocPrestacao"]', '//*[local-name()="MunicipioPrestacaoServico"]']),
+            'service_uf' => $this->firstAny($xp, ['//*[local-name()="ufLocPrestacao"]', '//*[local-name()="UfPrestacao"]']),
+            'iss_rate' => $this->toFloat($this->firstAny($xp, ['//*[local-name()="pAliq"]', '//*[local-name()="Aliquota"]'])),
+            'iss_amount' => $this->toFloat($this->firstAny($xp, ['//*[local-name()="vServPrest"]//*[local-name()="vISSQN"]', '//*[local-name()="ValoresNfse"]/*[local-name()="ValorIss"]', '//*[local-name()="Valores"]/*[local-name()="ValorIss"]', '//*[local-name()="vISSQN"]'])),
+            'pis_amount' => $this->toFloat($this->firstAny($xp, ['//*[local-name()="vPIS"]', '//*[local-name()="ValorPis"]'])),
+            'cofins_amount' => $this->toFloat($this->firstAny($xp, ['//*[local-name()="vCOFINS"]', '//*[local-name()="ValorCofins"]'])),
+            'deductions_amount' => $this->toFloat($this->firstAny($xp, ['//*[local-name()="vDed"]', '//*[local-name()="ValorDeducoes"]'])),
+            'discount_amount' => $this->toFloat($this->firstAny($xp, ['//*[local-name()="vDescIncond"]', '//*[local-name()="vDescCond"]', '//*[local-name()="DescontoIncondicionado"]', '//*[local-name()="DescontoCondicionado"]'])),
+            'net_amount' => $this->toFloat($this->firstAny($xp, ['//*[local-name()="vLiq"]', '//*[local-name()="ValorLiquidoNfse"]', '//*[local-name()="ValorLiquido"]']) ?: $value),
             'issue_date' => $issueDate ?: null,
-            'total_value' => $this->toFloat($value),
+            'total_value' => $this->toFloat($value ?: $serviceValue),
             'status' => 'xml_completo',
             'manifestation_status' => 'not_applicable',
             'source' => 'manual_import',

@@ -371,9 +371,19 @@ final class Repository
                     $row[$key] = $existing[$key];
                 }
             }
-            foreach (['issue_date', 'issuer_name', 'issuer_cnpj', 'recipient_name', 'recipient_cnpj'] as $key) {
+            foreach ([
+                'issue_date', 'issuer_name', 'issuer_cnpj', 'issuer_city', 'issuer_uf',
+                'recipient_name', 'recipient_cnpj', 'service_series', 'service_dps_number',
+                'service_dps_series', 'service_verification_code', 'service_code',
+                'service_description', 'service_city', 'service_uf', 'fiscal_observation',
+            ] as $key) {
                 if (($row[$key] ?? null) === null || trim((string)($row[$key] ?? '')) === '') {
                     $row[$key] = $existing[$key] ?? $row[$key];
+                }
+            }
+            foreach (['iss_rate', 'iss_amount', 'pis_amount', 'cofins_amount', 'deductions_amount', 'discount_amount', 'net_amount'] as $key) {
+                if ((float)($row[$key] ?? 0) === 0.0 && (float)($existing[$key] ?? 0) > 0) {
+                    $row[$key] = $existing[$key];
                 }
             }
             if ((float)($row['total_value'] ?? 0) === 0.0 && (float)($existing['total_value'] ?? 0) > 0) {
@@ -382,26 +392,37 @@ final class Repository
             $row['id'] = $existing['id'];
             $stmt = $this->pdo->prepare("UPDATE documents SET
                 company_id=:company_id, company_name=:company_name, company_cnpj=:company_cnpj, doc_type=:doc_type, model=:model, access_key=:access_key, referenced_nfe_keys=:referenced_nfe_keys, referenced_document_numbers=:referenced_document_numbers, number=:number, order_number=:order_number, posted_to_erp=:posted_to_erp,
-                issuer_cnpj=:issuer_cnpj, issuer_name=:issuer_name, recipient_cnpj=:recipient_cnpj, recipient_name=:recipient_name,
+                issuer_cnpj=:issuer_cnpj, issuer_name=:issuer_name, issuer_city=:issuer_city, issuer_uf=:issuer_uf, recipient_cnpj=:recipient_cnpj, recipient_name=:recipient_name,
+                service_series=:service_series, service_dps_number=:service_dps_number, service_dps_series=:service_dps_series, service_verification_code=:service_verification_code,
+                service_code=:service_code, service_description=:service_description, service_city=:service_city, service_uf=:service_uf,
+                iss_rate=:iss_rate, iss_amount=:iss_amount, pis_amount=:pis_amount, cofins_amount=:cofins_amount, deductions_amount=:deductions_amount, discount_amount=:discount_amount, net_amount=:net_amount,
                 issue_date=:issue_date, total_value=:total_value, status=:status, manifestation_status=:manifestation_status,
-                source=:source, xml_path=:xml_path, storage_dir=:storage_dir, notes=:notes, raw_xml=:raw_xml, digest=:digest,
+                source=:source, xml_path=:xml_path, storage_dir=:storage_dir, notes=:notes, fiscal_observation=:fiscal_observation, raw_xml=:raw_xml, digest=:digest,
                 schema_name=:schema_name, updated_at=:updated_at WHERE id=:id");
             $this->executeDocumentStatement($stmt, $row, [
                 'id','company_id','company_name','company_cnpj','doc_type','model','access_key','referenced_nfe_keys','referenced_document_numbers','number','order_number','posted_to_erp',
-                'issuer_cnpj','issuer_name','recipient_cnpj','recipient_name','issue_date','total_value','status','manifestation_status',
-                'source','xml_path','storage_dir','notes','raw_xml','digest','schema_name','updated_at',
+                'issuer_cnpj','issuer_name','issuer_city','issuer_uf','recipient_cnpj','recipient_name',
+                'service_series','service_dps_number','service_dps_series','service_verification_code','service_code','service_description','service_city','service_uf',
+                'iss_rate','iss_amount','pis_amount','cofins_amount','deductions_amount','discount_amount','net_amount',
+                'issue_date','total_value','status','manifestation_status',
+                'source','xml_path','storage_dir','notes','fiscal_observation','raw_xml','digest','schema_name','updated_at',
             ]);
             $id = (int)$existing['id'];
         } else {
             $stmt = $this->pdo->prepare("INSERT INTO documents
-                (company_id, company_name, company_cnpj, doc_type, model, access_key, referenced_nfe_keys, referenced_document_numbers, number, order_number, posted_to_erp, issuer_cnpj, issuer_name, recipient_cnpj, recipient_name,
-                issue_date, total_value, status, manifestation_status, source, xml_path, storage_dir, notes, raw_xml, digest, schema_name, imported_at, updated_at)
-                VALUES (:company_id, :company_name, :company_cnpj, :doc_type, :model, :access_key, :referenced_nfe_keys, :referenced_document_numbers, :number, :order_number, :posted_to_erp, :issuer_cnpj, :issuer_name, :recipient_cnpj, :recipient_name,
-                :issue_date, :total_value, :status, :manifestation_status, :source, :xml_path, :storage_dir, :notes, :raw_xml, :digest, :schema_name, :imported_at, :updated_at)");
+                (company_id, company_name, company_cnpj, doc_type, model, access_key, referenced_nfe_keys, referenced_document_numbers, number, order_number, posted_to_erp, issuer_cnpj, issuer_name, issuer_city, issuer_uf, recipient_cnpj, recipient_name,
+                service_series, service_dps_number, service_dps_series, service_verification_code, service_code, service_description, service_city, service_uf, iss_rate, iss_amount, pis_amount, cofins_amount, deductions_amount, discount_amount, net_amount,
+                issue_date, total_value, status, manifestation_status, source, xml_path, storage_dir, notes, fiscal_observation, raw_xml, digest, schema_name, imported_at, updated_at)
+                VALUES (:company_id, :company_name, :company_cnpj, :doc_type, :model, :access_key, :referenced_nfe_keys, :referenced_document_numbers, :number, :order_number, :posted_to_erp, :issuer_cnpj, :issuer_name, :issuer_city, :issuer_uf, :recipient_cnpj, :recipient_name,
+                :service_series, :service_dps_number, :service_dps_series, :service_verification_code, :service_code, :service_description, :service_city, :service_uf, :iss_rate, :iss_amount, :pis_amount, :cofins_amount, :deductions_amount, :discount_amount, :net_amount,
+                :issue_date, :total_value, :status, :manifestation_status, :source, :xml_path, :storage_dir, :notes, :fiscal_observation, :raw_xml, :digest, :schema_name, :imported_at, :updated_at)");
             $this->executeDocumentStatement($stmt, $row, [
                 'company_id','company_name','company_cnpj','doc_type','model','access_key','referenced_nfe_keys','referenced_document_numbers','number','order_number','posted_to_erp',
-                'issuer_cnpj','issuer_name','recipient_cnpj','recipient_name','issue_date','total_value','status','manifestation_status',
-                'source','xml_path','storage_dir','notes','raw_xml','digest','schema_name','imported_at','updated_at',
+                'issuer_cnpj','issuer_name','issuer_city','issuer_uf','recipient_cnpj','recipient_name',
+                'service_series','service_dps_number','service_dps_series','service_verification_code','service_code','service_description','service_city','service_uf',
+                'iss_rate','iss_amount','pis_amount','cofins_amount','deductions_amount','discount_amount','net_amount',
+                'issue_date','total_value','status','manifestation_status',
+                'source','xml_path','storage_dir','notes','fiscal_observation','raw_xml','digest','schema_name','imported_at','updated_at',
             ]);
             $id = (int)$this->pdo->lastInsertId();
         }
@@ -593,8 +614,25 @@ final class Repository
             'accounting_posted' => 'N',
             'issuer_cnpj' => null,
             'issuer_name' => null,
+            'issuer_city' => null,
+            'issuer_uf' => null,
             'recipient_cnpj' => null,
             'recipient_name' => null,
+            'service_series' => null,
+            'service_dps_number' => null,
+            'service_dps_series' => null,
+            'service_verification_code' => null,
+            'service_code' => null,
+            'service_description' => null,
+            'service_city' => null,
+            'service_uf' => null,
+            'iss_rate' => 0,
+            'iss_amount' => 0,
+            'pis_amount' => 0,
+            'cofins_amount' => 0,
+            'deductions_amount' => 0,
+            'discount_amount' => 0,
+            'net_amount' => 0,
             'issue_date' => null,
             'total_value' => 0,
             'status' => 'imported',
@@ -603,6 +641,7 @@ final class Repository
             'xml_path' => null,
             'storage_dir' => null,
             'notes' => null,
+            'fiscal_observation' => null,
             'raw_xml' => null,
             'digest' => null,
             'schema_name' => null,
