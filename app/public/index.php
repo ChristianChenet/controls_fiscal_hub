@@ -1906,6 +1906,14 @@ if ($page === 'document_items') {
         exit;
     }
     $itemLocation = document_items_location($doc);
+    $issuerCity = trim((string)($doc['issuer_city'] ?? '')) !== '' ? (string)$doc['issuer_city'] : (string)($doc['service_city'] ?? '');
+    $issuerUf = trim((string)($doc['issuer_uf'] ?? '')) !== '' ? (string)$doc['issuer_uf'] : (string)($doc['service_uf'] ?? '');
+    if ($issuerCity === '') {
+        $issuerCity = (string)($itemLocation['city'] ?? '');
+    }
+    if ($issuerUf === '') {
+        $issuerUf = (string)($itemLocation['uf'] ?? '');
+    }
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode([
         'document' => [
@@ -1914,6 +1922,9 @@ if ($page === 'document_items') {
             'number' => (string)($doc['number'] ?? ''),
             'issuer_name' => (string)($doc['issuer_name'] ?? ''),
             'issue_date' => format_date($doc['issue_date'] ?? null),
+            'city' => $issuerCity,
+            'uf' => $issuerUf,
+            'observation' => (string)($doc['fiscal_observation'] ?? $doc['notes'] ?? ''),
             'total_value' => format_money((float)($doc['total_value'] ?? 0)),
         ],
         'items' => array_map(static fn(array $item): array => [
@@ -2080,7 +2091,7 @@ if ($page === 'documents_export') {
     header('Content-Disposition: attachment; filename="' . $filename . '"');
     echo "\xEF\xBB\xBF";
     echo '<table border="1">';
-    echo '<tr><th>Empresa</th><th>CNPJ</th><th>Tipo</th><th>N&uacute;mero</th><th>Pedido</th><th>Emissor</th><th>CNPJ emissor</th><th>Grupo</th><th>Destinat&aacute;rio</th><th>Documento destinat&aacute;rio</th><th>Chave</th><th>NF-e vinculada</th><th>N&uacute;mero doc. referenciado</th><th>Nota lan&ccedil;ada no ERP</th><th>Lan&ccedil;ada contabilidade</th><th>Eventos informativos</th><th>Emiss&atilde;o</th><th>Valor</th><th>Status</th><th>Manifesta&ccedil;&atilde;o</th><th>Origem</th><th>Link espelho</th><th>Pasta</th></tr>';
+    echo '<tr><th>Empresa</th><th>CNPJ</th><th>Tipo</th><th>N&uacute;mero</th><th>Pedido</th><th>Emissor</th><th>CNPJ emissor</th><th>Cidade emissor</th><th>UF emissor</th><th>CFOP</th><th>Grupo</th><th>Destinat&aacute;rio</th><th>Documento destinat&aacute;rio</th><th>Chave</th><th>NF-e vinculada</th><th>N&uacute;mero doc. referenciado</th><th>Nota lan&ccedil;ada no ERP</th><th>Entrada ERP</th><th>Lan&ccedil;ada contabilidade</th><th>Eventos informativos</th><th>Emiss&atilde;o</th><th>Valor</th><th>Status</th><th>Manifesta&ccedil;&atilde;o</th><th>Origem</th><th>Observa&ccedil;&atilde;o</th><th>Link espelho</th><th>Pasta</th></tr>';
     foreach ($docs as $doc) {
         $hasMirror = in_array(strtoupper((string)($doc['doc_type'] ?? '')), ['NFE', 'CTE', 'NFSE'], true)
             && (string)($doc['status'] ?? '') !== 'apenas_resumo';
@@ -2094,6 +2105,9 @@ if ($page === 'documents_export') {
             $doc['order_number'] ?? '',
             $doc['issuer_name'] ?? '',
             $doc['issuer_cnpj'] ?? '',
+            (trim((string)($doc['issuer_city'] ?? '')) !== '' ? $doc['issuer_city'] : ($doc['service_city'] ?? '')),
+            (trim((string)($doc['issuer_uf'] ?? '')) !== '' ? $doc['issuer_uf'] : ($doc['service_uf'] ?? '')),
+            $doc['primary_cfop'] ?? '',
             $doc['supplier_group'] ?? '',
             $doc['recipient_name'] ?? '',
             $doc['recipient_cnpj'] ?? '',
@@ -2101,6 +2115,7 @@ if ($page === 'documents_export') {
             $doc['referenced_nfe_keys'] ?? '',
             $doc['referenced_document_numbers'] ?? '',
             !empty($doc['posted_to_erp']) ? 'Sim' : 'Nao',
+            format_date($doc['entrada_date_erp'] ?? null),
             (($doc['accounting_posted'] ?? 'N') === 'S') ? 'Sim' : 'Nao',
             ((int)($doc['informative_events_count'] ?? 0) > 0 ? ((string)$doc['informative_events_count'] . ' - ' . (string)($doc['informative_events_names'] ?? '')) : ''),
             format_date($doc['issue_date'] ?? null),
@@ -2108,6 +2123,7 @@ if ($page === 'documents_export') {
             document_status_label((string)($doc['status'] ?? '')),
             manifestation_status_label((string)($doc['manifestation_status'] ?? '')),
             $doc['source'] ?? '',
+            $doc['fiscal_observation'] ?? '',
             $mirrorLink,
             $doc['storage_dir'] ?? '',
         ] as $value) {
@@ -2125,6 +2141,8 @@ if ($page === 'documents_timeline_cell') {
         $filters = document_filters_from_request($_GET);
         $docs = $repo->documents($filters);
         $rows = array_map(static function (array $doc): array {
+            $city = trim((string)($doc['issuer_city'] ?? '')) !== '' ? (string)$doc['issuer_city'] : (string)($doc['service_city'] ?? '');
+            $uf = trim((string)($doc['issuer_uf'] ?? '')) !== '' ? (string)$doc['issuer_uf'] : (string)($doc['service_uf'] ?? '');
             return [
                 'id' => (int)($doc['id'] ?? 0),
                 'company_name' => (string)($doc['company_name'] ?? ''),
@@ -2132,13 +2150,17 @@ if ($page === 'documents_timeline_cell') {
                 'number' => (string)($doc['number'] ?? ''),
                 'issuer_name' => (string)($doc['issuer_name'] ?? ''),
                 'issuer_cnpj' => (string)($doc['issuer_cnpj'] ?? ''),
+                'city_uf' => trim($city . ($uf !== '' ? ' / ' . $uf : '')),
                 'recipient_name' => (string)($doc['recipient_name'] ?? ''),
                 'issue_date' => format_date($doc['issue_date'] ?? null),
                 'total_value' => format_money((float)($doc['total_value'] ?? 0)),
+                'cfop' => (string)($doc['primary_cfop'] ?? ''),
                 'posted_to_erp' => !empty($doc['posted_to_erp']) ? 'Sim' : 'Nao',
+                'entrada_date_erp' => format_date($doc['entrada_date_erp'] ?? null),
                 'accounting_posted' => (($doc['accounting_posted'] ?? 'N') === 'S') ? 'Sim' : 'Nao',
                 'status' => document_status_label((string)($doc['status'] ?? '')),
                 'source' => (string)($doc['source'] ?? ''),
+                'observation' => (string)($doc['fiscal_observation'] ?? ''),
             ];
         }, $docs);
         echo json_encode(['ok' => true, 'documents' => $rows], JSON_UNESCAPED_UNICODE);
@@ -2156,8 +2178,10 @@ if ($page === 'documents_timeline_cell_export') {
     header('Content-Disposition: attachment; filename="entradas_linha_tempo_detalhe_' . date('Ymd_His') . '.xls"');
     echo "\xEF\xBB\xBF";
     echo '<table border="1">';
-    echo '<tr><th>Empresa</th><th>Tipo</th><th>Numero</th><th>Emissor</th><th>CNPJ emissor</th><th>Tomador</th><th>Emissao</th><th>Valor</th><th>Decis</th><th>Contabilidade</th><th>Status</th><th>Origem</th></tr>';
+    echo '<tr><th>Empresa</th><th>Tipo</th><th>Numero</th><th>Emissor</th><th>CNPJ emissor</th><th>Cidade / UF</th><th>Tomador</th><th>Emissao</th><th>Valor</th><th>CFOP</th><th>Decis</th><th>Entrada ERP</th><th>Contabilidade</th><th>Status</th><th>Origem</th><th>Observacao</th></tr>';
     foreach ($docs as $doc) {
+        $city = trim((string)($doc['issuer_city'] ?? '')) !== '' ? (string)$doc['issuer_city'] : (string)($doc['service_city'] ?? '');
+        $uf = trim((string)($doc['issuer_uf'] ?? '')) !== '' ? (string)$doc['issuer_uf'] : (string)($doc['service_uf'] ?? '');
         echo '<tr>';
         foreach ([
             $doc['company_name'] ?? '',
@@ -2165,13 +2189,17 @@ if ($page === 'documents_timeline_cell_export') {
             $doc['number'] ?? '',
             $doc['issuer_name'] ?? '',
             $doc['issuer_cnpj'] ?? '',
+            trim($city . ($uf !== '' ? ' / ' . $uf : '')),
             $doc['recipient_name'] ?? '',
             format_date($doc['issue_date'] ?? null),
             number_format((float)($doc['total_value'] ?? 0), 2, ',', '.'),
+            $doc['primary_cfop'] ?? '',
             !empty($doc['posted_to_erp']) ? 'Sim' : 'Nao',
+            format_date($doc['entrada_date_erp'] ?? null),
             (($doc['accounting_posted'] ?? 'N') === 'S') ? 'Sim' : 'Nao',
             document_status_label((string)($doc['status'] ?? '')),
             $doc['source'] ?? '',
+            $doc['fiscal_observation'] ?? '',
         ] as $value) {
             echo '<td>' . h((string)$value) . '</td>';
         }

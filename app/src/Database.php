@@ -58,6 +58,7 @@ final class Database
             $this->ensureSqliteColumn('users', 'can_view_cost', 'INTEGER DEFAULT 0');
             $this->ensureSqliteColumn('documents', 'referenced_document_numbers', 'TEXT NULL');
             $this->ensureSqliteColumn('documents', 'accounting_posted', "TEXT DEFAULT 'N'");
+            $this->ensureSqliteColumn('documents', 'entrada_date_erp', 'TEXT NULL');
             $this->ensureSqliteColumn('documents', 'issuer_city', 'TEXT NULL');
             $this->ensureSqliteColumn('documents', 'issuer_uf', 'TEXT NULL');
             $this->ensureSqliteColumn('documents', 'service_series', 'TEXT NULL');
@@ -81,6 +82,7 @@ final class Database
         }
 
         $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS accounting_posted CHAR(1) DEFAULT 'N'");
+        $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS entrada_date_erp DATE NULL");
         $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS issuer_city TEXT NULL");
         $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS issuer_uf VARCHAR(2) NULL");
         $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS service_series VARCHAR(40) NULL");
@@ -88,7 +90,6 @@ final class Database
         $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS service_dps_series VARCHAR(40) NULL");
         $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS service_verification_code VARCHAR(120) NULL");
         $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS service_code TEXT NULL");
-        $this->pdo()->exec("ALTER TABLE documents ALTER COLUMN service_code TYPE TEXT");
         $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS service_description TEXT NULL");
         $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS service_city TEXT NULL");
         $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS service_uf VARCHAR(2) NULL");
@@ -272,6 +273,7 @@ final class Database
                 referenced_document_numbers TEXT NULL,
                 number TEXT,
                 order_number TEXT NULL,
+                entrada_date_erp TEXT NULL,
                 issuer_cnpj TEXT,
                 issuer_name TEXT,
                 issuer_city TEXT NULL,
@@ -620,6 +622,7 @@ final class Database
                 referenced_document_numbers TEXT NULL,
                 number VARCHAR(60) NULL,
                 order_number VARCHAR(80) NULL,
+                entrada_date_erp DATE NULL,
                 issuer_cnpj VARCHAR(20) NULL,
                 issuer_name TEXT NULL,
                 issuer_city TEXT NULL,
@@ -664,6 +667,7 @@ final class Database
             "ALTER TABLE documents ADD COLUMN IF NOT EXISTS referenced_document_numbers TEXT NULL",
             "ALTER TABLE documents ADD COLUMN IF NOT EXISTS order_number VARCHAR(80) NULL",
             "ALTER TABLE documents ADD COLUMN IF NOT EXISTS posted_to_erp BOOLEAN DEFAULT FALSE",
+            "ALTER TABLE documents ADD COLUMN IF NOT EXISTS entrada_date_erp DATE NULL",
             "ALTER TABLE documents ADD COLUMN IF NOT EXISTS issuer_city TEXT NULL",
             "ALTER TABLE documents ADD COLUMN IF NOT EXISTS issuer_uf VARCHAR(2) NULL",
             "ALTER TABLE documents ADD COLUMN IF NOT EXISTS service_series VARCHAR(40) NULL",

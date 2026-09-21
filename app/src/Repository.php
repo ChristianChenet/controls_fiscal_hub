@@ -372,7 +372,7 @@ final class Repository
                 }
             }
             foreach ([
-                'issue_date', 'issuer_name', 'issuer_cnpj', 'issuer_city', 'issuer_uf',
+                'issue_date', 'entrada_date_erp', 'issuer_name', 'issuer_cnpj', 'issuer_city', 'issuer_uf',
                 'recipient_name', 'recipient_cnpj', 'service_series', 'service_dps_number',
                 'service_dps_series', 'service_verification_code', 'service_code',
                 'service_description', 'service_city', 'service_uf', 'fiscal_observation',
@@ -391,7 +391,7 @@ final class Repository
             }
             $row['id'] = $existing['id'];
             $stmt = $this->pdo->prepare("UPDATE documents SET
-                company_id=:company_id, company_name=:company_name, company_cnpj=:company_cnpj, doc_type=:doc_type, model=:model, access_key=:access_key, referenced_nfe_keys=:referenced_nfe_keys, referenced_document_numbers=:referenced_document_numbers, number=:number, order_number=:order_number, posted_to_erp=:posted_to_erp,
+                company_id=:company_id, company_name=:company_name, company_cnpj=:company_cnpj, doc_type=:doc_type, model=:model, access_key=:access_key, referenced_nfe_keys=:referenced_nfe_keys, referenced_document_numbers=:referenced_document_numbers, number=:number, order_number=:order_number, posted_to_erp=:posted_to_erp, entrada_date_erp=:entrada_date_erp,
                 issuer_cnpj=:issuer_cnpj, issuer_name=:issuer_name, issuer_city=:issuer_city, issuer_uf=:issuer_uf, recipient_cnpj=:recipient_cnpj, recipient_name=:recipient_name,
                 service_series=:service_series, service_dps_number=:service_dps_number, service_dps_series=:service_dps_series, service_verification_code=:service_verification_code,
                 service_code=:service_code, service_description=:service_description, service_city=:service_city, service_uf=:service_uf,
@@ -400,7 +400,7 @@ final class Repository
                 source=:source, xml_path=:xml_path, storage_dir=:storage_dir, notes=:notes, fiscal_observation=:fiscal_observation, raw_xml=:raw_xml, digest=:digest,
                 schema_name=:schema_name, updated_at=:updated_at WHERE id=:id");
             $this->executeDocumentStatement($stmt, $row, [
-                'id','company_id','company_name','company_cnpj','doc_type','model','access_key','referenced_nfe_keys','referenced_document_numbers','number','order_number','posted_to_erp',
+                'id','company_id','company_name','company_cnpj','doc_type','model','access_key','referenced_nfe_keys','referenced_document_numbers','number','order_number','posted_to_erp','entrada_date_erp',
                 'issuer_cnpj','issuer_name','issuer_city','issuer_uf','recipient_cnpj','recipient_name',
                 'service_series','service_dps_number','service_dps_series','service_verification_code','service_code','service_description','service_city','service_uf',
                 'iss_rate','iss_amount','pis_amount','cofins_amount','deductions_amount','discount_amount','net_amount',
@@ -410,14 +410,14 @@ final class Repository
             $id = (int)$existing['id'];
         } else {
             $stmt = $this->pdo->prepare("INSERT INTO documents
-                (company_id, company_name, company_cnpj, doc_type, model, access_key, referenced_nfe_keys, referenced_document_numbers, number, order_number, posted_to_erp, issuer_cnpj, issuer_name, issuer_city, issuer_uf, recipient_cnpj, recipient_name,
+                (company_id, company_name, company_cnpj, doc_type, model, access_key, referenced_nfe_keys, referenced_document_numbers, number, order_number, posted_to_erp, entrada_date_erp, issuer_cnpj, issuer_name, issuer_city, issuer_uf, recipient_cnpj, recipient_name,
                 service_series, service_dps_number, service_dps_series, service_verification_code, service_code, service_description, service_city, service_uf, iss_rate, iss_amount, pis_amount, cofins_amount, deductions_amount, discount_amount, net_amount,
                 issue_date, total_value, status, manifestation_status, source, xml_path, storage_dir, notes, fiscal_observation, raw_xml, digest, schema_name, imported_at, updated_at)
-                VALUES (:company_id, :company_name, :company_cnpj, :doc_type, :model, :access_key, :referenced_nfe_keys, :referenced_document_numbers, :number, :order_number, :posted_to_erp, :issuer_cnpj, :issuer_name, :issuer_city, :issuer_uf, :recipient_cnpj, :recipient_name,
+                VALUES (:company_id, :company_name, :company_cnpj, :doc_type, :model, :access_key, :referenced_nfe_keys, :referenced_document_numbers, :number, :order_number, :posted_to_erp, :entrada_date_erp, :issuer_cnpj, :issuer_name, :issuer_city, :issuer_uf, :recipient_cnpj, :recipient_name,
                 :service_series, :service_dps_number, :service_dps_series, :service_verification_code, :service_code, :service_description, :service_city, :service_uf, :iss_rate, :iss_amount, :pis_amount, :cofins_amount, :deductions_amount, :discount_amount, :net_amount,
                 :issue_date, :total_value, :status, :manifestation_status, :source, :xml_path, :storage_dir, :notes, :fiscal_observation, :raw_xml, :digest, :schema_name, :imported_at, :updated_at)");
             $this->executeDocumentStatement($stmt, $row, [
-                'company_id','company_name','company_cnpj','doc_type','model','access_key','referenced_nfe_keys','referenced_document_numbers','number','order_number','posted_to_erp',
+                'company_id','company_name','company_cnpj','doc_type','model','access_key','referenced_nfe_keys','referenced_document_numbers','number','order_number','posted_to_erp','entrada_date_erp',
                 'issuer_cnpj','issuer_name','issuer_city','issuer_uf','recipient_cnpj','recipient_name',
                 'service_series','service_dps_number','service_dps_series','service_verification_code','service_code','service_description','service_city','service_uf',
                 'iss_rate','iss_amount','pis_amount','cofins_amount','deductions_amount','discount_amount','net_amount',
@@ -612,6 +612,7 @@ final class Repository
             'order_number' => null,
             'posted_to_erp' => false,
             'accounting_posted' => 'N',
+            'entrada_date_erp' => null,
             'issuer_cnpj' => null,
             'issuer_name' => null,
             'issuer_city' => null,
@@ -1528,7 +1529,9 @@ final class Repository
         }
         $this->ensureDocumentItemsForFilters($filters);
         [$where, $params] = $this->documentWhere($filters);
-        $sql = 'SELECT documents.*, ' . $this->supplierGroupNameSql('documents') . ' AS supplier_group FROM documents';
+        $sql = 'SELECT documents.*,
+                (SELECT di.cfop FROM document_items di WHERE di.document_id = documents.id AND COALESCE(di.cfop, \'\') <> \'\' ORDER BY di.item_number ASC, di.id ASC LIMIT 1) AS primary_cfop,
+                ' . $this->supplierGroupNameSql('documents') . ' AS supplier_group FROM documents';
         if ($where) $sql .= ' WHERE ' . implode(' AND ', $where);
         $sql .= ' ' . $this->documentOrderBy($filters);
         if ((string)$this->pdo->getAttribute(PDO::ATTR_DRIVER_NAME) === 'sqlite') {
@@ -1595,6 +1598,32 @@ final class Repository
         $row['company_cnpj'] = (string)$company['cnpj'];
     }
 
+    private function companyUfFromDocument(array $doc): string
+    {
+        $cnpj = $this->digits((string)($doc['company_cnpj'] ?? ''));
+        $known = [
+            '05102155000152' => 'PR',
+            '05102155000233' => 'PR',
+            '05102155000403' => 'PR',
+            '05102155000586' => 'MS',
+            '05102155000667' => 'PR',
+        ];
+        return $known[$cnpj] ?? '';
+    }
+
+    private function nfseCfopForDocument(array $doc): string
+    {
+        $issuerUf = strtoupper(trim((string)($doc['issuer_uf'] ?? '')));
+        if ($issuerUf === '') {
+            $issuerUf = strtoupper(trim((string)($doc['service_uf'] ?? '')));
+        }
+        $companyUf = $this->companyUfFromDocument($doc);
+        if ($issuerUf === '' || $companyUf === '') {
+            return '';
+        }
+        return $issuerUf === $companyUf ? '1933' : '2933';
+    }
+
     public function documentIds(array $filters = [], int $limit = 5000): array
     {
         if ($this->documentsNeedReferencedNumberRepair($filters)) {
@@ -1627,9 +1656,10 @@ final class Repository
         $offset = max(0, ($page - 1) * $perPage);
         // O grid de Entradas nao precisa trazer o XML bruto de cada linha.
         // Evitar raw_xml na pagina melhora o tempo de resposta em bases grandes.
-        $sql = 'SELECT id, company_id, company_name, company_cnpj, doc_type, model, access_key, referenced_nfe_keys, referenced_document_numbers, number, order_number, posted_to_erp, accounting_posted,
-                issuer_cnpj, issuer_name, recipient_cnpj, recipient_name, issue_date, total_value, status, manifestation_status,
+        $sql = 'SELECT id, company_id, company_name, company_cnpj, doc_type, model, access_key, referenced_nfe_keys, referenced_document_numbers, number, order_number, posted_to_erp, accounting_posted, entrada_date_erp,
+                issuer_cnpj, issuer_name, issuer_city, issuer_uf, recipient_cnpj, recipient_name, service_city, service_uf, fiscal_observation, issue_date, total_value, status, manifestation_status,
                 source, xml_path, storage_dir, notes, NULL AS raw_xml, digest, schema_name, imported_at, updated_at,
+                (SELECT di.cfop FROM document_items di WHERE di.document_id = documents.id AND COALESCE(di.cfop, \'\') <> \'\' ORDER BY di.item_number ASC, di.id ASC LIMIT 1) AS primary_cfop,
                 ' . $this->supplierGroupNameSql('documents') . ' AS supplier_group FROM documents';
         if ($where) $sql .= ' WHERE ' . implode(' AND ', $where);
         $sql .= ' ' . $this->documentOrderBy($filters) . ' LIMIT :limit OFFSET :offset';
@@ -2742,6 +2772,18 @@ final class Repository
         }
         $type = strtoupper((string)($doc['doc_type'] ?? ''));
         $items = $itemsIndexed ? [] : $this->parseDocumentItemsFromXml($xml, $type);
+        if (!$itemsIndexed && $type === 'NFSE' && $items) {
+            $nfseCfop = $this->nfseCfopForDocument($doc);
+            foreach ($items as &$item) {
+                if ($nfseCfop !== '' && trim((string)($item['cfop'] ?? '')) === '') {
+                    $item['cfop'] = $nfseCfop;
+                }
+                if (trim((string)($item['product_code'] ?? '')) === '' && trim((string)($doc['service_code'] ?? '')) !== '') {
+                    $item['product_code'] = (string)$doc['service_code'];
+                }
+            }
+            unset($item);
+        }
         // Se o XML realmente nao tem itens, o marcador vazio continua valido.
         if (!$items && $hadItemIndex && $itemCount === 0 && $type !== 'CTE') {
             return;

@@ -184,14 +184,17 @@ $timelinePostedDiffClass = static function (array $cell, string $mode, string $p
             'tipo' => 'Tipo',
             'numero' => 'Número',
             'emissor' => 'Emissor',
+            'cidade_uf' => 'Cidade / UF',
             'grupo' => 'Grupo',
             'tomador' => 'Tomador',
             'chave' => 'Chave',
             'nfe_vinculada' => 'NF-e vinculada',
             'numero_referenciado' => 'Numero referenciado',
             'erp' => 'Nota lançada no ERP',
+            'entrada_erp' => 'Entrada ERP',
             'contabilidade' => 'Lançada contabilidade',
             'eventos_informativos' => 'Eventos informativos',
+            'cfop' => 'CFOP',
             'emissao' => 'Emissão',
             'valor' => 'Valor',
             'status' => 'Status',
@@ -334,17 +337,21 @@ $timelinePostedDiffClass = static function (array $cell, string $mode, string $p
                         <th>Tipo</th>
                         <th>Número</th>
                         <th>Emissor</th>
+                        <th>Cidade / UF</th>
                         <th>Tomador</th>
                         <th>Emissão</th>
                         <th>Valor</th>
+                        <th>CFOP</th>
                         <th>Decis</th>
+                        <th>Entrada ERP</th>
                         <th>Contabilidade</th>
                         <th>Status</th>
                         <th>Origem</th>
+                        <th>Observação</th>
                     </tr>
                 </thead>
                 <tbody id="timeline-detail-body">
-                    <tr><td colspan="11">Selecione um mês da linha do tempo.</td></tr>
+                    <tr><td colspan="15">Selecione um mês da linha do tempo.</td></tr>
                 </tbody>
             </table>
         </div>
@@ -413,14 +420,17 @@ $timelinePostedDiffClass = static function (array $cell, string $mode, string $p
                     <th class="resizable" data-column="tipo">Tipo</th>
                     <th class="resizable" data-column="numero">Número</th>
                     <th class="resizable" data-column="emissor">Emissor</th>
+                    <th class="resizable" data-column="cidade_uf">Cidade / UF</th>
                     <th class="resizable" data-column="grupo">Grupo</th>
                     <th class="resizable" data-column="tomador">Tomador</th>
                     <th class="resizable" data-column="chave">Chave</th>
                     <th class="resizable" data-column="nfe_vinculada">NF-e vinculada</th>
                     <th class="resizable" data-column="numero_referenciado">Numero referenciado</th>
                     <th class="resizable" data-column="erp">Nota lançada no ERP</th>
+                    <th class="resizable" data-column="entrada_erp">Entrada ERP</th>
                     <th class="resizable" data-column="contabilidade">Lançada contabilidade</th>
                     <th class="resizable" data-column="eventos_informativos">Eventos informativos</th>
+                    <th class="resizable" data-column="cfop">CFOP</th>
                     <th class="resizable" data-column="emissao">Emissão</th>
                     <th class="resizable" data-column="valor">Valor</th>
                     <th class="resizable" data-column="status">Status</th>
@@ -435,12 +445,14 @@ $timelinePostedDiffClass = static function (array $cell, string $mode, string $p
                     <th data-column="tipo"></th>
                     <th data-column="numero"><input form="column-filter-form" name="number_q" value="<?= h((string)($filters['number_q'] ?? '')) ?>" placeholder="Filtrar"></th>
                     <th data-column="emissor"><input form="column-filter-form" name="issuer_q" value="<?= h((string)($filters['issuer_q'] ?? '')) ?>" placeholder="Filtrar"></th>
+                    <th data-column="cidade_uf"></th>
                     <th data-column="grupo"></th>
                     <th data-column="tomador"><input form="column-filter-form" name="recipient_q" value="<?= h((string)($filters['recipient_q'] ?? '')) ?>" placeholder="Filtrar"></th>
                     <th data-column="chave"><input form="column-filter-form" name="access_key_q" value="<?= h((string)($filters['access_key_q'] ?? '')) ?>" placeholder="Filtrar"></th>
                     <th data-column="nfe_vinculada"><input form="column-filter-form" name="referenced_nfe_q" value="<?= h((string)($filters['referenced_nfe_q'] ?? '')) ?>" placeholder="Filtrar"></th>
                     <th data-column="numero_referenciado"><input form="column-filter-form" name="referenced_number_q" value="<?= h((string)($filters['referenced_number_q'] ?? '')) ?>" placeholder="Filtrar"></th>
                     <th data-column="erp"></th>
+                    <th data-column="entrada_erp"></th>
                     <th data-column="contabilidade">
                         <select form="column-filter-form" name="accounting_posted">
                             <option value="">Todas</option>
@@ -449,6 +461,7 @@ $timelinePostedDiffClass = static function (array $cell, string $mode, string $p
                         </select>
                     </th>
                     <th data-column="eventos_informativos"></th>
+                    <th data-column="cfop"></th>
                     <th data-column="emissao"></th>
                     <th data-column="valor"></th>
                     <th data-column="status"></th>
@@ -467,18 +480,25 @@ $timelinePostedDiffClass = static function (array $cell, string $mode, string $p
             </thead>
             <tbody>
             <?php foreach ($documents as $doc): ?>
+                <?php
+                    $docCity = trim((string)($doc['issuer_city'] ?? '')) !== '' ? (string)$doc['issuer_city'] : (string)($doc['service_city'] ?? '');
+                    $docUf = trim((string)($doc['issuer_uf'] ?? '')) !== '' ? (string)$doc['issuer_uf'] : (string)($doc['service_uf'] ?? '');
+                    $docCityUf = trim($docCity . ($docUf !== '' ? ' / ' . $docUf : ''));
+                ?>
                 <tr data-document-row="<?= h((string)$doc['id']) ?>" data-issuer-cnpj="<?= h((string)($doc['issuer_cnpj'] ?? '')) ?>" data-issuer-name="<?= h((string)($doc['issuer_name'] ?? '')) ?>">
                     <td><input type="checkbox" name="ids[]" value="<?= h((string)$doc['id']) ?>" data-doc-checkbox data-doc-type="<?= h(strtoupper((string)($doc['doc_type'] ?? ''))) ?>" data-doc-value="<?= h((string)((float)($doc['total_value'] ?? 0))) ?>"></td>
                     <td data-column="empresa"><strong><?= h((string)$doc['company_name']) ?></strong><br><small><?= h((string)$doc['company_cnpj']) ?></small></td>
                     <td data-column="tipo"><span class="pill"><?= h((string)$doc['doc_type']) ?></span></td>
                     <td data-column="numero"><button type="button" class="link-button doc-products-link" data-document-items="<?= h((string)$doc['id']) ?>"><?= h((string)$doc['number']) ?></button></td>
                     <td data-column="emissor"><strong><?= h((string)$doc['issuer_name']) ?></strong><br><small><?= h((string)$doc['issuer_cnpj']) ?></small></td>
+                    <td data-column="cidade_uf"><?= h($docCityUf) ?></td>
                     <td data-column="grupo" data-supplier-group-cell><?= h((string)($doc['supplier_group'] ?? '')) ?></td>
                     <td data-column="tomador"><strong><?= h((string)($doc['recipient_name'] ?? '')) ?></strong><br><small><?= h((string)($doc['recipient_cnpj'] ?? '')) ?></small></td>
                     <td data-column="chave"><small><?= h((string)$doc['access_key']) ?></small></td>
                     <td data-column="nfe_vinculada"><small><?= h((string)($doc['referenced_nfe_keys'] ?? '')) ?></small></td>
                     <td data-column="numero_referenciado"><small><?= h((string)($doc['referenced_document_numbers'] ?? '')) ?></small></td>
                     <td data-column="erp"><?= !empty($doc['posted_to_erp']) ? 'Sim' : 'Não' ?></td>
+                    <td data-column="entrada_erp"><?= h(format_date($doc['entrada_date_erp'] ?? null)) ?></td>
                     <td data-column="contabilidade" class="accounting-status-cell">
                         <?php if (($doc['accounting_posted'] ?? 'N') === 'S'): ?>
                             <button type="button" class="link-button" data-accounting-details="<?= h((string)$doc['id']) ?>">Sim</button>
@@ -494,6 +514,7 @@ $timelinePostedDiffClass = static function (array $cell, string $mode, string $p
                             <small>-</small>
                         <?php endif; ?>
                     </td>
+                    <td data-column="cfop"><?= h((string)($doc['primary_cfop'] ?? '')) ?></td>
                     <td data-column="emissao"><?= h(format_date($doc['issue_date'])) ?></td>
                     <td data-column="valor"><?= h(format_money((float)$doc['total_value'])) ?></td>
                     <td data-column="status"><?= h(document_status_label((string)$doc['status'])) ?></td>
@@ -514,7 +535,7 @@ $timelinePostedDiffClass = static function (array $cell, string $mode, string $p
                 </tr>
             <?php endforeach; ?>
             <?php if (!$documents): ?>
-                <tr><td colspan="20">Nenhuma entrada encontrada.</td></tr>
+                <tr><td colspan="23">Nenhuma entrada encontrada.</td></tr>
             <?php endif; ?>
             </tbody>
         </table>
@@ -1051,7 +1072,7 @@ $timelinePostedDiffClass = static function (array $cell, string $mode, string $p
             if (subtitle) subtitle.textContent = 'Notas encontradas para o fornecedor e mês selecionados.';
             if (exportLink) exportLink.href = exportUrl;
             if (feedback) feedback.textContent = 'Carregando notas...';
-            tbody.innerHTML = '<tr><td colspan="11">Carregando...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="15">Carregando...</td></tr>';
             modal.classList.remove('is-hidden');
             fetch(url, {headers: {'Accept': 'application/json'}})
                 .then(function (response) {
@@ -1062,7 +1083,7 @@ $timelinePostedDiffClass = static function (array $cell, string $mode, string $p
                     var docs = payload && payload.documents ? payload.documents : [];
                     if (feedback) feedback.textContent = docs.length + ' nota(s) encontrada(s).';
                     if (!docs.length) {
-                        tbody.innerHTML = '<tr><td colspan="11">Nenhuma nota encontrada para este recorte.</td></tr>';
+                        tbody.innerHTML = '<tr><td colspan="15">Nenhuma nota encontrada para este recorte.</td></tr>';
                         return;
                     }
                     tbody.innerHTML = docs.map(function (doc) {
@@ -1071,19 +1092,23 @@ $timelinePostedDiffClass = static function (array $cell, string $mode, string $p
                             '<td>' + escapeHtml(doc.doc_type) + '</td>' +
                             '<td>' + escapeHtml(doc.number) + '</td>' +
                             '<td><strong>' + escapeHtml(doc.issuer_name) + '</strong><small>' + escapeHtml(doc.issuer_cnpj) + '</small></td>' +
+                            '<td>' + escapeHtml(doc.city_uf) + '</td>' +
                             '<td>' + escapeHtml(doc.recipient_name) + '</td>' +
                             '<td>' + escapeHtml(doc.issue_date) + '</td>' +
                             '<td>' + escapeHtml(doc.total_value) + '</td>' +
+                            '<td>' + escapeHtml(doc.cfop) + '</td>' +
                             '<td>' + escapeHtml(doc.posted_to_erp) + '</td>' +
+                            '<td>' + escapeHtml(doc.entrada_date_erp) + '</td>' +
                             '<td>' + escapeHtml(doc.accounting_posted) + '</td>' +
                             '<td>' + escapeHtml(doc.status) + '</td>' +
                             '<td>' + escapeHtml(doc.source) + '</td>' +
+                            '<td>' + escapeHtml(doc.observation) + '</td>' +
                         '</tr>';
                     }).join('');
                 })
                 .catch(function (error) {
                     if (feedback) feedback.textContent = error.message || 'Falha ao carregar as notas.';
-                    tbody.innerHTML = '<tr><td colspan="11">Nao foi possivel carregar este detalhe.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="15">Nao foi possivel carregar este detalhe.</td></tr>';
                 });
         });
     });
@@ -2300,7 +2325,9 @@ $timelinePostedDiffClass = static function (array $cell, string $mode, string $p
             })
             .then(function (data) {
                 var doc = data.document || {};
-                subtitle.textContent = [doc.doc_type, doc.number, doc.issuer_name, doc.total_value].filter(Boolean).join(' | ');
+                var location = [doc.city, doc.uf].filter(Boolean).join(' / ');
+                subtitle.innerHTML = [doc.doc_type, doc.number, doc.issuer_name, doc.issue_date ? 'Emissao: ' + doc.issue_date : '', location ? 'Cidade/UF: ' + location : '', doc.total_value].filter(Boolean).map(escapeHtml).join(' | ')
+                    + (doc.observation ? '<br><strong>Observacao:</strong> ' + escapeHtml(doc.observation) : '');
                 var items = data.items || [];
                 if (!items.length) {
                     body.innerHTML = '<tr><td colspan="11">Nenhum produto encontrado no XML desta entrada.</td></tr>';
