@@ -1,7 +1,5 @@
 WITH PARAMETROS AS (
     SELECT
-        DATE '{{ $("Configura Parametros NFSe Decis").item.json.dataInicial }}' AS DATA_INICIAL,
-        DATE '{{ $("Configura Parametros NFSe Decis").item.json.dataFinal }}' AS DATA_FINAL,
         -- Data de entrada parametrizada. Para esta importacao antiga usar 2026-08-28; na rotina normal altere apenas no no de parametros.
         DATE '{{ $("Configura Parametros NFSe Decis").item.json.dataEntradaDecis }}' AS DATA_ENTRADA_DECIS,
         {{ Number($("Configura Parametros NFSe Decis").item.json.usuarioDecis || 9980) }}::INTEGER AS USUARIO_DECIS,
@@ -181,7 +179,7 @@ SELECT
     B.id_fornecedor AS "DECIS_PESSOA",
     B.number AS "DECIS_NOTA_FISCAL",
     COALESCE(NULLIF(B.service_series, ''), NULLIF(B.service_dps_series, ''), 'E') AS "DECIS_SERIE",
-    NULLIF(B.cfop_calculado, '')::INTEGER AS "DECIS_MOVIMENTACAO_FISCAL",
+    NULLIF(REGEXP_REPLACE(COALESCE(B.cfop_calculado, ''), '[^0-9]', '', 'g'), '')::INTEGER AS "DECIS_MOVIMENTACAO_FISCAL",
     P.DATA_ENTRADA_DECIS AS "DECIS_DATA_ENTRADA",
     P.DATA_ENTRADA_DECIS AS "DECIS_DT_INCLUSAO",
     P.USUARIO_DECIS AS "DECIS_USUARIO",
@@ -203,7 +201,7 @@ SELECT
     B.id_fornecedor AS "VDNOTAC_PESSOA",
     B.number AS "VDNOTAC_NOTA_FISCAL",
     COALESCE(NULLIF(B.service_series, ''), NULLIF(B.service_dps_series, ''), 'E') AS "VDNOTAC_SERIE",
-    NULLIF(B.cfop_calculado, '')::INTEGER AS "VDNOTAC_MOVIMENTACAO_FISCAL",
+    NULLIF(REGEXP_REPLACE(COALESCE(B.cfop_calculado, ''), '[^0-9]', '', 'g'), '')::INTEGER AS "VDNOTAC_MOVIMENTACAO_FISCAL",
     B.issue_date AS "VDNOTAC_DATA_EMISSAO",
     P.DATA_ENTRADA_DECIS AS "VDNOTAC_DATA_MOVIMENTACAO",
     COALESCE(B.net_amount, B.total_value, 0) AS "VDNOTAC_VALOR_SERVICO",
@@ -287,11 +285,15 @@ SELECT
     P.USUARIO_DECIS AS "VDNOTAS_USUARIO_INCLUSAO",
     P.DATA_ENTRADA_DECIS AS "VDNOTAS_DATA_ALTERACAO",
     P.USUARIO_DECIS AS "VDNOTAS_USUARIO_ALTERACAO",
-    NULLIF(B.cfop_calculado, '')::INTEGER AS "VDNOTAS_MOVIMENTACAOFISCAL",
+    NULLIF(REGEXP_REPLACE(COALESCE(B.cfop_calculado, ''), '[^0-9]', '', 'g'), '')::INTEGER AS "VDNOTAS_MOVIMENTACAOFISCAL",
     0 AS "VDNOTAS_ALIQUOTAICMS",
     0 AS "VDNOTAS_VALORBASEICMS",
     0 AS "VDNOTAS_VALORICMS",
-    NULLIF(REGEXP_REPLACE(COALESCE(B.service_code, ''), '[^0-9]', '', 'g'), '')::INTEGER AS "VDNOTAS_CODIGOFEDERALSERVICO",
+    CASE
+        WHEN LENGTH(NULLIF(REGEXP_REPLACE(COALESCE(B.service_code, ''), '[^0-9]', '', 'g'), '')) <= 9
+        THEN NULLIF(REGEXP_REPLACE(COALESCE(B.service_code, ''), '[^0-9]', '', 'g'), '')::INTEGER
+        ELSE NULL
+    END AS "VDNOTAS_CODIGOFEDERALSERVICO",
     NULLIF(B.codigo_municipio_servico_xml, '')::INTEGER AS "VDNOTAS_CODIGOMUNICIPIOOCORRENCIA",
     P.NATUREZA_CREDITO_DECIS AS "VDNOTAS_NATUREZACREDITO",
     P.CST_COFINS_DECIS AS "VDNOTAS_CSTCOFINS",
@@ -373,8 +375,6 @@ WHERE B.doc_type = 'NFSE'
   AND B.status <> 'cancelado'
   AND COALESCE(B.posted_to_erp, FALSE) = FALSE
   AND COALESCE(B.accounting_posted, 'N') <> 'S'
-  AND B.issue_date >= P.DATA_INICIAL
-  AND B.issue_date < (P.DATA_FINAL + INTERVAL '1 day')
   AND B.company_cnpj_limpo = ANY (P.CNPJS_EMPRESAS)
   AND B.company_cnpj_limpo = B.recipient_cnpj_limpo
   --AND B.number = '827256'
