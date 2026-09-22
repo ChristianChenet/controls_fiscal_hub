@@ -51,21 +51,12 @@ DOCS AS (
         REGEXP_REPLACE(COALESCE(D.raw_xml, ''), '\s+', ' ', 'g') AS raw_xml_flat
     FROM documents D
 ),
-FORNECEDORES_PORTAL AS (
-    SELECT
-        REGEXP_REPLACE(COALESCE(F.documento, ''), '[^0-9]', '', 'g') AS documento_limpo,
-        MAX(F.id)::INTEGER AS id_fornecedor
-    FROM fornecedores F
-    WHERE REGEXP_REPLACE(COALESCE(F.documento, ''), '[^0-9]', '', 'g') <> ''
-    GROUP BY REGEXP_REPLACE(COALESCE(F.documento, ''), '[^0-9]', '', 'g')
-),
 BASE AS (
     SELECT
         D.*,
         REGEXP_REPLACE(COALESCE(D.company_cnpj, ''), '[^0-9]', '', 'g') AS company_cnpj_limpo,
         REGEXP_REPLACE(COALESCE(D.issuer_cnpj, ''), '[^0-9]', '', 'g') AS issuer_cnpj_limpo,
         REGEXP_REPLACE(COALESCE(D.recipient_cnpj, ''), '[^0-9]', '', 'g') AS recipient_cnpj_limpo,
-        FP.id_fornecedor,
         CASE REGEXP_REPLACE(COALESCE(D.company_cnpj, ''), '[^0-9]', '', 'g')
             WHEN '05102155000152' THEN 1
             WHEN '05102155000233' THEN 5
@@ -117,11 +108,33 @@ BASE AS (
             NULLIF(substring(D.raw_xml_flat FROM '<cLocIncid>([0-9]{7})</cLocIncid>'), ''),
             NULLIF(substring(D.raw_xml_flat FROM '<cLocPrestacao>([0-9]{7})</cLocPrestacao>'), ''),
             NULLIF(substring(D.raw_xml_flat FROM '<CodigoMunicipioOcorrencia>([0-9]{7})</CodigoMunicipioOcorrencia>'), '')
-        ) AS codigo_municipio_servico_xml
+        ) AS codigo_municipio_servico_xml,
+        COALESCE(
+            NULLIF(substring(D.raw_xml_flat FROM '<enderPrest>.*?<xLgr>(.*?)</xLgr>'), ''),
+            NULLIF(substring(D.raw_xml_flat FROM '<EnderecoPrestador>.*?<Endereco>(.*?)</Endereco>'), '')
+        ) AS fornecedor_endereco_xml,
+        COALESCE(
+            NULLIF(substring(D.raw_xml_flat FROM '<enderPrest>.*?<nro>(.*?)</nro>'), ''),
+            NULLIF(substring(D.raw_xml_flat FROM '<EnderecoPrestador>.*?<Numero>(.*?)</Numero>'), '')
+        ) AS fornecedor_numero_endereco_xml,
+        COALESCE(
+            NULLIF(substring(D.raw_xml_flat FROM '<enderPrest>.*?<xBairro>(.*?)</xBairro>'), ''),
+            NULLIF(substring(D.raw_xml_flat FROM '<EnderecoPrestador>.*?<Bairro>(.*?)</Bairro>'), '')
+        ) AS fornecedor_bairro_xml,
+        COALESCE(
+            NULLIF(substring(D.raw_xml_flat FROM '<enderPrest>.*?<CEP>([0-9]{8})</CEP>'), ''),
+            NULLIF(substring(D.raw_xml_flat FROM '<EnderecoPrestador>.*?<Cep>([0-9]{8})</Cep>'), '')
+        ) AS fornecedor_cep_xml,
+        COALESCE(
+            NULLIF(substring(D.raw_xml_flat FROM '<fone>(.*?)</fone>'), ''),
+            NULLIF(substring(D.raw_xml_flat FROM '<Telefone>(.*?)</Telefone>'), '')
+        ) AS fornecedor_fone_xml,
+        COALESCE(
+            NULLIF(substring(D.raw_xml_flat FROM '<IE>(.*?)</IE>'), ''),
+            NULLIF(substring(D.raw_xml_flat FROM '<InscricaoEstadual>(.*?)</InscricaoEstadual>'), '')
+        ) AS fornecedor_inscr_estadual_xml
     FROM DOCS D
     CROSS JOIN PARAMETROS P
-    LEFT JOIN FORNECEDORES_PORTAL FP
-      ON FP.documento_limpo = REGEXP_REPLACE(COALESCE(D.issuer_cnpj, ''), '[^0-9]', '', 'g')
 )
 SELECT
     B.id AS "ID",
@@ -134,7 +147,7 @@ SELECT
     B.access_key AS "CHAVE",
     B.order_number AS "PEDIDO",
 
-    B.id_fornecedor AS "ID_FORNECEDOR",
+    NULL::INTEGER AS "ID_FORNECEDOR",
     B.issuer_name AS "FORNECEDOR",
     B.issuer_cnpj AS "CNPJ_FORNECEDOR",
     B.issuer_cnpj_limpo AS "CNPJ_FORNECEDOR_LIMPO",
@@ -190,7 +203,7 @@ SELECT
     P.EMPRESA_DECIS AS "DECIS_EMPRESA",
     B.filial_decis AS "DECIS_FILIAL",
     P.ENTRADA_SAIDA_DECIS AS "DECIS_ENTRADA_SAIDA",
-    B.id_fornecedor AS "DECIS_PESSOA",
+    NULL::INTEGER AS "DECIS_PESSOA",
     B.number AS "DECIS_NOTA_FISCAL",
     COALESCE(NULLIF(B.service_series, ''), NULLIF(B.service_dps_series, ''), 'E') AS "DECIS_SERIE",
     NULLIF(REGEXP_REPLACE(COALESCE(B.cfop_calculado, ''), '[^0-9]', '', 'g'), '')::INTEGER AS "DECIS_MOVIMENTACAO_FISCAL",
@@ -212,7 +225,7 @@ SELECT
     P.EMPRESA_DECIS AS "VDNOTAC_EMPRESA",
     B.filial_decis AS "VDNOTAC_FILIAL",
     P.ENTRADA_SAIDA_DECIS AS "VDNOTAC_ENTRADA_SAIDA",
-    B.id_fornecedor AS "VDNOTAC_PESSOA",
+    NULL::INTEGER AS "VDNOTAC_PESSOA",
     B.number AS "VDNOTAC_NOTA_FISCAL",
     COALESCE(NULLIF(B.service_series, ''), NULLIF(B.service_dps_series, ''), 'E') AS "VDNOTAC_SERIE",
     NULLIF(REGEXP_REPLACE(COALESCE(B.cfop_calculado, ''), '[^0-9]', '', 'g'), '')::INTEGER AS "VDNOTAC_MOVIMENTACAO_FISCAL",
@@ -282,7 +295,7 @@ SELECT
     P.EMPRESA_DECIS AS "VDNOTAS_EMPRESA",
     B.filial_decis AS "VDNOTAS_FILIAL",
     P.ENTRADA_SAIDA_DECIS AS "VDNOTAS_ENTRADA_SAIDA",
-    B.id_fornecedor AS "VDNOTAS_PESSOA",
+    NULL::INTEGER AS "VDNOTAS_PESSOA",
     B.number AS "VDNOTAS_NOTA_FISCAL",
     COALESCE(NULLIF(B.service_series, ''), NULLIF(B.service_dps_series, ''), 'E') AS "VDNOTAS_SERIE",
     P.SEQUENCIA_SERVICO_DECIS AS "VDNOTAS_SEQUENCIA",
@@ -339,8 +352,8 @@ SELECT
     P.ALIQUOTA_CBS_INTEGRAL_DECIS AS "VDNOTAS_ALIQUOTACBSINTEGRAL",
     P.REDUCAO_ALIQUOTA_CBS_DECIS AS "VDNOTAS_REDUCAOALIQUOTACBS",
 
-    -- CGPESSOA - fornecedor/prestador, quando ainda nao existir no Decis.
-    B.id_fornecedor AS "CGPESSOA_PESSOA",
+    -- CGPESSOA - fornecedor/prestador. O codigo real sera buscado/cadastrado no Decis.
+    NULL::INTEGER AS "CGPESSOA_PESSOA",
     B.issuer_name AS "CGPESSOA_NOME",
     P.EMPRESA_DECIS AS "CGPESSOA_EMPRESA",
     P.PESSOA_ESTADO_DECIS AS "CGPESSOA_ESTADO",
@@ -355,6 +368,12 @@ SELECT
     COALESCE(B.issuer_city, B.service_city) AS "CGPESSOA_MUNICIPIO",
     B.issuer_uf AS "CGPESSOA_UF",
     NULLIF(B.codigo_municipio_fornecedor_xml, '')::INTEGER AS "CGPESSOA_CODIGOMUNICIPIO",
+    B.fornecedor_endereco_xml AS "CGPESSOA_ENDERECO",
+    B.fornecedor_numero_endereco_xml AS "CGPESSOA_NUMEROENDERECO",
+    B.fornecedor_bairro_xml AS "CGPESSOA_BAIRRO",
+    B.fornecedor_cep_xml AS "CGPESSOA_CEP",
+    B.fornecedor_fone_xml AS "CGPESSOA_FONE",
+    B.fornecedor_inscr_estadual_xml AS "CGPESSOA_INSCR_ESTADUAL",
 
     -- Conteudo sem coluna direta nas tabelas anexadas, mantido para auditoria/integracao complementar.
     B.raw_xml AS "DECIS_XML_CONTEUDO",
@@ -363,7 +382,7 @@ SELECT
     B.source AS "DECIS_ORIGEM_PORTAL",
     B.schema_name AS "DECIS_SCHEMA_PORTAL",
 
-    CASE WHEN B.id_fornecedor IS NULL THEN 'SIM' ELSE 'NAO' END AS "PRECISA_CADASTRAR_FORNECEDOR",
+    'DECIS' AS "ORIGEM_CADASTRO_FORNECEDOR",
     B.issuer_name AS "PESSOA_NOME",
     B.issuer_cnpj_limpo AS "PESSOA_CNPJ",
     B.issuer_city AS "PESSOA_CIDADE",
@@ -375,12 +394,10 @@ SELECT
 
     CONCAT_WS(
         ' | ',
-        CASE WHEN B.id_fornecedor IS NULL THEN 'Cadastrar fornecedor no Decis/CGPESSOA e preencher ID_FORNECEDOR/DECIS_PESSOA.' END,
         CASE WHEN B.filial_decis IS NULL THEN 'Preencher o parametro de filial Decis para este CNPJ da empresa antes de integrar.' END,
-        CASE WHEN B.id_fornecedor IS NULL THEN 'Depois de cadastrar o fornecedor, retornar o codigo para ID_FORNECEDOR/DECIS_PESSOA.' END,
         CASE WHEN B.codigo_municipio_fornecedor_xml IS NULL THEN 'Codigo municipio fornecedor nao localizado no XML; buscar no cadastro do fornecedor Decis.' END,
         CASE WHEN B.codigo_municipio_servico_xml IS NULL THEN 'Codigo municipio servico nao localizado no XML; conferir se Decis exige este campo.' END,
-        'Fixos principais vieram do no Configura Parametros NFSe Decis; filial vem do CASE por CNPJ da empresa.'
+        'Fornecedor sera localizado/cadastrado no Decis pela CGPESSOA/VDNOTAC, sem usar tabela fornecedores do Portal.'
     ) AS "OBS_DE_PARA"
 FROM BASE B
 CROSS JOIN PARAMETROS P
@@ -401,7 +418,6 @@ WHERE B.doc_type = 'NFSE'
       OR LTRIM(B.number::TEXT, '0') = LTRIM(P.NOTA_TESTE_DECIS, '0')
   )
 ORDER BY
-    B.id_fornecedor DESC NULLS FIRST,
     B.issuer_name ASC,
     B.issue_date ASC NULLS LAST,
     B.id DESC;
