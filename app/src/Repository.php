@@ -389,9 +389,11 @@ final class Repository
             if ((float)($row['total_value'] ?? 0) === 0.0 && (float)($existing['total_value'] ?? 0) > 0) {
                 $row['total_value'] = $existing['total_value'];
             }
+            $row['integrated'] = $this->normalizeBoolean($row['integrated'] ?? false)
+                || $this->normalizeBoolean($existing['integrated'] ?? false);
             $row['id'] = $existing['id'];
             $stmt = $this->pdo->prepare("UPDATE documents SET
-                company_id=:company_id, company_name=:company_name, company_cnpj=:company_cnpj, doc_type=:doc_type, model=:model, access_key=:access_key, referenced_nfe_keys=:referenced_nfe_keys, referenced_document_numbers=:referenced_document_numbers, number=:number, order_number=:order_number, posted_to_erp=:posted_to_erp, entrada_date_erp=:entrada_date_erp,
+                company_id=:company_id, company_name=:company_name, company_cnpj=:company_cnpj, doc_type=:doc_type, model=:model, access_key=:access_key, referenced_nfe_keys=:referenced_nfe_keys, referenced_document_numbers=:referenced_document_numbers, number=:number, order_number=:order_number, posted_to_erp=:posted_to_erp, integrated=:integrated, entrada_date_erp=:entrada_date_erp,
                 issuer_cnpj=:issuer_cnpj, issuer_name=:issuer_name, issuer_city=:issuer_city, issuer_uf=:issuer_uf, recipient_cnpj=:recipient_cnpj, recipient_name=:recipient_name,
                 service_series=:service_series, service_dps_number=:service_dps_number, service_dps_series=:service_dps_series, service_verification_code=:service_verification_code,
                 service_code=:service_code, service_description=:service_description, service_city=:service_city, service_uf=:service_uf,
@@ -400,7 +402,7 @@ final class Repository
                 source=:source, xml_path=:xml_path, storage_dir=:storage_dir, notes=:notes, fiscal_observation=:fiscal_observation, raw_xml=:raw_xml, digest=:digest,
                 schema_name=:schema_name, updated_at=:updated_at WHERE id=:id");
             $this->executeDocumentStatement($stmt, $row, [
-                'id','company_id','company_name','company_cnpj','doc_type','model','access_key','referenced_nfe_keys','referenced_document_numbers','number','order_number','posted_to_erp','entrada_date_erp',
+                'id','company_id','company_name','company_cnpj','doc_type','model','access_key','referenced_nfe_keys','referenced_document_numbers','number','order_number','posted_to_erp','integrated','entrada_date_erp',
                 'issuer_cnpj','issuer_name','issuer_city','issuer_uf','recipient_cnpj','recipient_name',
                 'service_series','service_dps_number','service_dps_series','service_verification_code','service_code','service_description','service_city','service_uf',
                 'iss_rate','iss_amount','pis_amount','cofins_amount','deductions_amount','discount_amount','net_amount',
@@ -410,14 +412,14 @@ final class Repository
             $id = (int)$existing['id'];
         } else {
             $stmt = $this->pdo->prepare("INSERT INTO documents
-                (company_id, company_name, company_cnpj, doc_type, model, access_key, referenced_nfe_keys, referenced_document_numbers, number, order_number, posted_to_erp, entrada_date_erp, issuer_cnpj, issuer_name, issuer_city, issuer_uf, recipient_cnpj, recipient_name,
+                (company_id, company_name, company_cnpj, doc_type, model, access_key, referenced_nfe_keys, referenced_document_numbers, number, order_number, posted_to_erp, integrated, entrada_date_erp, issuer_cnpj, issuer_name, issuer_city, issuer_uf, recipient_cnpj, recipient_name,
                 service_series, service_dps_number, service_dps_series, service_verification_code, service_code, service_description, service_city, service_uf, iss_rate, iss_amount, pis_amount, cofins_amount, deductions_amount, discount_amount, net_amount,
                 issue_date, total_value, status, manifestation_status, source, xml_path, storage_dir, notes, fiscal_observation, raw_xml, digest, schema_name, imported_at, updated_at)
-                VALUES (:company_id, :company_name, :company_cnpj, :doc_type, :model, :access_key, :referenced_nfe_keys, :referenced_document_numbers, :number, :order_number, :posted_to_erp, :entrada_date_erp, :issuer_cnpj, :issuer_name, :issuer_city, :issuer_uf, :recipient_cnpj, :recipient_name,
+                VALUES (:company_id, :company_name, :company_cnpj, :doc_type, :model, :access_key, :referenced_nfe_keys, :referenced_document_numbers, :number, :order_number, :posted_to_erp, :integrated, :entrada_date_erp, :issuer_cnpj, :issuer_name, :issuer_city, :issuer_uf, :recipient_cnpj, :recipient_name,
                 :service_series, :service_dps_number, :service_dps_series, :service_verification_code, :service_code, :service_description, :service_city, :service_uf, :iss_rate, :iss_amount, :pis_amount, :cofins_amount, :deductions_amount, :discount_amount, :net_amount,
                 :issue_date, :total_value, :status, :manifestation_status, :source, :xml_path, :storage_dir, :notes, :fiscal_observation, :raw_xml, :digest, :schema_name, :imported_at, :updated_at)");
             $this->executeDocumentStatement($stmt, $row, [
-                'company_id','company_name','company_cnpj','doc_type','model','access_key','referenced_nfe_keys','referenced_document_numbers','number','order_number','posted_to_erp','entrada_date_erp',
+                'company_id','company_name','company_cnpj','doc_type','model','access_key','referenced_nfe_keys','referenced_document_numbers','number','order_number','posted_to_erp','integrated','entrada_date_erp',
                 'issuer_cnpj','issuer_name','issuer_city','issuer_uf','recipient_cnpj','recipient_name',
                 'service_series','service_dps_number','service_dps_series','service_verification_code','service_code','service_description','service_city','service_uf',
                 'iss_rate','iss_amount','pis_amount','cofins_amount','deductions_amount','discount_amount','net_amount',
@@ -611,6 +613,7 @@ final class Repository
             'number' => null,
             'order_number' => null,
             'posted_to_erp' => false,
+            'integrated' => false,
             'accounting_posted' => 'N',
             'entrada_date_erp' => null,
             'issuer_cnpj' => null,
@@ -655,6 +658,7 @@ final class Repository
             }
         }
         $row['posted_to_erp'] = $this->normalizeBoolean($row['posted_to_erp'] ?? false);
+        $row['integrated'] = $this->normalizeBoolean($row['integrated'] ?? false);
         $row['referenced_nfe_keys'] = $this->normalizeReferencedKeys((string)($row['referenced_nfe_keys'] ?? ''), (string)($row['access_key'] ?? '')) ?: null;
         $row['referenced_document_numbers'] = $this->normalizeReferencedNumbers((string)($row['referenced_document_numbers'] ?? ''), (string)($row['access_key'] ?? '')) ?: null;
         if ($this->isBlankRecipientName((string)($row['recipient_name'] ?? ''))) {
@@ -711,7 +715,7 @@ final class Repository
         // impede que XMLs de coleta travem o ciclo por tipo invalido.
         foreach ($keys as $key) {
             $value = $row[$key] ?? null;
-            if ($key === 'posted_to_erp') {
+            if ($key === 'posted_to_erp' || $key === 'integrated') {
                 $stmt->bindValue(':' . $key, $this->normalizeBoolean($value), PDO::PARAM_BOOL);
                 continue;
             }
@@ -1754,7 +1758,7 @@ final class Repository
         $offset = max(0, ($page - 1) * $perPage);
         // O grid de Entradas nao precisa trazer o XML bruto de cada linha.
         // Evitar raw_xml na pagina melhora o tempo de resposta em bases grandes.
-        $sql = 'SELECT id, company_id, company_name, company_cnpj, doc_type, model, access_key, referenced_nfe_keys, referenced_document_numbers, number, order_number, posted_to_erp, accounting_posted, entrada_date_erp,
+        $sql = 'SELECT id, company_id, company_name, company_cnpj, doc_type, model, access_key, referenced_nfe_keys, referenced_document_numbers, number, order_number, posted_to_erp, integrated, accounting_posted, entrada_date_erp,
                 issuer_cnpj, issuer_name, issuer_city, issuer_uf, recipient_cnpj, recipient_name, service_city, service_uf, fiscal_observation, issue_date, total_value, status, manifestation_status,
                 source, xml_path, storage_dir, notes, NULL AS raw_xml, digest, schema_name, imported_at, updated_at,
                 COALESCE(NULLIF((SELECT di.cfop FROM document_items di WHERE di.document_id = documents.id AND COALESCE(di.cfop, \'\') <> \'\' ORDER BY di.item_number ASC, di.id ASC LIMIT 1), \'\'), ' . $this->nfseCfopFallbackSql('documents') . ') AS primary_cfop,
@@ -1904,6 +1908,10 @@ final class Repository
         if ((string)($filters['posted_to_erp'] ?? '') === '1') { $where[] = 'COALESCE(posted_to_erp, FALSE) = TRUE'; }
         if ((string)($filters['posted_to_erp'] ?? '') === '0') {
             $where[] = 'COALESCE(posted_to_erp, FALSE) = FALSE';
+        }
+        if ((string)($filters['integrated'] ?? '') === '1') { $where[] = 'COALESCE(integrated, FALSE) = TRUE'; }
+        if ((string)($filters['integrated'] ?? '') === '0') {
+            $where[] = 'COALESCE(integrated, FALSE) = FALSE';
         }
         if ((string)($filters['accounting_posted'] ?? '') === 'S') {
             $where[] = "COALESCE(accounting_posted, 'N') = 'S'";

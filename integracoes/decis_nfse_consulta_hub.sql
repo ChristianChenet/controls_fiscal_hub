@@ -1,42 +1,42 @@
 WITH PARAMETROS AS (
     SELECT
-        DATE '{{ $("Configura Parametros NFSe Decis").item.json.dataInicial }}' AS DATA_INICIAL,
-        DATE '{{ $("Configura Parametros NFSe Decis").item.json.dataFinal }}' AS DATA_FINAL,
+        DATE '{{ $node["Configura Parametros NFSe Decis"].json.dataInicial }}' AS DATA_INICIAL,
+        DATE '{{ $node["Configura Parametros NFSe Decis"].json.dataFinal }}' AS DATA_FINAL,
         -- Data de entrada parametrizada. Para esta importacao antiga usar 2026-08-30; na rotina normal altere apenas no no de parametros.
-        DATE '{{ $("Configura Parametros NFSe Decis").item.json.dataEntradaDecis }}' AS DATA_ENTRADA_DECIS,
-        '{{ String($("Configura Parametros NFSe Decis").item.json.notaTeste || "0").replaceAll("'", "''") }}'::TEXT AS NOTA_TESTE_DECIS,
-        {{ Number($("Configura Parametros NFSe Decis").item.json.usuarioDecis || 9980) }}::INTEGER AS USUARIO_DECIS,
-        {{ Number($("Configura Parametros NFSe Decis").item.json.empresaDecis || 1) }}::INTEGER AS EMPRESA_DECIS,
-        '{{ String($("Configura Parametros NFSe Decis").item.json.entradaSaida || "E").replaceAll("'", "''") }}'::TEXT AS ENTRADA_SAIDA_DECIS,
-        '{{ String($("Configura Parametros NFSe Decis").item.json.natureza || "Prestacao de Servico").replaceAll("'", "''") }}'::TEXT AS NATUREZA_DECIS,
-        '{{ String($("Configura Parametros NFSe Decis").item.json.modeloDocumento || "01").replaceAll("'", "''") }}'::TEXT AS MODELO_DOCUMENTO_DECIS,
-        {{ Number($("Configura Parametros NFSe Decis").item.json.servico || 0) }}::INTEGER AS SERVICO_DECIS,
-        {{ $("Configura Parametros NFSe Decis").item.json.codigoPadrao === null || $("Configura Parametros NFSe Decis").item.json.codigoPadrao === "" ? "NULL" : Number($("Configura Parametros NFSe Decis").item.json.codigoPadrao) }}::INTEGER AS CODIGO_PADRAO_DECIS,
-        {{ Number($("Configura Parametros NFSe Decis").item.json.contaContabil || 13073) }}::INTEGER AS CONTA_CONTABIL_DECIS,
-        {{ Number($("Configura Parametros NFSe Decis").item.json.sequenciaServico || 1) }}::INTEGER AS SEQUENCIA_SERVICO_DECIS,
-        {{ Number($("Configura Parametros NFSe Decis").item.json.tipoFrete || 1) }}::INTEGER AS TIPO_FRETE_DECIS,
-        {{ Number($("Configura Parametros NFSe Decis").item.json.formaPgto || 1) }}::INTEGER AS FORMA_PGTO_DECIS,
-        '{{ String($("Configura Parametros NFSe Decis").item.json.flagFinanceiro || "P").replaceAll("'", "''") }}'::TEXT AS FLAG_FINANCEIRO_DECIS,
-        '{{ String($("Configura Parametros NFSe Decis").item.json.flagCancelado || "N").replaceAll("'", "''") }}'::TEXT AS FLAG_CANCELADO_DECIS,
-        {{ Number($("Configura Parametros NFSe Decis").item.json.flagFreteIncluiValorTotal || 0) }}::INTEGER AS FLAG_FRETE_INCLUI_TOTAL_DECIS,
-        {{ Number($("Configura Parametros NFSe Decis").item.json.flagPerfilPessoa || 1) }}::INTEGER AS FLAG_PERFIL_PESSOA_DECIS,
-        {{ Number($("Configura Parametros NFSe Decis").item.json.flagIndicadorPresenca || 9) }}::INTEGER AS FLAG_INDICADOR_PRESENCA_DECIS,
-        {{ Number($("Configura Parametros NFSe Decis").item.json.tipoInscricaoEstadual || 9) }}::INTEGER AS TIPO_INSCRICAO_ESTADUAL_DECIS,
-        {{ Number($("Configura Parametros NFSe Decis").item.json.vendedorPadrao || -1) }}::INTEGER AS VENDEDOR_DECIS,
-        {{ Number($("Configura Parametros NFSe Decis").item.json.naturezaCredito || 3) }}::INTEGER AS NATUREZA_CREDITO_DECIS,
-        {{ Number($("Configura Parametros NFSe Decis").item.json.cstCofins || 74) }}::INTEGER AS CST_COFINS_DECIS,
-        {{ Number($("Configura Parametros NFSe Decis").item.json.cstPis || 74) }}::INTEGER AS CST_PIS_DECIS,
-        {{ Number($("Configura Parametros NFSe Decis").item.json.codigoPadrao2 || 410) }}::INTEGER AS CODIGO_PADRAO2_DECIS,
-        {{ Number($("Configura Parametros NFSe Decis").item.json.cstCbs || 410) }}::INTEGER AS CST_CBS_DECIS,
-        {{ Number($("Configura Parametros NFSe Decis").item.json.cstClassificacaoCbs || 410999) }}::INTEGER AS CST_CLASSIFICACAO_CBS_DECIS,
-        {{ Number($("Configura Parametros NFSe Decis").item.json.aliquotaIbsIntegral || 0.1) }}::NUMERIC AS ALIQUOTA_IBS_INTEGRAL_DECIS,
-        {{ Number($("Configura Parametros NFSe Decis").item.json.reducaoAliquotaIbs || 100) }}::NUMERIC AS REDUCAO_ALIQUOTA_IBS_DECIS,
-        {{ Number($("Configura Parametros NFSe Decis").item.json.aliquotaCbsIntegral || 0.9) }}::NUMERIC AS ALIQUOTA_CBS_INTEGRAL_DECIS,
-        {{ Number($("Configura Parametros NFSe Decis").item.json.reducaoAliquotaCbs || 100) }}::NUMERIC AS REDUCAO_ALIQUOTA_CBS_DECIS,
-        {{ Number($("Configura Parametros NFSe Decis").item.json.pessoaEstado || 1) }}::INTEGER AS PESSOA_ESTADO_DECIS,
-        {{ Number($("Configura Parametros NFSe Decis").item.json.pessoaFisicoJuridico || 2) }}::INTEGER AS PESSOA_FISICO_JURIDICO_DECIS,
-        {{ Number($("Configura Parametros NFSe Decis").item.json.pessoaFilial || 1) }}::INTEGER AS PESSOA_FILIAL_DECIS,
-        {{ Number($("Configura Parametros NFSe Decis").item.json.pessoaTipoEmpresa || 1) }}::INTEGER AS PESSOA_TIPO_EMPRESA_DECIS,
+        DATE '{{ $node["Configura Parametros NFSe Decis"].json.dataEntradaDecis }}' AS DATA_ENTRADA_DECIS,
+        '{{ String($node["Configura Parametros NFSe Decis"].json.notaTeste || "0").replaceAll("'", "''") }}'::TEXT AS NOTA_TESTE_DECIS,
+        {{ Number($node["Configura Parametros NFSe Decis"].json.usuarioDecis || 9980) }}::INTEGER AS USUARIO_DECIS,
+        {{ Number($node["Configura Parametros NFSe Decis"].json.empresaDecis || 1) }}::INTEGER AS EMPRESA_DECIS,
+        '{{ String($node["Configura Parametros NFSe Decis"].json.entradaSaida || "E").replaceAll("'", "''") }}'::TEXT AS ENTRADA_SAIDA_DECIS,
+        '{{ String($node["Configura Parametros NFSe Decis"].json.natureza || "Prestacao de Servico").replaceAll("'", "''") }}'::TEXT AS NATUREZA_DECIS,
+        '{{ String($node["Configura Parametros NFSe Decis"].json.modeloDocumento || "01").replaceAll("'", "''") }}'::TEXT AS MODELO_DOCUMENTO_DECIS,
+        {{ Number($node["Configura Parametros NFSe Decis"].json.servico || 0) }}::INTEGER AS SERVICO_DECIS,
+        {{ $node["Configura Parametros NFSe Decis"].json.codigoPadrao === null || $node["Configura Parametros NFSe Decis"].json.codigoPadrao === "" ? "NULL" : Number($node["Configura Parametros NFSe Decis"].json.codigoPadrao) }}::INTEGER AS CODIGO_PADRAO_DECIS,
+        {{ Number($node["Configura Parametros NFSe Decis"].json.contaContabil || 13073) }}::INTEGER AS CONTA_CONTABIL_DECIS,
+        {{ Number($node["Configura Parametros NFSe Decis"].json.sequenciaServico || 1) }}::INTEGER AS SEQUENCIA_SERVICO_DECIS,
+        {{ Number($node["Configura Parametros NFSe Decis"].json.tipoFrete || 1) }}::INTEGER AS TIPO_FRETE_DECIS,
+        {{ Number($node["Configura Parametros NFSe Decis"].json.formaPgto || 1) }}::INTEGER AS FORMA_PGTO_DECIS,
+        '{{ String($node["Configura Parametros NFSe Decis"].json.flagFinanceiro || "P").replaceAll("'", "''") }}'::TEXT AS FLAG_FINANCEIRO_DECIS,
+        '{{ String($node["Configura Parametros NFSe Decis"].json.flagCancelado || "N").replaceAll("'", "''") }}'::TEXT AS FLAG_CANCELADO_DECIS,
+        {{ Number($node["Configura Parametros NFSe Decis"].json.flagFreteIncluiValorTotal || 0) }}::INTEGER AS FLAG_FRETE_INCLUI_TOTAL_DECIS,
+        {{ Number($node["Configura Parametros NFSe Decis"].json.flagPerfilPessoa || 1) }}::INTEGER AS FLAG_PERFIL_PESSOA_DECIS,
+        {{ Number($node["Configura Parametros NFSe Decis"].json.flagIndicadorPresenca || 9) }}::INTEGER AS FLAG_INDICADOR_PRESENCA_DECIS,
+        {{ Number($node["Configura Parametros NFSe Decis"].json.tipoInscricaoEstadual || 9) }}::INTEGER AS TIPO_INSCRICAO_ESTADUAL_DECIS,
+        {{ Number($node["Configura Parametros NFSe Decis"].json.vendedorPadrao || -1) }}::INTEGER AS VENDEDOR_DECIS,
+        {{ Number($node["Configura Parametros NFSe Decis"].json.naturezaCredito || 3) }}::INTEGER AS NATUREZA_CREDITO_DECIS,
+        {{ Number($node["Configura Parametros NFSe Decis"].json.cstCofins || 74) }}::INTEGER AS CST_COFINS_DECIS,
+        {{ Number($node["Configura Parametros NFSe Decis"].json.cstPis || 74) }}::INTEGER AS CST_PIS_DECIS,
+        {{ Number($node["Configura Parametros NFSe Decis"].json.codigoPadrao2 || 410) }}::INTEGER AS CODIGO_PADRAO2_DECIS,
+        {{ Number($node["Configura Parametros NFSe Decis"].json.cstCbs || 410) }}::INTEGER AS CST_CBS_DECIS,
+        {{ Number($node["Configura Parametros NFSe Decis"].json.cstClassificacaoCbs || 410999) }}::INTEGER AS CST_CLASSIFICACAO_CBS_DECIS,
+        {{ Number($node["Configura Parametros NFSe Decis"].json.aliquotaIbsIntegral || 0.1) }}::NUMERIC AS ALIQUOTA_IBS_INTEGRAL_DECIS,
+        {{ Number($node["Configura Parametros NFSe Decis"].json.reducaoAliquotaIbs || 100) }}::NUMERIC AS REDUCAO_ALIQUOTA_IBS_DECIS,
+        {{ Number($node["Configura Parametros NFSe Decis"].json.aliquotaCbsIntegral || 0.9) }}::NUMERIC AS ALIQUOTA_CBS_INTEGRAL_DECIS,
+        {{ Number($node["Configura Parametros NFSe Decis"].json.reducaoAliquotaCbs || 100) }}::NUMERIC AS REDUCAO_ALIQUOTA_CBS_DECIS,
+        {{ Number($node["Configura Parametros NFSe Decis"].json.pessoaEstado || 1) }}::INTEGER AS PESSOA_ESTADO_DECIS,
+        {{ Number($node["Configura Parametros NFSe Decis"].json.pessoaFisicoJuridico || 2) }}::INTEGER AS PESSOA_FISICO_JURIDICO_DECIS,
+        {{ Number($node["Configura Parametros NFSe Decis"].json.pessoaFilial || 1) }}::INTEGER AS PESSOA_FILIAL_DECIS,
+        {{ Number($node["Configura Parametros NFSe Decis"].json.pessoaTipoEmpresa || 1) }}::INTEGER AS PESSOA_TIPO_EMPRESA_DECIS,
         ARRAY[
             '05102155000586',
             '05102155000233',
@@ -148,6 +148,7 @@ SELECT
     B.issue_date AS "DATA_EMISSAO",
     B.total_value AS "VALOR",
     CASE WHEN COALESCE(B.posted_to_erp, FALSE) THEN 'SIM' ELSE 'NAO' END AS "LANCADA_ERP",
+    CASE WHEN COALESCE(B.integrated, FALSE) THEN 'SIM' ELSE 'NAO' END AS "INTEGRADO",
     B.entrada_date_erp AS "DATA_ENTRADA_ERP",
     CASE WHEN COALESCE(B.accounting_posted, 'N') = 'S' THEN 'SIM' ELSE 'NAO' END AS "LANCADA_CONTABILIDADE",
 
@@ -386,7 +387,10 @@ CROSS JOIN PARAMETROS P
 WHERE B.doc_type = 'NFSE'
   AND B.status <> 'evento_informativo'
   AND B.status <> 'cancelado'
-  AND COALESCE(B.posted_to_erp, FALSE) = FALSE
+  AND (
+      COALESCE(B.posted_to_erp, FALSE) = FALSE
+      OR COALESCE(B.integrated, FALSE) = TRUE
+  )
   AND COALESCE(B.accounting_posted, 'N') <> 'S'
   AND B.issue_date >= P.DATA_INICIAL
   AND B.issue_date < (P.DATA_FINAL + INTERVAL '1 day')
@@ -401,3 +405,4 @@ ORDER BY
     B.issuer_name ASC,
     B.issue_date ASC NULLS LAST,
     B.id DESC;
+

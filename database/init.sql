@@ -64,8 +64,11 @@ CREATE INDEX IF NOT EXISTS idx_documents_recipient_cnpj ON documents(recipient_c
 CREATE INDEX IF NOT EXISTS idx_documents_issuer_cnpj ON documents(issuer_cnpj);
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS referenced_nfe_keys TEXT NULL;
 ALTER TABLE documents ADD COLUMN IF NOT EXISTS accounting_posted CHAR(1) DEFAULT 'N';
+ALTER TABLE documents ADD COLUMN IF NOT EXISTS integrated BOOLEAN DEFAULT FALSE;
 UPDATE documents SET accounting_posted = 'N' WHERE accounting_posted IS NULL OR accounting_posted = '';
+UPDATE documents SET integrated = FALSE WHERE integrated IS NULL;
 CREATE INDEX IF NOT EXISTS idx_documents_accounting_posted ON documents(accounting_posted);
+CREATE INDEX IF NOT EXISTS idx_documents_integrated ON documents(integrated);
 
 CREATE TABLE IF NOT EXISTS accounting_imports (
     id SERIAL PRIMARY KEY,

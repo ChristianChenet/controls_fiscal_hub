@@ -1,6 +1,7 @@
 UPDATE public.documents
 SET
   posted_to_erp = TRUE,
+  integrated = TRUE,
   entrada_date_erp = COALESCE(
     {{ $json.DECIS_DATA_ENTRADA ? "'" + $json.DECIS_DATA_ENTRADA + "'::date" : "NULL" }},
     {{ $json.DATA_ENTRADA_ERP ? "'" + $json.DATA_ENTRADA_ERP + "'::date" : "NULL" }},
@@ -42,4 +43,5 @@ RETURNING
   issue_date,
   issuer_cnpj,
   posted_to_erp,
+  integrated,
   entrada_date_erp;

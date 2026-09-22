@@ -37,7 +37,7 @@ if ($selectedStatus !== '' && $selectedStatus !== 'not_cancelled' && !in_array($
 }
 $filteredTotal = (int)($totals['total'] ?? 0);
 $documentFilterKeys = [
-    'company_id','doc_type','status','manifestation_status','posted_to_erp','accounting_posted','supplier_group_id','without_referenced_nfe','cte_taker_only','ignore_cfops','entry_only','date_start','date_end',
+    'company_id','doc_type','status','manifestation_status','posted_to_erp','integrated','accounting_posted','supplier_group_id','without_referenced_nfe','cte_taker_only','ignore_cfops','entry_only','date_start','date_end',
     'company_q','number_q','issuer_q','recipient_q','access_key_q','referenced_nfe_q','referenced_number_q','product_q','cfop_q','source_q','q','sort_by','sort_dir',
 ];
 $canShowDocumentMirror = static fn(array $doc): bool => in_array(strtoupper((string)($doc['doc_type'] ?? '')), ['NFE', 'CTE', 'NFSE'], true)
@@ -121,6 +121,13 @@ $timelinePostedDiffClass = static function (array $cell, string $mode, string $p
                 <option value="0" <?= (($filters['posted_to_erp'] ?? '') === '0') ? 'selected' : '' ?>>Não</option>
             </select>
         </label>
+        <label>Integrado
+            <select name="integrated">
+                <option value="">Todas</option>
+                <option value="1" <?= (($filters['integrated'] ?? '') === '1') ? 'selected' : '' ?>>Sim</option>
+                <option value="0" <?= (($filters['integrated'] ?? '') === '0') ? 'selected' : '' ?>>Não</option>
+            </select>
+        </label>
         <label>Lançada contabilidade
             <select name="accounting_posted">
                 <option value="">Todas</option>
@@ -191,6 +198,7 @@ $timelinePostedDiffClass = static function (array $cell, string $mode, string $p
             'nfe_vinculada' => 'NF-e vinculada',
             'numero_referenciado' => 'Numero referenciado',
             'erp' => 'Nota lançada no ERP',
+            'integrado' => 'Integrado',
             'entrada_erp' => 'Entrada ERP',
             'contabilidade' => 'Lançada contabilidade',
             'eventos_informativos' => 'Eventos informativos',
@@ -427,6 +435,7 @@ $timelinePostedDiffClass = static function (array $cell, string $mode, string $p
                     <th class="resizable" data-column="nfe_vinculada">NF-e vinculada</th>
                     <th class="resizable" data-column="numero_referenciado">Numero referenciado</th>
                     <th class="resizable" data-column="erp">Nota lançada no ERP</th>
+                    <th class="resizable" data-column="integrado">Integrado</th>
                     <th class="resizable" data-column="entrada_erp">Entrada ERP</th>
                     <th class="resizable" data-column="contabilidade">Lançada contabilidade</th>
                     <th class="resizable" data-column="eventos_informativos">Eventos informativos</th>
@@ -452,6 +461,13 @@ $timelinePostedDiffClass = static function (array $cell, string $mode, string $p
                     <th data-column="nfe_vinculada"><input form="column-filter-form" name="referenced_nfe_q" value="<?= h((string)($filters['referenced_nfe_q'] ?? '')) ?>" placeholder="Filtrar"></th>
                     <th data-column="numero_referenciado"><input form="column-filter-form" name="referenced_number_q" value="<?= h((string)($filters['referenced_number_q'] ?? '')) ?>" placeholder="Filtrar"></th>
                     <th data-column="erp"></th>
+                    <th data-column="integrado">
+                        <select form="column-filter-form" name="integrated">
+                            <option value="">Todas</option>
+                            <option value="1" <?= (($filters['integrated'] ?? '') === '1') ? 'selected' : '' ?>>Sim</option>
+                            <option value="0" <?= (($filters['integrated'] ?? '') === '0') ? 'selected' : '' ?>>Não</option>
+                        </select>
+                    </th>
                     <th data-column="entrada_erp"></th>
                     <th data-column="contabilidade">
                         <select form="column-filter-form" name="accounting_posted">
@@ -498,6 +514,7 @@ $timelinePostedDiffClass = static function (array $cell, string $mode, string $p
                     <td data-column="nfe_vinculada"><small><?= h((string)($doc['referenced_nfe_keys'] ?? '')) ?></small></td>
                     <td data-column="numero_referenciado"><small><?= h((string)($doc['referenced_document_numbers'] ?? '')) ?></small></td>
                     <td data-column="erp"><?= !empty($doc['posted_to_erp']) ? 'Sim' : 'Não' ?></td>
+                    <td data-column="integrado"><?= !empty($doc['integrated']) ? 'Sim' : 'Não' ?></td>
                     <td data-column="entrada_erp"><?= h(format_date_short($doc['entrada_date_erp'] ?? null)) ?></td>
                     <td data-column="contabilidade" class="accounting-status-cell">
                         <?php if (($doc['accounting_posted'] ?? 'N') === 'S'): ?>
@@ -989,6 +1006,7 @@ $timelinePostedDiffClass = static function (array $cell, string $mode, string $p
     <input type="hidden" name="doc_type" value="<?= h((string)($filters['doc_type'] ?? '')) ?>">
     <input type="hidden" name="status" value="<?= h((string)($filters['status'] ?? '')) ?>">
     <input type="hidden" name="posted_to_erp" value="<?= h((string)($filters['posted_to_erp'] ?? '')) ?>">
+    <input type="hidden" name="integrated" value="<?= h((string)($filters['integrated'] ?? '')) ?>">
     <input type="hidden" name="without_referenced_nfe" value="<?= h((string)($filters['without_referenced_nfe'] ?? '')) ?>">
     <input type="hidden" name="cte_taker_only" value="<?= h((string)($filters['cte_taker_only'] ?? '')) ?>">
     <input type="hidden" name="ignore_cfops" value="<?= h((string)($filters['ignore_cfops'] ?? '1')) ?>">
@@ -2127,7 +2145,7 @@ $timelinePostedDiffClass = static function (array $cell, string $mode, string $p
     function syncGridFilters() {
         var gridForm = document.getElementById('column-filter-form');
         if (!gridForm) return;
-        var fields = ['company_q', 'number_q', 'issuer_q', 'recipient_q', 'access_key_q', 'referenced_nfe_q', 'referenced_number_q', 'manifestation_status', 'source_q', 'accounting_posted', 'supplier_group_id'];
+        var fields = ['company_q', 'number_q', 'issuer_q', 'recipient_q', 'access_key_q', 'referenced_nfe_q', 'referenced_number_q', 'manifestation_status', 'source_q', 'integrated', 'accounting_posted', 'supplier_group_id'];
         fields.forEach(function (name) {
             var source = gridForm.querySelector('[name="' + name + '"]');
             if (!source || source.value === '') return;

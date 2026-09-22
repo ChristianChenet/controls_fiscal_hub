@@ -58,6 +58,7 @@ final class Database
             $this->ensureSqliteColumn('users', 'can_view_cost', 'INTEGER DEFAULT 0');
             $this->ensureSqliteColumn('documents', 'referenced_document_numbers', 'TEXT NULL');
             $this->ensureSqliteColumn('documents', 'accounting_posted', "TEXT DEFAULT 'N'");
+            $this->ensureSqliteColumn('documents', 'integrated', 'INTEGER DEFAULT 0');
             $this->ensureSqliteColumn('documents', 'entrada_date_erp', 'TEXT NULL');
             $this->ensureSqliteColumn('documents', 'issuer_city', 'TEXT NULL');
             $this->ensureSqliteColumn('documents', 'issuer_uf', 'TEXT NULL');
@@ -82,6 +83,7 @@ final class Database
         }
 
         $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS accounting_posted CHAR(1) DEFAULT 'N'");
+        $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS integrated BOOLEAN DEFAULT FALSE");
         $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS entrada_date_erp DATE NULL");
         $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS issuer_city TEXT NULL");
         $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS issuer_uf VARCHAR(2) NULL");
@@ -102,7 +104,9 @@ final class Database
         $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS net_amount NUMERIC(15,2) DEFAULT 0");
         $this->pdo()->exec("ALTER TABLE documents ADD COLUMN IF NOT EXISTS fiscal_observation TEXT NULL");
         $this->pdo()->exec("UPDATE documents SET accounting_posted = 'N' WHERE accounting_posted IS NULL OR accounting_posted = ''");
+        $this->pdo()->exec("UPDATE documents SET integrated = FALSE WHERE integrated IS NULL");
         $this->pdo()->exec("CREATE INDEX IF NOT EXISTS idx_documents_accounting_posted ON documents(accounting_posted)");
+        $this->pdo()->exec("CREATE INDEX IF NOT EXISTS idx_documents_integrated ON documents(integrated)");
     }
 
     private function ensureSqliteColumn(string $table, string $column, string $definition): void
