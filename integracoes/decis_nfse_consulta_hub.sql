@@ -2,7 +2,7 @@ WITH PARAMETROS AS (
     SELECT
         DATE '2021-08-01' AS DATA_INICIAL,
         DATE '2026-07-31' AS DATA_FINAL,
-        DATE '2026-08-30' AS DATA_ENTRADA_DECIS,
+        DATE '2026-08-28' AS DATA_ENTRADA_DECIS,
         9980::INTEGER AS USUARIO_DECIS,
         ARRAY[
             '05102155000586',
@@ -52,7 +52,19 @@ BASE AS (
                     END
                 ELSE ''
             END
-        ) AS cfop_calculado
+        ) AS cfop_calculado,
+        COALESCE(
+            NULLIF(substring(COALESCE(D.raw_xml, '') FROM '(?s)<emit>.*?<cMun>([0-9]{7})</cMun>'), ''),
+            NULLIF(substring(COALESCE(D.raw_xml, '') FROM '(?s)<EnderecoPrestador>.*?<Cidade>([0-9]{7})</Cidade>'), '')
+        ) AS codigo_municipio_fornecedor_xml,
+        COALESCE(
+            CASE
+                WHEN COALESCE(D.service_city, '') ~ '^[0-9]{7}$' THEN D.service_city
+                ELSE NULL
+            END,
+            NULLIF(substring(COALESCE(D.raw_xml, '') FROM '(?s)<cLocIncid>([0-9]{7})</cLocIncid>'), ''),
+            NULLIF(substring(COALESCE(D.raw_xml, '') FROM '(?s)<CodigoMunicipioOcorrencia>([0-9]{7})</CodigoMunicipioOcorrencia>'), '')
+        ) AS codigo_municipio_servico_xml
     FROM documents D
 )
 SELECT
@@ -131,19 +143,20 @@ SELECT
     'Prestacao de Servico' AS "DECIS_NATUREZA",
     '01' AS "DECIS_MODELO_DOCUMENTO",
     COALESCE(NULLIF(B.service_description, ''), NULLIF(B.fiscal_observation, ''), 'SERVICO NFS-E') AS "DECIS_DESCRICAO_SERVICO",
-    NULL::INTEGER AS "DECIS_SERVICO",
+    0 AS "DECIS_SERVICO",
     NULL::INTEGER AS "DECIS_CODIGO_PADRAO",
-    NULL::INTEGER AS "DECIS_CONTA_CONTABIL",
-    NULL::INTEGER AS "DECIS_CODIGO_MUNICIPIO_FORNECEDOR",
-    NULL::INTEGER AS "DECIS_CODIGO_MUNICIPIO_SERVICO",
+    13073 AS "DECIS_CONTA_CONTABIL",
+    NULLIF(B.codigo_municipio_fornecedor_xml, '')::INTEGER AS "DECIS_CODIGO_MUNICIPIO_FORNECEDOR",
+    NULLIF(B.codigo_municipio_servico_xml, '')::INTEGER AS "DECIS_CODIGO_MUNICIPIO_SERVICO",
     1 AS "DECIS_SEQUENCIA_SERVICO",
+    B.fiscal_observation AS "DECIS_OBSERVACAO",
 
     CASE WHEN B.id_fornecedor IS NULL THEN 'SIM' ELSE 'NAO' END AS "PRECISA_CADASTRAR_FORNECEDOR",
     B.issuer_name AS "PESSOA_NOME",
     B.issuer_cnpj_limpo AS "PESSOA_CNPJ",
     B.issuer_city AS "PESSOA_CIDADE",
     B.issuer_uf AS "PESSOA_UF",
-    NULL::INTEGER AS "PESSOA_CODIGO_MUNICIPIO",
+    NULLIF(B.codigo_municipio_fornecedor_xml, '')::INTEGER AS "PESSOA_CODIGO_MUNICIPIO",
     2 AS "PESSOA_FISICO_JURIDICO",
     1 AS "PESSOA_ESTADO",
     1 AS "PESSOA_FILIAL",
@@ -156,8 +169,10 @@ SELECT
         CASE WHEN B.company_cnpj_limpo = '05102155000403' THEN 'Informar DECIS_FILIAL para FOZ.' END,
         CASE WHEN B.company_cnpj_limpo = '05102155000586' THEN 'Informar DECIS_FILIAL para BATAGUASSU.' END,
         CASE WHEN B.company_cnpj_limpo = '05102155000667' THEN 'Informar DECIS_FILIAL para CASCAVEL.' END,
-        'Preencher DECIS_SERVICO/CODIGO_PADRAO/CONTA_CONTABIL se o layout Decis exigir por fornecedor ou tipo de servico.',
-        'Preencher codigos de municipio Decis se forem obrigatorios.'
+        CASE WHEN B.id_fornecedor IS NULL THEN 'Depois de cadastrar o fornecedor, retornar o codigo para ID_FORNECEDOR/DECIS_PESSOA.' END,
+        CASE WHEN B.codigo_municipio_fornecedor_xml IS NULL THEN 'Codigo municipio fornecedor nao localizado no XML; buscar no cadastro do fornecedor Decis.' END,
+        CASE WHEN B.codigo_municipio_servico_xml IS NULL THEN 'Codigo municipio servico nao localizado no XML; conferir se Decis exige este campo.' END,
+        'DECIS_SERVICO=0, DECIS_CONTA_CONTABIL=13073 e DECIS_CODIGO_PADRAO=NULL conforme modelo recebido; ajustar se houver regra especifica por fornecedor.'
     ) AS "OBS_DE_PARA"
 FROM BASE B
 CROSS JOIN PARAMETROS P
