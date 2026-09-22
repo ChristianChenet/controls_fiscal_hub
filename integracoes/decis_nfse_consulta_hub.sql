@@ -1,5 +1,7 @@
 WITH PARAMETROS AS (
     SELECT
+        DATE '{{ $("Configura Parametros NFSe Decis").item.json.dataInicial }}' AS DATA_INICIAL,
+        DATE '{{ $("Configura Parametros NFSe Decis").item.json.dataFinal }}' AS DATA_FINAL,
         -- Data de entrada parametrizada. Para esta importacao antiga usar 2026-08-28; na rotina normal altere apenas no no de parametros.
         DATE '{{ $("Configura Parametros NFSe Decis").item.json.dataEntradaDecis }}' AS DATA_ENTRADA_DECIS,
         {{ Number($("Configura Parametros NFSe Decis").item.json.usuarioDecis || 9980) }}::INTEGER AS USUARIO_DECIS,
@@ -385,6 +387,8 @@ WHERE B.doc_type = 'NFSE'
   AND B.status <> 'cancelado'
   AND COALESCE(B.posted_to_erp, FALSE) = FALSE
   AND COALESCE(B.accounting_posted, 'N') <> 'S'
+  AND B.issue_date >= P.DATA_INICIAL
+  AND B.issue_date < (P.DATA_FINAL + INTERVAL '1 day')
   AND B.company_cnpj_limpo = ANY (P.CNPJS_EMPRESAS)
   AND B.company_cnpj_limpo = B.recipient_cnpj_limpo
   --AND B.number = '827256'
