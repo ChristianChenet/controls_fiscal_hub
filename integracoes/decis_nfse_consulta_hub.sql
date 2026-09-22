@@ -2,8 +2,9 @@ WITH PARAMETROS AS (
     SELECT
         DATE '{{ $("Configura Parametros NFSe Decis").item.json.dataInicial }}' AS DATA_INICIAL,
         DATE '{{ $("Configura Parametros NFSe Decis").item.json.dataFinal }}' AS DATA_FINAL,
-        -- Data de entrada parametrizada. Para esta importacao antiga usar 2026-08-28; na rotina normal altere apenas no no de parametros.
+        -- Data de entrada parametrizada. Para esta importacao antiga usar 2026-08-30; na rotina normal altere apenas no no de parametros.
         DATE '{{ $("Configura Parametros NFSe Decis").item.json.dataEntradaDecis }}' AS DATA_ENTRADA_DECIS,
+        '{{ String($("Configura Parametros NFSe Decis").item.json.notaTeste || "0").replaceAll("'", "''") }}'::TEXT AS NOTA_TESTE_DECIS,
         {{ Number($("Configura Parametros NFSe Decis").item.json.usuarioDecis || 9980) }}::INTEGER AS USUARIO_DECIS,
         {{ Number($("Configura Parametros NFSe Decis").item.json.empresaDecis || 1) }}::INTEGER AS EMPRESA_DECIS,
         '{{ String($("Configura Parametros NFSe Decis").item.json.entradaSaida || "E").replaceAll("'", "''") }}'::TEXT AS ENTRADA_SAIDA_DECIS,
@@ -391,7 +392,10 @@ WHERE B.doc_type = 'NFSE'
   AND B.issue_date < (P.DATA_FINAL + INTERVAL '1 day')
   AND B.company_cnpj_limpo = ANY (P.CNPJS_EMPRESAS)
   AND B.company_cnpj_limpo = B.recipient_cnpj_limpo
-  --AND B.number = '827256'
+  AND (
+      P.NOTA_TESTE_DECIS IN ('', '0')
+      OR LTRIM(B.number::TEXT, '0') = LTRIM(P.NOTA_TESTE_DECIS, '0')
+  )
 ORDER BY
     B.id_fornecedor DESC NULLS FIRST,
     B.issuer_name ASC,
