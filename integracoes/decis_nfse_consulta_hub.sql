@@ -48,13 +48,21 @@ DOCS AS (
         REGEXP_REPLACE(COALESCE(D.raw_xml, ''), '\s+', ' ', 'g') AS raw_xml_flat
     FROM documents D
 ),
+FORNECEDORES_PORTAL AS (
+    SELECT
+        REGEXP_REPLACE(COALESCE(F.documento, ''), '[^0-9]', '', 'g') AS documento_limpo,
+        MAX(F.id)::INTEGER AS id_fornecedor
+    FROM fornecedores F
+    WHERE REGEXP_REPLACE(COALESCE(F.documento, ''), '[^0-9]', '', 'g') <> ''
+    GROUP BY REGEXP_REPLACE(COALESCE(F.documento, ''), '[^0-9]', '', 'g')
+),
 BASE AS (
     SELECT
         D.*,
         REGEXP_REPLACE(COALESCE(D.company_cnpj, ''), '[^0-9]', '', 'g') AS company_cnpj_limpo,
         REGEXP_REPLACE(COALESCE(D.issuer_cnpj, ''), '[^0-9]', '', 'g') AS issuer_cnpj_limpo,
         REGEXP_REPLACE(COALESCE(D.recipient_cnpj, ''), '[^0-9]', '', 'g') AS recipient_cnpj_limpo,
-        NULL::INTEGER AS id_fornecedor,
+        FP.id_fornecedor,
         CASE REGEXP_REPLACE(COALESCE(D.company_cnpj, ''), '[^0-9]', '', 'g')
             WHEN '05102155000152' THEN 1
             WHEN '05102155000233' THEN 5
@@ -109,6 +117,8 @@ BASE AS (
         ) AS codigo_municipio_servico_xml
     FROM DOCS D
     CROSS JOIN PARAMETROS P
+    LEFT JOIN FORNECEDORES_PORTAL FP
+      ON FP.documento_limpo = REGEXP_REPLACE(COALESCE(D.issuer_cnpj, ''), '[^0-9]', '', 'g')
 )
 SELECT
     B.id AS "ID",
