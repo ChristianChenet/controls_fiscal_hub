@@ -1530,7 +1530,7 @@ final class Repository
         $this->ensureDocumentItemsForFilters($filters);
         [$where, $params] = $this->documentWhere($filters);
         $sql = 'SELECT documents.*,
-                (SELECT di.cfop FROM document_items di WHERE di.document_id = documents.id AND COALESCE(di.cfop, \'\') <> \'\' ORDER BY di.item_number ASC, di.id ASC LIMIT 1) AS primary_cfop,
+                COALESCE(NULLIF((SELECT di.cfop FROM document_items di WHERE di.document_id = documents.id AND COALESCE(di.cfop, \'\') <> \'\' ORDER BY di.item_number ASC, di.id ASC LIMIT 1), \'\'), ' . $this->nfseCfopFallbackSql('documents') . ') AS primary_cfop,
                 ' . $this->supplierGroupNameSql('documents') . ' AS supplier_group FROM documents';
         if ($where) $sql .= ' WHERE ' . implode(' AND ', $where);
         $sql .= ' ' . $this->documentOrderBy($filters);
@@ -1608,7 +1608,16 @@ final class Repository
             '05102155000586' => 'MS',
             '05102155000667' => 'PR',
         ];
-        return $known[$cnpj] ?? '';
+        if (isset($known[$cnpj])) {
+            return $known[$cnpj];
+        }
+
+        $xml = (string)($doc['raw_xml'] ?? '');
+        $path = (string)($doc['xml_path'] ?? '');
+        if (trim($xml) === '' && $path !== '' && is_file($path)) {
+            $xml = (string)file_get_contents($path);
+        }
+        return $this->nfseCompanyUfFromXml($xml, $cnpj);
     }
 
     private function nfseCfopForDocument(array $doc): string
@@ -1622,6 +1631,95 @@ final class Repository
             return '';
         }
         return $issuerUf === $companyUf ? '1933' : '2933';
+    }
+
+    private function nfseCompanyUfFromXml(string $xml, string $companyCnpj): string
+    {
+        if (trim($xml) === '') {
+            return '';
+        }
+
+        $previous = libxml_use_internal_errors(true);
+        $dom = new \DOMDocument();
+        $loaded = $dom->loadXML($xml, LIBXML_NONET | LIBXML_NOBLANKS);
+        libxml_clear_errors();
+        libxml_use_internal_errors($previous);
+        if (!$loaded) {
+            return '';
+        }
+
+        $xpath = new \DOMXPath($dom);
+        $nodes = $xpath->query('//*[local-name()="toma" or local-name()="tomador" or local-name()="Tomador" or local-name()="TomadorServico" or local-name()="Destinatario"]');
+        if (!$nodes) {
+            return '';
+        }
+
+        foreach ($nodes as $node) {
+            $cnpjNodes = $xpath->query('.//*[local-name()="CNPJ" or local-name()="Cpf" or local-name()="CPF" or local-name()="Cnpj"]', $node);
+            $matchesCompany = $companyCnpj === '';
+            if ($cnpjNodes) {
+                foreach ($cnpjNodes as $cnpjNode) {
+                    if ($this->digits((string)$cnpjNode->textContent) === $companyCnpj) {
+                        $matchesCompany = true;
+                        break;
+                    }
+                }
+            }
+            if (!$matchesCompany) {
+                continue;
+            }
+
+            $ufNodes = $xpath->query('.//*[local-name()="UF" or local-name()="Uf" or local-name()="uf"]', $node);
+            if ($ufNodes) {
+                foreach ($ufNodes as $ufNode) {
+                    $uf = strtoupper(trim((string)$ufNode->textContent));
+                    if (preg_match('/^[A-Z]{2}$/', $uf)) {
+                        return $uf;
+                    }
+                }
+            }
+
+            $cityNodes = $xpath->query('.//*[local-name()="cMun" or local-name()="CodigoMunicipio" or local-name()="codigoMunicipio"]', $node);
+            if ($cityNodes) {
+                foreach ($cityNodes as $cityNode) {
+                    $uf = $this->ufFromIbgeCode((string)$cityNode->textContent);
+                    if ($uf !== '') {
+                        return $uf;
+                    }
+                }
+            }
+        }
+
+        return '';
+    }
+
+    private function ufFromIbgeCode(string $code): string
+    {
+        $prefix = substr($this->digits($code), 0, 2);
+        $map = [
+            '11' => 'RO', '12' => 'AC', '13' => 'AM', '14' => 'RR', '15' => 'PA', '16' => 'AP',
+            '17' => 'TO', '21' => 'MA', '22' => 'PI', '23' => 'CE', '24' => 'RN', '25' => 'PB',
+            '26' => 'PE', '27' => 'AL', '28' => 'SE', '29' => 'BA', '31' => 'MG', '32' => 'ES',
+            '33' => 'RJ', '35' => 'SP', '41' => 'PR', '42' => 'SC', '43' => 'RS', '50' => 'MS',
+            '51' => 'MT', '52' => 'GO', '53' => 'DF',
+        ];
+        return $map[$prefix] ?? '';
+    }
+
+    private function nfseCfopFallbackSql(string $documentAlias): string
+    {
+        $issuerUf = "UPPER(TRIM(COALESCE(NULLIF({$documentAlias}.issuer_uf, ''), NULLIF({$documentAlias}.service_uf, ''), '')))";
+        $companyDigits = $this->digitsOnlySql($documentAlias . '.company_cnpj');
+        $companyUf = "CASE
+            WHEN {$companyDigits} IN ('05102155000152', '05102155000233', '05102155000403', '05102155000667') THEN 'PR'
+            WHEN {$companyDigits} = '05102155000586' THEN 'MS'
+            ELSE ''
+        END";
+        return "CASE
+            WHEN {$documentAlias}.doc_type = 'NFSE' AND {$issuerUf} <> '' AND {$companyUf} <> ''
+                THEN CASE WHEN {$issuerUf} = {$companyUf} THEN '1933' ELSE '2933' END
+            ELSE ''
+        END";
     }
 
     public function documentIds(array $filters = [], int $limit = 5000): array
@@ -1659,7 +1757,7 @@ final class Repository
         $sql = 'SELECT id, company_id, company_name, company_cnpj, doc_type, model, access_key, referenced_nfe_keys, referenced_document_numbers, number, order_number, posted_to_erp, accounting_posted, entrada_date_erp,
                 issuer_cnpj, issuer_name, issuer_city, issuer_uf, recipient_cnpj, recipient_name, service_city, service_uf, fiscal_observation, issue_date, total_value, status, manifestation_status,
                 source, xml_path, storage_dir, notes, NULL AS raw_xml, digest, schema_name, imported_at, updated_at,
-                (SELECT di.cfop FROM document_items di WHERE di.document_id = documents.id AND COALESCE(di.cfop, \'\') <> \'\' ORDER BY di.item_number ASC, di.id ASC LIMIT 1) AS primary_cfop,
+                COALESCE(NULLIF((SELECT di.cfop FROM document_items di WHERE di.document_id = documents.id AND COALESCE(di.cfop, \'\') <> \'\' ORDER BY di.item_number ASC, di.id ASC LIMIT 1), \'\'), ' . $this->nfseCfopFallbackSql('documents') . ') AS primary_cfop,
                 ' . $this->supplierGroupNameSql('documents') . ' AS supplier_group FROM documents';
         if ($where) $sql .= ' WHERE ' . implode(' AND ', $where);
         $sql .= ' ' . $this->documentOrderBy($filters) . ' LIMIT :limit OFFSET :offset';
@@ -2699,7 +2797,7 @@ final class Repository
 
     private function indexMissingDocumentItems(int $limit = 10000): void
     {
-        $stmt = $this->pdo->prepare("SELECT id, doc_type, raw_xml, xml_path FROM documents d
+        $stmt = $this->pdo->prepare("SELECT id, company_cnpj, doc_type, raw_xml, xml_path, issuer_uf, service_uf, service_code, service_description, fiscal_observation, notes, total_value FROM documents d
             WHERE d.status <> 'evento_informativo'
               AND d.doc_type IN ('NFE', 'CTE', 'NFSE')
               AND (
@@ -2762,6 +2860,10 @@ final class Repository
             $takerIndexed = (bool)$takerExists->fetchColumn();
         }
         if ($itemsIndexed && $takerIndexed) {
+            if (strtoupper((string)($doc['doc_type'] ?? '')) === 'NFSE') {
+                $fullDoc = $this->findDocument($documentId) ?: $doc;
+                $this->ensureNfseCfopItem($fullDoc);
+            }
             return;
         }
 
@@ -2783,6 +2885,23 @@ final class Repository
                 }
             }
             unset($item);
+        }
+        if (!$itemsIndexed && $type === 'NFSE' && !$items) {
+            $fullDoc = $this->findDocument($documentId) ?: $doc;
+            $nfseCfop = $this->nfseCfopForDocument($fullDoc);
+            if ($nfseCfop !== '') {
+                $items[] = [
+                    'item_number' => 1,
+                    'product_code' => (string)($fullDoc['service_code'] ?? ''),
+                    'product_name' => (string)($fullDoc['service_description'] ?? $fullDoc['fiscal_observation'] ?? $fullDoc['notes'] ?? 'Servico'),
+                    'ncm' => '',
+                    'cfop' => $nfseCfop,
+                    'quantity' => 1,
+                    'unit' => 'UN',
+                    'unit_amount' => (float)($fullDoc['total_value'] ?? 0),
+                    'total_amount' => (float)($fullDoc['total_value'] ?? 0),
+                ];
+            }
         }
         // Se o XML realmente nao tem itens, o marcador vazio continua valido.
         if (!$items && $hadItemIndex && $itemCount === 0 && $type !== 'CTE') {
@@ -2827,6 +2946,50 @@ final class Repository
             $this->pdo->rollBack();
             throw $e;
         }
+    }
+
+    private function ensureNfseCfopItem(array $doc): void
+    {
+        $documentId = (int)($doc['id'] ?? 0);
+        if ($documentId <= 0 || strtoupper((string)($doc['doc_type'] ?? '')) !== 'NFSE') {
+            return;
+        }
+        $cfop = $this->nfseCfopForDocument($doc);
+        if ($cfop === '') {
+            return;
+        }
+
+        $update = $this->pdo->prepare("UPDATE document_items
+            SET cfop = :cfop
+            WHERE document_id = :document_id
+              AND COALESCE(cfop, '') = ''");
+        $update->execute(['cfop' => $cfop, 'document_id' => $documentId]);
+
+        $count = $this->pdo->prepare('SELECT COUNT(*) FROM document_items WHERE document_id = :document_id');
+        $count->execute(['document_id' => $documentId]);
+        if ((int)$count->fetchColumn() > 0) {
+            return;
+        }
+
+        $insert = $this->pdo->prepare('INSERT INTO document_items(document_id, item_number, product_code, product_name, ncm, cfop, quantity, unit, unit_amount, total_amount, created_at)
+            VALUES(:document_id, :item_number, :product_code, :product_name, :ncm, :cfop, :quantity, :unit, :unit_amount, :total_amount, :created_at)');
+        $total = (float)($doc['total_value'] ?? 0);
+        $insert->execute([
+            'document_id' => $documentId,
+            'item_number' => 1,
+            'product_code' => (string)($doc['service_code'] ?? ''),
+            'product_name' => (string)($doc['service_description'] ?? $doc['fiscal_observation'] ?? $doc['notes'] ?? 'Servico'),
+            'ncm' => '',
+            'cfop' => $cfop,
+            'quantity' => 1,
+            'unit' => 'UN',
+            'unit_amount' => $total,
+            'total_amount' => $total,
+            'created_at' => date('c'),
+        ]);
+        $mark = $this->pdo->prepare('INSERT INTO document_item_index(document_id, indexed_at) VALUES(:document_id, :indexed_at)
+            ON CONFLICT(document_id) DO UPDATE SET indexed_at = excluded.indexed_at');
+        $mark->execute(['document_id' => $documentId, 'indexed_at' => date('c')]);
     }
 
     private function parseDocumentItemsFromXml(string $xml, string $type): array
