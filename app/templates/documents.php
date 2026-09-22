@@ -498,7 +498,7 @@ $timelinePostedDiffClass = static function (array $cell, string $mode, string $p
                     <td data-column="nfe_vinculada"><small><?= h((string)($doc['referenced_nfe_keys'] ?? '')) ?></small></td>
                     <td data-column="numero_referenciado"><small><?= h((string)($doc['referenced_document_numbers'] ?? '')) ?></small></td>
                     <td data-column="erp"><?= !empty($doc['posted_to_erp']) ? 'Sim' : 'Não' ?></td>
-                    <td data-column="entrada_erp"><?= h(format_date($doc['entrada_date_erp'] ?? null)) ?></td>
+                    <td data-column="entrada_erp"><?= h(format_date_short($doc['entrada_date_erp'] ?? null)) ?></td>
                     <td data-column="contabilidade" class="accounting-status-cell">
                         <?php if (($doc['accounting_posted'] ?? 'N') === 'S'): ?>
                             <button type="button" class="link-button" data-accounting-details="<?= h((string)$doc['id']) ?>">Sim</button>
