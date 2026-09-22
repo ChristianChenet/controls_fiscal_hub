@@ -1,4 +1,5 @@
 SET XACT_ABORT ON;
+SET DATEFORMAT ymd;
 
 DECLARE @EMPRESA INT = {{ $json.VDNOTAC_EMPRESA === null || $json.VDNOTAC_EMPRESA === undefined || $json.VDNOTAC_EMPRESA === "" ? "NULL" : Number($json.VDNOTAC_EMPRESA) }};
 DECLARE @FILIAL INT = {{ $json.VDNOTAC_FILIAL === null || $json.VDNOTAC_FILIAL === undefined || $json.VDNOTAC_FILIAL === "" ? "NULL" : Number($json.VDNOTAC_FILIAL) }};
@@ -7,8 +8,8 @@ DECLARE @PESSOA INT = {{ $json.ID_FORNECEDOR === null || $json.ID_FORNECEDOR ===
 DECLARE @NOTA_FISCAL NUMERIC(18,0) = {{ $json.VDNOTAC_NOTA_FISCAL === null || $json.VDNOTAC_NOTA_FISCAL === undefined || $json.VDNOTAC_NOTA_FISCAL === "" ? "NULL" : Number(String($json.VDNOTAC_NOTA_FISCAL).replace(/\D/g, '') || 0) }};
 DECLARE @SERIE VARCHAR(10) = '{{ String($json.VDNOTAC_SERIE || "E").replaceAll("'", "''") }}';
 DECLARE @MOVIMENTACAO_FISCAL INT = {{ $json.VDNOTAC_MOVIMENTACAO_FISCAL === null || $json.VDNOTAC_MOVIMENTACAO_FISCAL === undefined || $json.VDNOTAC_MOVIMENTACAO_FISCAL === "" ? "NULL" : Number($json.VDNOTAC_MOVIMENTACAO_FISCAL) }};
-DECLARE @DATA_EMISSAO DATETIME = {{ $json.VDNOTAC_DATA_EMISSAO ? "CONVERT(DATETIME, '" + String($json.VDNOTAC_DATA_EMISSAO).substring(0, 10).replaceAll("'", "''") + "', 120)" : "NULL" }};
-DECLARE @DT_ENTRADA DATETIME = {{ $json.DECIS_DATA_ENTRADA ? "CONVERT(DATETIME, '" + String($json.DECIS_DATA_ENTRADA).substring(0, 10).replaceAll("'", "''") + "', 120)" : "NULL" }};
+DECLARE @DATA_EMISSAO DATETIME = {{ $json.VDNOTAC_DATA_EMISSAO ? "CAST(DATEFROMPARTS(" + Number(String($json.VDNOTAC_DATA_EMISSAO).substring(0, 4)) + ", " + Number(String($json.VDNOTAC_DATA_EMISSAO).substring(5, 7)) + ", " + Number(String($json.VDNOTAC_DATA_EMISSAO).substring(8, 10)) + ") AS DATETIME)" : "NULL" }};
+DECLARE @DT_ENTRADA DATETIME = {{ $json.DECIS_DATA_ENTRADA ? "CAST(DATEFROMPARTS(" + Number(String($json.DECIS_DATA_ENTRADA).substring(0, 4)) + ", " + Number(String($json.DECIS_DATA_ENTRADA).substring(5, 7)) + ", " + Number(String($json.DECIS_DATA_ENTRADA).substring(8, 10)) + ") AS DATETIME)" : "NULL" }};
 DECLARE @USUARIO INT = {{ $json.VDNOTAC_USUARIO_INCLUSAO === null || $json.VDNOTAC_USUARIO_INCLUSAO === undefined || $json.VDNOTAC_USUARIO_INCLUSAO === "" ? "9980" : Number($json.VDNOTAC_USUARIO_INCLUSAO) }};
 DECLARE @CNPJ VARCHAR(20) = '{{ String($json.CNPJ_FORNECEDOR_LIMPO || $json.VDNOTAC_CNPJ || "").replaceAll("'", "''") }}';
 DECLARE @NOME VARCHAR(100) = LEFT('{{ String($json.VDNOTAC_NOMEPESSOA || $json.FORNECEDOR || "FORNECEDOR NFS-E").replaceAll("'", "''") }}', 100);
