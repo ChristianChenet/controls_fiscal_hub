@@ -43,7 +43,7 @@ DECLARE @CST_CBS INT = {{ Number($json.VDNOTAS_CSTCBS || 410) }};
 DECLARE @CST_CLASSIFICACAO_CBS INT = {{ Number($json.VDNOTAS_CSTCLASSIFICACAOCBS || 410999) }};
 
 IF @EMPRESA IS NULL THROW 51000, 'EMPRESA DECIS nao informada.', 1;
-IF @FILIAL IS NULL THROW 51001, 'FILIAL DECIS nao informada. Preencha o De Para de filial no no Configura Parametros NFSe Decis.', 1;
+IF @FILIAL IS NULL THROW 51001, 'FILIAL DECIS nao localizada pelo CNPJ da empresa. Verifique o CASE de filial na consulta do Hub.', 1;
 IF @NOTA_FISCAL IS NULL THROW 51002, 'NUMERO DA NOTA nao informado.', 1;
 IF @MOVIMENTACAO_FISCAL IS NULL THROW 51003, 'MOVIMENTACAO FISCAL / CFOP nao informado.', 1;
 IF @DATA_ENTRADA IS NULL THROW 51004, 'DATA DE ENTRADA DECIS nao informada.', 1;
