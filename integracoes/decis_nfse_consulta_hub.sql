@@ -6,6 +6,11 @@ WITH PARAMETROS AS (
         DATE '{{ $("Configura Parametros NFSe Decis").item.json.dataEntradaDecis }}' AS DATA_ENTRADA_DECIS,
         {{ Number($("Configura Parametros NFSe Decis").item.json.usuarioDecis || 9980) }}::INTEGER AS USUARIO_DECIS,
         {{ Number($("Configura Parametros NFSe Decis").item.json.empresaDecis || 1) }}::INTEGER AS EMPRESA_DECIS,
+        {{ $("Configura Parametros NFSe Decis").item.json.filialMatriz === null || $("Configura Parametros NFSe Decis").item.json.filialMatriz === "" ? "NULL" : Number($("Configura Parametros NFSe Decis").item.json.filialMatriz) }}::INTEGER AS FILIAL_MATRIZ_DECIS,
+        {{ $("Configura Parametros NFSe Decis").item.json.filialCuritiba === null || $("Configura Parametros NFSe Decis").item.json.filialCuritiba === "" ? "NULL" : Number($("Configura Parametros NFSe Decis").item.json.filialCuritiba) }}::INTEGER AS FILIAL_CURITIBA_DECIS,
+        {{ $("Configura Parametros NFSe Decis").item.json.filialFoz === null || $("Configura Parametros NFSe Decis").item.json.filialFoz === "" ? "NULL" : Number($("Configura Parametros NFSe Decis").item.json.filialFoz) }}::INTEGER AS FILIAL_FOZ_DECIS,
+        {{ $("Configura Parametros NFSe Decis").item.json.filialBataguassu === null || $("Configura Parametros NFSe Decis").item.json.filialBataguassu === "" ? "NULL" : Number($("Configura Parametros NFSe Decis").item.json.filialBataguassu) }}::INTEGER AS FILIAL_BATAGUASSU_DECIS,
+        {{ $("Configura Parametros NFSe Decis").item.json.filialCascavel === null || $("Configura Parametros NFSe Decis").item.json.filialCascavel === "" ? "NULL" : Number($("Configura Parametros NFSe Decis").item.json.filialCascavel) }}::INTEGER AS FILIAL_CASCAVEL_DECIS,
         '{{ String($("Configura Parametros NFSe Decis").item.json.entradaSaida || "E").replaceAll("'", "''") }}'::TEXT AS ENTRADA_SAIDA_DECIS,
         '{{ String($("Configura Parametros NFSe Decis").item.json.natureza || "Prestacao de Servico").replaceAll("'", "''") }}'::TEXT AS NATUREZA_DECIS,
         '{{ String($("Configura Parametros NFSe Decis").item.json.modeloDocumento || "01").replaceAll("'", "''") }}'::TEXT AS MODELO_DOCUMENTO_DECIS,
@@ -57,6 +62,14 @@ BASE AS (
         REGEXP_REPLACE(COALESCE(D.issuer_cnpj, ''), '[^0-9]', '', 'g') AS issuer_cnpj_limpo,
         REGEXP_REPLACE(COALESCE(D.recipient_cnpj, ''), '[^0-9]', '', 'g') AS recipient_cnpj_limpo,
         NULL::INTEGER AS id_fornecedor,
+        CASE REGEXP_REPLACE(COALESCE(D.company_cnpj, ''), '[^0-9]', '', 'g')
+            WHEN '05102155000152' THEN P.FILIAL_MATRIZ_DECIS
+            WHEN '05102155000233' THEN P.FILIAL_CURITIBA_DECIS
+            WHEN '05102155000403' THEN P.FILIAL_FOZ_DECIS
+            WHEN '05102155000586' THEN P.FILIAL_BATAGUASSU_DECIS
+            WHEN '05102155000667' THEN P.FILIAL_CASCAVEL_DECIS
+            ELSE NULL
+        END AS filial_decis,
         COALESCE(
             NULLIF((
                 SELECT DI.cfop
@@ -102,6 +115,7 @@ BASE AS (
             NULLIF(substring(D.raw_xml_flat FROM '<CodigoMunicipioOcorrencia>([0-9]{7})</CodigoMunicipioOcorrencia>'), '')
         ) AS codigo_municipio_servico_xml
     FROM DOCS D
+    CROSS JOIN PARAMETROS P
 )
 SELECT
     B.id AS "ID",
@@ -167,7 +181,7 @@ SELECT
 
     -- Campos finais preparados para o De >> Para / gravacao no Decis.
     P.EMPRESA_DECIS AS "DECIS_EMPRESA",
-    NULL::INTEGER AS "DECIS_FILIAL",
+    B.filial_decis AS "DECIS_FILIAL",
     P.ENTRADA_SAIDA_DECIS AS "DECIS_ENTRADA_SAIDA",
     B.id_fornecedor AS "DECIS_PESSOA",
     B.number AS "DECIS_NOTA_FISCAL",
@@ -189,7 +203,7 @@ SELECT
 
     -- VDNOTAC - cabecalho da nota.
     P.EMPRESA_DECIS AS "VDNOTAC_EMPRESA",
-    NULL::INTEGER AS "VDNOTAC_FILIAL",
+    B.filial_decis AS "VDNOTAC_FILIAL",
     P.ENTRADA_SAIDA_DECIS AS "VDNOTAC_ENTRADA_SAIDA",
     B.id_fornecedor AS "VDNOTAC_PESSOA",
     B.number AS "VDNOTAC_NOTA_FISCAL",
@@ -259,7 +273,7 @@ SELECT
 
     -- VDNOTAS - item/servico da NFS-e.
     P.EMPRESA_DECIS AS "VDNOTAS_EMPRESA",
-    NULL::INTEGER AS "VDNOTAS_FILIAL",
+    B.filial_decis AS "VDNOTAS_FILIAL",
     P.ENTRADA_SAIDA_DECIS AS "VDNOTAS_ENTRADA_SAIDA",
     B.id_fornecedor AS "VDNOTAS_PESSOA",
     B.number AS "VDNOTAS_NOTA_FISCAL",
@@ -351,15 +365,11 @@ SELECT
     CONCAT_WS(
         ' | ',
         CASE WHEN B.id_fornecedor IS NULL THEN 'Cadastrar fornecedor no Decis/CGPESSOA e preencher ID_FORNECEDOR/DECIS_PESSOA.' END,
-        CASE WHEN B.company_cnpj_limpo = '05102155000152' THEN 'Informar DECIS_FILIAL para MATRIZ/MARINGA.' END,
-        CASE WHEN B.company_cnpj_limpo = '05102155000233' THEN 'Informar DECIS_FILIAL para CURITIBA.' END,
-        CASE WHEN B.company_cnpj_limpo = '05102155000403' THEN 'Informar DECIS_FILIAL para FOZ.' END,
-        CASE WHEN B.company_cnpj_limpo = '05102155000586' THEN 'Informar DECIS_FILIAL para BATAGUASSU.' END,
-        CASE WHEN B.company_cnpj_limpo = '05102155000667' THEN 'Informar DECIS_FILIAL para CASCAVEL.' END,
+        CASE WHEN B.filial_decis IS NULL THEN 'Preencher o parametro de filial Decis para este CNPJ da empresa antes de integrar.' END,
         CASE WHEN B.id_fornecedor IS NULL THEN 'Depois de cadastrar o fornecedor, retornar o codigo para ID_FORNECEDOR/DECIS_PESSOA.' END,
         CASE WHEN B.codigo_municipio_fornecedor_xml IS NULL THEN 'Codigo municipio fornecedor nao localizado no XML; buscar no cadastro do fornecedor Decis.' END,
         CASE WHEN B.codigo_municipio_servico_xml IS NULL THEN 'Codigo municipio servico nao localizado no XML; conferir se Decis exige este campo.' END,
-        'Fixos principais vieram do no Configura Parametros NFSe Decis; filial permanece no De Para.'
+        'Fixos principais e De Para de filial vieram do no Configura Parametros NFSe Decis.'
     ) AS "OBS_DE_PARA"
 FROM BASE B
 CROSS JOIN PARAMETROS P
